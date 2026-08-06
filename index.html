@@ -216,6 +216,18 @@
     color: #cfe0ee; font-size: 10.5px; letter-spacing: 1px; padding: 5px 6px; }
   #drivehint { position: absolute; left: 50%; top: 64%; transform: translateX(-50%); display: none;
     color: #ffd479; font-size: 15px; letter-spacing: 3px; text-shadow: 0 1px 4px #000; }
+  #cafehint { position: absolute; left: 50%; top: 58%; transform: translateX(-50%); display: none;
+    color: #8affa0; font-size: 15px; letter-spacing: 3px; text-shadow: 0 1px 4px #000;
+    pointer-events: auto; cursor: pointer; }
+  #cafeitems { margin-top: 16px; display: flex; flex-direction: column; gap: 10px; width: min(480px, 92vw); }
+  .cafeitem { display: flex; align-items: center; gap: 14px; text-align: left; cursor: pointer;
+    background: rgba(14,22,32,.6); border: 1px solid rgba(90,170,110,.35); border-radius: 10px; padding: 12px 16px; }
+  .cafeitem:hover { border-color: #8affa0; }
+  .cafeitem .ic { font-size: 26px; }
+  .cafeitem .info { flex: 1; }
+  .cafeitem .nm { font-weight: 700; letter-spacing: 1px; }
+  .cafeitem .fx { font-size: 12px; color: #9fb2c4; margin-top: 2px; }
+  .cafeitem .pr { font-size: 18px; font-weight: 800; color: #7dff8a; }
   #speedo { position: absolute; right: 34px; bottom: 110px; display: none; color: #fff;
     font-size: 30px; font-weight: 800; letter-spacing: 2px; text-shadow: 0 1px 6px #000; }
 
@@ -236,6 +248,7 @@
   <canvas id="minimap" width="170" height="170"></canvas>
   <div id="location">📍 —</div>
   <div id="drivehint">PRESS E TO DRIVE</div>
+  <div id="cafehint">🍕 PRESS F TO EAT HERE</div>
   <div id="speedo">0 KM/H</div>
   <div id="vignette"></div>
   <div id="crosshair"><span class="t"></span><span class="b"></span><span class="l"></span><span class="r"></span></div>
@@ -335,6 +348,13 @@
   <div class="go" id="shopclose">CLOSE SHOP (B)</div>
 </div>
 
+<div id="cafe" class="overlay" style="display:none">
+  <h1 id="cafename" style="font-size:30px">CAFE</h1>
+  <div id="cafewallet" style="margin-top:8px;font-size:20px;font-weight:800;color:#7dff8a;letter-spacing:2px">$0</div>
+  <div id="cafeitems"></div>
+  <div class="go" id="cafeclose">LEAVE (F)</div>
+</div>
+
 <div id="paused" class="overlay">
   <h1 style="font-size:40px">Paused</h1>
   <div class="go">CLICK TO RESUME</div>
@@ -355,6 +375,6 @@
   "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.1/examples/jsm/"
 } }
 </script>
-<script type="module" src="game.js?v=21"></script>
+<script type="module" src="game.js?v=22"></script>
 </body>
 </html>
