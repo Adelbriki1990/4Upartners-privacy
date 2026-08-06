@@ -41,6 +41,18 @@ into a `lib/` folder and point the import map at `./lib/three.module.min.js`.
 
 ### Gameplay
 
+- **Two game modes**:
+  - **🛵 Delivery Shift** — you're a courier for the city's sponsor app
+    (e.g. *SNOONU DRIVER* in Marina Bay): follow the beacon to pick up
+    orders, deliver them across the city on foot or by car, earn cash —
+    and fight off the robbers who try to steal your delivery.
+  - **🔫 Combat Waves** — classic survival against escalating hostiles.
+- **Real-time day/night** — the city matches your actual local clock:
+  daylight and sun in the daytime, lit windows, lamps and neon at night
+  (test with `?time=day` / `?time=night` in the URL).
+- **Living streets** — pedestrians walk the sidewalks (and flee gunfire),
+  AI traffic cruises the lanes and brakes for you.
+- **Three weapons** — MK-4 assault rifle, P9 sidearm, Viper SMG (keys 1/2/3).
 - **Three selectable cities**, each with its own atmosphere and sponsor
   roster: Neon District (rain-soaked megacity), Marina Bay (warm gulf
   downtown), Red Harbor (old-town brick). Your choice is remembered.

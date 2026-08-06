@@ -65,6 +65,20 @@
 
   #topbar { position: absolute; top: 22px; left: 50%; transform: translateX(-50%); display: flex; gap: 40px; color: #dfe9f2; font-size: 15px; letter-spacing: 1px; text-shadow: 0 1px 4px #000; }
   #topbar b { color: #7fd0ff; font-size: 19px; }
+  #topbar b.cash { color: #7dff8a; }
+
+  #orderpanel { position: absolute; left: 20px; top: 205px; width: 230px; display: none;
+    background: rgba(8,12,18,.72); border: 1px solid rgba(255,255,255,.18); border-left: 4px solid #41d8ff;
+    border-radius: 8px; padding: 12px 14px; color: #dfe9f2; }
+  #orderpanel .app { font-size: 11px; letter-spacing: 2px; color: #7fd0ff; text-transform: uppercase; margin-bottom: 6px; }
+  #orderpanel .task { font-size: 14px; font-weight: 600; line-height: 1.4; }
+  #orderpanel .dist { margin-top: 6px; font-size: 20px; font-weight: 800; color: #ffd479; }
+  #orderpanel .pay { margin-top: 2px; font-size: 12px; color: #7dff8a; }
+
+  #modes { display: flex; gap: 14px; margin-top: 26px; }
+  .modebtn { padding: 10px 26px; border: 1px solid #3a4c5e; border-radius: 8px; cursor: pointer;
+    color: #b9c7d4; font-size: 14px; letter-spacing: 2px; background: rgba(14,20,28,.85); transition: all .15s; }
+  .modebtn.sel { border-color: #ffd479; color: #ffd479; box-shadow: 0 0 14px rgba(255,212,121,.35); }
 
   #wavebanner { position: absolute; top: 34%; left: 50%; transform: translateX(-50%); font-size: 40px; font-weight: 800;
     letter-spacing: 8px; color: #fff; text-shadow: 0 2px 12px rgba(0,150,255,.8); opacity: 0; text-transform: uppercase; }
@@ -116,9 +130,17 @@
   <div id="crosshair"><span class="t"></span><span class="b"></span><span class="l"></span><span class="r"></span></div>
   <div id="hitmarker"><span class="t"></span><span class="b"></span><span class="l"></span><span class="r"></span></div>
   <div id="topbar">
-    <div>WAVE <b id="wave">1</b></div>
+    <div id="tb-wave">WAVE <b id="wave">1</b></div>
+    <div id="tb-cash" style="display:none">CASH <b class="cash" id="cash">$0</b></div>
+    <div id="tb-del" style="display:none">DELIVERED <b id="deliveries">0</b></div>
     <div>HOSTILES <b id="alive">0</b></div>
     <div>ELIMINATIONS <b id="kills">0</b></div>
+  </div>
+  <div id="orderpanel">
+    <div class="app" id="order-app">DELIVERY APP</div>
+    <div class="task" id="order-task">—</div>
+    <div class="dist" id="order-dist">—</div>
+    <div class="pay" id="order-pay"></div>
   </div>
   <div id="wavebanner"></div>
   <div id="feed"></div>
@@ -127,7 +149,7 @@
     <div id="healthbar"><div id="healthfill"></div></div>
   </div>
   <div id="ammo">
-    <div class="wname">MK-4 Assault Rifle</div>
+    <div class="wname" id="wname">MK-4 ASSAULT RIFLE</div>
     <div><span class="mag" id="mag">30</span> <span class="res">/ <span id="reserve">120</span></span></div>
   </div>
   <div id="reloadmsg">RELOADING…</div>
@@ -145,6 +167,10 @@
   <h1>Street Ops</h1>
   <h2>3D URBAN COMBAT &mdash; CHOOSE YOUR CITY</h2>
   <div id="cities"></div>
+  <div id="modes">
+    <div class="modebtn" data-mode="delivery">🛵 DELIVERY SHIFT</div>
+    <div class="modebtn" data-mode="waves">🔫 COMBAT WAVES</div>
+  </div>
   <div class="keys">
     <div><b>W A S D</b></div><div>Move</div>
     <div><b>MOUSE</b></div><div>Look / Aim</div>
@@ -154,6 +180,7 @@
     <div><b>SPACE</b></div><div>Jump</div>
     <div><b>R</b></div><div>Reload</div>
     <div><b>E</b></div><div>Enter / exit car</div>
+    <div><b>1 2 3</b></div><div>Switch weapon</div>
   </div>
   <div class="go">CLICK ANYWHERE TO DEPLOY</div>
 </div>
