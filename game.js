@@ -5,7 +5,8 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { CITIES } from './sponsors.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { CITIES } from './sponsors.js?v=16';
 
 // ---------------------------------------------------------------------------
 // Renderer / scene / camera
@@ -682,17 +683,20 @@ function makeBillboardTexture(sponsor) {
   g.fillStyle = '#ffffff';
   g.shadowColor = 'rgba(0,0,0,.6)'; g.shadowBlur = 12;
   g.font = '800 58px Arial';
-  g.fillText(sponsor.name, 256, sponsor.logo ? 200 : 130, 470);
-  g.font = '400 30px Arial';
-  g.fillStyle = 'rgba(255,255,255,.85)';
-  g.fillText(sponsor.tagline, 256, sponsor.logo ? 238 : 180, 470);
+  g.fillText(sponsor.name, 256, sponsor.logo ? 226 : 130, 470);
+  if (!sponsor.logo) {
+    g.font = '400 30px Arial';
+    g.fillStyle = 'rgba(255,255,255,.85)';
+    g.fillText(sponsor.tagline, 256, 180, 470);
+  }
   const tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.SRGBColorSpace;
   if (sponsor.logo) {
     const img = new Image();
     img.onload = () => {
-      const s = Math.min(300 / img.width, 130 / img.height);
-      g.drawImage(img, 256 - img.width * s / 2, 20, img.width * s, img.height * s);
+      // big hero logo filling most of the board
+      const s = Math.min(400 / img.width, 160 / img.height);
+      g.drawImage(img, 256 - img.width * s / 2, 100 - img.height * s / 2, img.width * s, img.height * s);
       tex.needsUpdate = true;
     };
     img.src = sponsor.logo;
@@ -895,15 +899,23 @@ function carBox(pos, yaw, size = [2.0, 4.4]) {
 // low sports GT, and a long luxury sedan.
 function buildCarMesh(bodyColor, style = 'car') {
   const g = new THREE.Group();
-  const mBody = new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.3, metalness: 0.6 });
+  const mBody = new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.25, metalness: 0.65 });
   const mDark = new THREE.MeshStandardMaterial({ color: 0x11151a, roughness: 0.6 });
+  const mCab = new THREE.MeshStandardMaterial({ color: 0x0d141c, roughness: 0.08, metalness: 0.85 });
   const mChrome = new THREE.MeshStandardMaterial({ color: 0xc8ccd2, roughness: 0.15, metalness: 0.9 });
+  const mHub = new THREE.MeshStandardMaterial({ color: 0x8a9099, roughness: 0.25, metalness: 0.85 });
+  // rounded panels so bodies read as real sheet metal, not boxes
+  const RB = (w, h, d, r) => new RoundedBoxGeometry(w, h, d, 3, r);
 
   const wheel = (wx, wz, r) => {
-    const w = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 0.26, 12), mDark);
-    w.rotation.z = Math.PI / 2;
-    w.position.set(wx, r, wz);
-    g.add(w);
+    const tire = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 0.26, 16), mDark);
+    tire.rotation.z = Math.PI / 2;
+    tire.position.set(wx, r, wz);
+    g.add(tire);
+    const hub = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.55, r * 0.55, 0.27, 12), mHub);
+    hub.rotation.z = Math.PI / 2;
+    hub.position.set(wx, r, wz);
+    g.add(hub);
   };
   const lights = (frontZ, rearZ, y) => {
     const mGlow = new THREE.MeshBasicMaterial({ color: 0xfff2cc });
@@ -931,9 +943,9 @@ function buildCarMesh(bodyColor, style = 'car') {
 
   if (style === 'suv') {
     // tall boxy 4x4: high stance, roof rails, rear-mounted spare wheel
-    const body = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.9, 4.6), mBody);
+    const body = new THREE.Mesh(RB(2.0, 0.9, 4.6, 0.14), mBody);
     body.position.y = 0.85; g.add(body);
-    const cab = new THREE.Mesh(new THREE.BoxGeometry(1.85, 0.62, 2.7), mDark);
+    const cab = new THREE.Mesh(RB(1.85, 0.62, 2.7, 0.12), mCab);
     cab.position.set(0, 1.6, -0.15); g.add(cab);
     for (const rx of [-0.7, 0.7]) {
       const rail = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 2.6), mChrome);
@@ -951,12 +963,12 @@ function buildCarMesh(bodyColor, style = 'car') {
     lights(2.31, -2.31, 0.95);
   } else if (style === 'sports') {
     // low wide GT: wedge nose, sleek cabin, rear wing
-    const body = new THREE.Mesh(new THREE.BoxGeometry(1.95, 0.42, 4.2), mBody);
+    const body = new THREE.Mesh(RB(1.95, 0.42, 4.2, 0.1), mBody);
     body.position.y = 0.42; g.add(body);
     const nose = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.26, 1.1), mBody);
     nose.position.set(0, 0.36, 2.05);
     nose.rotation.x = 0.1; g.add(nose);
-    const cab = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.36, 1.7), mDark);
+    const cab = new THREE.Mesh(RB(1.5, 0.36, 1.7, 0.12), mCab);
     cab.position.set(0, 0.78, -0.35); g.add(cab);
     const intake = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.1, 0.5), mDark);
     intake.position.set(0, 0.25, 2.0); g.add(intake);
@@ -970,12 +982,12 @@ function buildCarMesh(bodyColor, style = 'car') {
     lights(2.15, -2.12, 0.45);
   } else if (style === 'hyper') {
     // ultra-low angular hypercar: sharp wedge, side intakes, big fixed wing
-    const body = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.36, 4.35), mBody);
+    const body = new THREE.Mesh(RB(2.0, 0.36, 4.35, 0.09), mBody);
     body.position.y = 0.38; g.add(body);
     const nose = new THREE.Mesh(new THREE.BoxGeometry(1.85, 0.2, 1.3), mBody);
     nose.position.set(0, 0.34, 2.05);
     nose.rotation.x = 0.14; g.add(nose);
-    const cab = new THREE.Mesh(new THREE.BoxGeometry(1.35, 0.3, 1.55), mDark);
+    const cab = new THREE.Mesh(RB(1.35, 0.3, 1.55, 0.1), mCab);
     cab.position.set(0, 0.7, -0.25); g.add(cab);
     for (const sx of [-1.02, 1.02]) {
       const intake = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.22, 0.9), mDark);
@@ -995,9 +1007,9 @@ function buildCarMesh(bodyColor, style = 'car') {
     lights(2.35, -2.16, 0.42);
   } else if (style === 'phantom') {
     // stately limousine: long tall body, upright chrome grille, hood strip
-    const body = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.75, 5.2), mBody);
+    const body = new THREE.Mesh(RB(2.0, 0.75, 5.2, 0.12), mBody);
     body.position.y = 0.72; g.add(body);
-    const cab = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.56, 2.6), mDark);
+    const cab = new THREE.Mesh(RB(1.8, 0.56, 2.6, 0.12), mCab);
     cab.position.set(0, 1.36, -0.5); g.add(cab);
     const grille = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.5, 0.14), mChrome);
     grille.position.set(0, 0.8, 2.6); g.add(grille);
@@ -1014,9 +1026,9 @@ function buildCarMesh(bodyColor, style = 'car') {
     lights(2.61, -2.61, 0.8);
   } else if (style === 'luxury') {
     // long executive sedan: stretched body, chrome side trim, wide grille bar
-    const body = new THREE.Mesh(new THREE.BoxGeometry(1.95, 0.6, 4.9), mBody);
+    const body = new THREE.Mesh(RB(1.95, 0.6, 4.9, 0.12), mBody);
     body.position.y = 0.56; g.add(body);
-    const cab = new THREE.Mesh(new THREE.BoxGeometry(1.72, 0.5, 2.5), mDark);
+    const cab = new THREE.Mesh(RB(1.72, 0.5, 2.5, 0.12), mCab);
     cab.position.set(0, 1.08, -0.3); g.add(cab);
     for (const sx of [-0.99, 0.99]) {
       const trim = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.05, 4.4), mChrome);
@@ -1033,9 +1045,9 @@ function buildCarMesh(bodyColor, style = 'car') {
     lights(2.46, -2.46, 0.62);
   } else {
     // standard sedan
-    const body = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.62, 4.4), mBody);
+    const body = new THREE.Mesh(RB(1.9, 0.62, 4.4, 0.12), mBody);
     body.position.y = 0.55; g.add(body);
-    const cab = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.55, 2.2), mDark);
+    const cab = new THREE.Mesh(RB(1.7, 0.55, 2.2, 0.12), mCab);
     cab.position.set(0, 1.1, -0.2); g.add(cab);
     glassPane(1.58, 0.52, 1.08, 0.92, -0.48);
     glassPane(1.58, 0.48, 1.08, -1.32, 0.52);
