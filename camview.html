@@ -1,0 +1,82 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.min.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.1/examples/jsm/"
+} }
+</script>
+</head>
+<body style="margin:0">
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+
+const q = new URLSearchParams(location.search);
+const renderer = new THREE.WebGLRenderer();
+renderer.setSize(900, 600);
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x88aacc);
+const camera = new THREE.PerspectiveCamera(50, 900 / 600, 0.1, 100);
+const camD = +(q.get('d') || 7);
+camera.position.set(camD * 0.6, camD * 0.35, camD);
+camera.lookAt(0, 1, 0);
+scene.add(new THREE.AmbientLight(0xffffff, 1.2));
+const sun = new THREE.DirectionalLight(0xffffff, 2);
+sun.position.set(4, 8, 3);
+scene.add(sun);
+scene.add(new THREE.GridHelper(20, 20));
+const ref = new THREE.Mesh(new THREE.BoxGeometry(0.4, 1.8, 0.3), new THREE.MeshStandardMaterial({ color: 0xcc2222 }));
+ref.position.set(-2, 0.9, 0);
+scene.add(ref);
+scene.add(new THREE.ArrowHelper(new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, 0.05, 0), 3, 0x00ff00));
+
+function boneBounds(root) {
+  const box = new THREE.Box3();
+  const v = new THREE.Vector3();
+  root.updateMatrixWorld(true);
+  root.traverse(o => { if (o.isBone) box.expandByPoint(o.getWorldPosition(v)); });
+  return box;
+}
+const loader = new GLTFLoader();
+loader.setMeshoptDecoder(MeshoptDecoder);
+let mixer = null;
+window.__info = { loaded: false };
+loader.load(q.get('m') || 'models/camel.glb', g => {
+  const root = g.scene;
+  scene.add(root);
+  const clips = g.animations || [];
+  const walk = clips.find(a => /walk/i.test(a.name)) || clips[0] || null;
+  if (walk) { mixer = new THREE.AnimationMixer(root); mixer.clipAction(walk).play(); mixer.update(0); }
+  const target = +(q.get('h') || 1.8);
+  const mode = q.get('mode') || 'auto';
+  let hasBones = false;
+  root.traverse(o => { if (o.isBone) hasBones = true; });
+  const useBones = mode === 'bones' || (mode === 'auto' && hasBones && walk);
+  const box = useBones ? boneBounds(root) : new THREE.Box3().setFromObject(root);
+  const dim = box.getSize(new THREE.Vector3());
+  const s = target / dim.y;
+  root.scale.setScalar(s);
+  const c = box.getCenter(new THREE.Vector3());
+  root.position.set(-c.x * s, -box.min.y * s, -c.z * s);
+  if (q.get('rot')) root.rotation.y = +q.get('rot');
+  const meshes = [];
+  root.traverse(o => { if (o.isMesh) meshes.push({ name: o.name, skinned: !!o.isSkinnedMesh,
+    verts: o.geometry.attributes.position.count }); });
+  window.__info = { loaded: true, useBones, hasBones,
+    dim: dim.toArray().map(n => +n.toFixed(3)),
+    clips: clips.map(a => a.name), meshes };
+});
+const clock = new THREE.Clock();
+(function anim() {
+  requestAnimationFrame(anim);
+  if (mixer) mixer.update(clock.getDelta());
+  renderer.render(scene, camera);
+})();
+</script>
+</body>
+</html>
