@@ -6,7 +6,7 @@ versions**:
 
 | Version | Where | Tech |
 |---|---|---|
-| **Browser game** | `index.html` + `game.js` | Three.js (vendored in `lib/`), runs anywhere |
+| **Browser game** | `index.html` + `game.js` | Three.js (via CDN import map), runs anywhere |
 | **Unity game** | `unity/StreetOps/` | C# scripts, builds itself at Play time — see [`unity/README.md`](unity/README.md) |
 
 ## Play the browser version
@@ -21,6 +21,11 @@ python3 -m http.server 8000
 
 Or enable **GitHub Pages** on this repo (Settings → Pages → deploy from
 branch) and the game is playable at your Pages URL.
+
+Three.js loads from the jsDelivr CDN via the import map in `index.html`.
+For fully offline play, download
+[`three.module.min.js`](https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.min.js)
+into a `lib/` folder and point the import map at `./lib/three.module.min.js`.
 
 ### Controls
 

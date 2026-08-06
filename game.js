@@ -1,5 +1,8 @@
 // Street Ops — 3D urban combat in the browser (Three.js, no server, no assets).
-import * as THREE from './lib/three.module.min.js';
+// Three.js resolves via the import map in index.html (CDN by default).
+// For fully offline play, download three.module.min.js into lib/ and point
+// the import map at './lib/three.module.min.js' instead.
+import * as THREE from 'three';
 import { SPONSORS } from './sponsors.js';
 
 // ---------------------------------------------------------------------------
