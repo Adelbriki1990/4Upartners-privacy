@@ -1766,14 +1766,19 @@ function buildCity(city) {
   spawnPeds();
   for (let i = 0; i < 10; i++) spawnCanPickup();
 
-  // capture the finished city as the environment map: car paint, glass and
-  // wet asphalt now reflect the actual streets and sky around them
-  try {
-    const pmrem = new THREE.PMREMGenerator(renderer);
-    const env = pmrem.fromScene(scene, 0, 0.5, 420);
-    scene.environment = env.texture;
-    pmrem.dispose();
-  } catch (e) { /* env reflections are an enhancement, never fatal */ }
+  // capture the finished city as the environment map (deferred so the page
+  // stays responsive; skipped on software renderers where it would stall)
+  setTimeout(() => {
+    try {
+      const dbg = renderer.getContext().getExtension('WEBGL_debug_renderer_info');
+      const gpu = dbg ? renderer.getContext().getParameter(dbg.UNMASKED_RENDERER_WEBGL) : '';
+      if (/swiftshader|llvmpipe|software/i.test(gpu)) return;
+      const pmrem = new THREE.PMREMGenerator(renderer);
+      const env = pmrem.fromScene(scene, 0, 0.5, 420);
+      scene.environment = env.texture;
+      pmrem.dispose();
+    } catch (e) { /* reflections are an enhancement, never fatal */ }
+  }, 1500);
 }
 
 // ---------------------------------------------------------------------------
@@ -3707,6 +3712,8 @@ function selectedCity() { return CITIES.find(c => c.id === selectedId) || CITIES
       card.classList.add('sel');
       refreshPreview(); // uniform matches the selected city's app brand
       refreshMenuText();
+      // menu backdrop shows the real city — swap it by reloading into the selection
+      if (CITY && CITY.id !== city.id) setTimeout(() => location.reload(), 180);
     });
     wrap.appendChild(card);
   }
@@ -3781,6 +3788,7 @@ function playerName() { return (profile.name || '').trim().toUpperCase() || 'DRI
 // ---------------------------------------------------------------------------
 const clock = new THREE.Clock();
 let bobPhase = 0, shake = 0, slowmo = 0, deathT = 0, frameNo = 0, wasArmed = false;
+let menuOrbit = Math.random() * 6;
 let perfAccum = 0, perfFrames = 0, perfChecked = false;
 
 // 3D navigation arrow pointing to the active delivery target
@@ -3815,6 +3823,19 @@ function tick() {
     if (pv && pv.char) {
       pv.char.group.rotation.y += dtRaw * 1.2;
       pv.renderer.render(pv.scene, pv.cam);
+    }
+    // live menu backdrop: slow cinematic orbit over the glowing city
+    if (CITY) {
+      game.time += dtReal;
+      menuOrbit += dtReal * 0.045;
+      const r = 95, h = 52;
+      camera.position.set(Math.cos(menuOrbit) * r, h + Math.sin(menuOrbit * 0.7) * 8, Math.sin(menuOrbit) * r);
+      camera.lookAt(0, 12, 0);
+      updateAtmosphere(dtReal);
+      updateClub(dtReal);
+      updateVenues(dtReal);
+      updateTraffic(dtReal);
+      updatePeds(dtReal);
     }
     doRender();
     return;
@@ -4012,6 +4033,9 @@ function tick() {
 
   doRender();
 }
+// build the selected city immediately so the menu floats over the live skyline
+buildCity(selectedCity());
+
 tick();
 
 // debug/testing handle
