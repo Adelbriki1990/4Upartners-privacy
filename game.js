@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=27';
+import { CITIES } from './sponsors.js?v=28';
 
 // ---------------------------------------------------------------------------
 // Renderer / scene / camera
@@ -1480,6 +1480,7 @@ function loadRealAssets() {
     policeTemplate = normalizeModel(g.scene, 'car', 4.6);
     spawnPolice();
   }, undefined, () => {});
+  loadHeroCars();
   gltfLoader.load('models/dog_doberman.glb', g => {
     dobermanTemplate = normalizeModel(g.scene, 'person', 0.85);
     placeGuardDogs();
@@ -1694,6 +1695,52 @@ function spawnMercFleet() {
     }
   }
   addFeed('🏎 E50 AMG fleet spotted around the city');
+}
+// Hero cars — every real car model uploaded to models/ becomes a drivable
+// showpiece parked around the city (plus feed announcements)
+const HERO_CARS = [
+  { file: 'models/car_bmw_x7.glb', key: 'hero_x7', base: 'suv', len: 5.1, label: 'BMW X7 M60i',
+    spots: [[65.1, 14, 0], [-5.1, -70, Math.PI]] },
+  { file: 'models/car_challenger.glb', key: 'hero_dodge', base: 'sports', len: 5.0, label: 'CHALLENGER V8',
+    rotY: Math.PI, spots: [[5.1, 84, 0], [-65.1, -20, Math.PI]] },
+  { file: 'models/car_concept.glb', key: 'hero_concept', base: 'hyper', len: 4.7, label: 'CONCEPT X',
+    spots: [[125.1, 40, 0]] },
+  { file: 'models/car_lambo.glb', key: 'hero_lambo', base: 'hyper', len: 4.6, label: 'TORO SV',
+    tint: 0xf07800, spots: [[-125.1, 62, 0], [65.1, 100, Math.PI]] },
+];
+function loadHeroCars() {
+  for (const hc of HERO_CARS) {
+    VEH_STATS[hc.key] = { ...VEH_STATS[hc.base], label: hc.label };
+    gltfLoader.load(hc.file, g => {
+      const root = g.scene;
+      // untextured models get a hot metallic paint job
+      if (hc.tint)
+        root.traverse(o => {
+          if (o.isMesh && o.material) {
+            o.material = o.material.clone();
+            o.material.color = new THREE.Color(hc.tint);
+            o.material.metalness = 0.6;
+            o.material.roughness = 0.35;
+          }
+        });
+      // freeze any built-in animation (doors etc.) at its start pose
+      if (g.animations && g.animations.length) {
+        const mx = new THREE.AnimationMixer(root);
+        mx.clipAction(g.animations[0]).play();
+        mx.update(0);
+      }
+      if (hc.rotY) root.rotation.y = hc.rotY;
+      const tpl = normalizeModel(root, 'car', hc.len);
+      for (const [x, z, ry] of hc.spots) {
+        const wrap = new THREE.Group();
+        const m = SkeletonUtils.clone(tpl);
+        wrap.add(m);
+        wrap.userData.wheelNodes = collectWheelNodes(m);
+        registerVehicle(wrap, x, z, ry, hc.key);
+      }
+      addFeed(`🚗 ${hc.label} spotted around the city`);
+    }, undefined, () => {});
+  }
 }
 // Police supercars parked on patrol — real Dubai Police Aventador model,
 // drivable at high level, light bars strobing red/blue
@@ -4549,7 +4596,8 @@ function addXP(n) {
 // Retention loop: unlock ladder, daily missions, streaks, VIP orders, records
 // ---------------------------------------------------------------------------
 const WEAPON_UNLOCK = [1, 3, 6];
-const VEH_UNLOCK = { sports: 8, phantom: 10, hyper: 12, police: 14 };
+const VEH_UNLOCK = { sports: 8, phantom: 10, hyper: 12, police: 14,
+  hero_dodge: 8, hero_concept: 12, hero_lambo: 12 };
 const UNLOCK_LADDER = [
   { level: 3, what: 'P9 SIDEARM' },
   { level: 6, what: 'VIPER SMG' },
