@@ -71,7 +71,7 @@
   #topbar b { color: #7fd0ff; font-size: 19px; }
   #topbar b.cash { color: #7dff8a; }
 
-  #orderpanel { position: absolute; left: 20px; top: 205px; width: 230px; display: none;
+  #orderpanel { position: absolute; left: 20px; top: 235px; width: 230px; display: none;
     background: rgba(8,12,18,.72); border: 1px solid rgba(255,255,255,.18); border-left: 4px solid #41d8ff;
     border-radius: 8px; padding: 12px 14px; color: #dfe9f2; }
   #orderpanel .app { font-size: 11px; letter-spacing: 2px; color: #7fd0ff; text-transform: uppercase; margin-bottom: 6px; }
@@ -84,11 +84,16 @@
     color: #b9c7d4; font-size: 14px; letter-spacing: 2px; background: rgba(14,20,28,.85); transition: all .15s; }
   .modebtn.sel { border-color: #ffd479; color: #ffd479; box-shadow: 0 0 14px rgba(255,212,121,.35); }
 
-  #wavebanner { position: absolute; top: 34%; left: 50%; transform: translateX(-50%); font-size: 40px; font-weight: 800;
-    letter-spacing: 8px; color: #fff; text-shadow: 0 2px 12px rgba(0,150,255,.8); opacity: 0; text-transform: uppercase; }
+  #wavebanner { position: absolute; top: 34%; left: 50%; transform: translateX(-50%); font-size: 36px; font-weight: 800;
+    letter-spacing: 7px; color: #fff; text-shadow: 0 2px 12px rgba(0,150,255,.8); opacity: 0; text-transform: uppercase;
+    background: rgba(6,10,18,.62); border: 1px solid rgba(255,255,255,.3); border-radius: 12px;
+    padding: 12px 38px; white-space: nowrap; }
 
-  #feed { position: absolute; top: 70px; right: 30px; text-align: right; font-size: 13px; color: #cdd9e4; text-shadow: 0 1px 3px #000; }
-  #feed div { margin-bottom: 4px; opacity: .95; }
+  #feed { position: absolute; top: 70px; right: 30px; text-align: right; font-size: 13px; color: #cdd9e4; }
+  #feed div { margin-bottom: 5px; opacity: .95; display: inline-block; clear: both; float: right;
+    background: rgba(8,12,20,.68); border: 1px solid rgba(255,255,255,.16); border-right: 3px solid #7fd0ff;
+    border-radius: 6px; padding: 4px 10px; }
+  #feed { display: flex; flex-direction: column; align-items: flex-end; }
 
   /* ---------- cinematic layer ---------- */
   #cine { position: fixed; inset: 0; pointer-events: none; z-index: 20; display: none; }
@@ -131,6 +136,9 @@
 
   /* ---------- minimap / driving ---------- */
   #minimap { position: absolute; top: 20px; left: 20px; border: 1px solid rgba(255,255,255,.25); border-radius: 6px; }
+  #location { position: absolute; top: 196px; left: 20px; width: 170px; text-align: center;
+    background: rgba(8,12,18,.72); border: 1px solid rgba(255,255,255,.18); border-radius: 6px;
+    color: #cfe0ee; font-size: 10.5px; letter-spacing: 1px; padding: 5px 6px; }
   #drivehint { position: absolute; left: 50%; top: 64%; transform: translateX(-50%); display: none;
     color: #ffd479; font-size: 15px; letter-spacing: 3px; text-shadow: 0 1px 4px #000; }
   #speedo { position: absolute; right: 34px; bottom: 110px; display: none; color: #fff;
@@ -151,6 +159,7 @@
 
 <div id="hud">
   <canvas id="minimap" width="170" height="170"></canvas>
+  <div id="location">📍 —</div>
   <div id="drivehint">PRESS E TO DRIVE</div>
   <div id="speedo">0 KM/H</div>
   <div id="vignette"></div>
@@ -226,6 +235,7 @@
     <div><b>1 2 3</b></div><div>Switch weapon</div>
     <div><b>Q</b></div><div>Drink Red Bull (speed boost)</div>
     <div><b>C</b></div><div>Driving camera (chase / hood)</div>
+    <div><b>SPACE</b></div><div>Brake (while driving)</div>
     <div><b>M</b></div><div>Music on / off</div>
   </div>
   <div class="go">CLICK ANYWHERE TO DEPLOY</div>
