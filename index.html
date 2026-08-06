@@ -152,6 +152,20 @@
   .citycard p { color: #a9b8c6; font-size: 12.5px; line-height: 1.5; }
   .citycard .sp { margin-top: 10px; font-size: 10.5px; letter-spacing: 1px; color: #7d8fa2; text-transform: uppercase; }
 
+  /* ---------- driver shop ---------- */
+  #wallet { margin-top: 8px; font-size: 20px; font-weight: 800; color: #7dff8a; letter-spacing: 2px; }
+  #shopitems { margin-top: 18px; display: flex; flex-direction: column; gap: 10px; width: min(560px, 92vw); }
+  .shopitem { display: flex; align-items: center; gap: 14px; text-align: left;
+    background: rgba(14,22,32,.6); border: 1px solid rgba(90,130,170,.35); border-radius: 10px; padding: 12px 16px; }
+  .shopitem .ic { font-size: 26px; }
+  .shopitem .info { flex: 1; }
+  .shopitem .nm { font-size: 15px; font-weight: 700; color: #fff; letter-spacing: 1px; }
+  .shopitem .ds { font-size: 12px; color: #9fb2c4; margin-top: 2px; }
+  .shopitem .lv { font-size: 11px; color: #ffd479; margin-top: 2px; letter-spacing: 1px; }
+  .buybtn { padding: 8px 16px; border-radius: 8px; border: 1px solid #7dff8a; color: #7dff8a;
+    background: rgba(20,40,26,.5); cursor: pointer; font-size: 13px; letter-spacing: 1px; white-space: nowrap; }
+  .buybtn:disabled { border-color: #4a5560; color: #6a7580; cursor: default; background: transparent; }
+
   /* ---------- minimap / driving ---------- */
   #minimap { position: absolute; top: 20px; left: 20px; border: 1px solid rgba(255,255,255,.25); border-radius: 6px; }
   #location { position: absolute; top: 196px; left: 20px; width: 170px; text-align: center;
@@ -256,8 +270,16 @@
     <div><b>C</b></div><div>Driving camera (chase / hood)</div>
     <div><b>SPACE</b></div><div>Brake (while driving)</div>
     <div><b>M</b></div><div>Music on / off</div>
+    <div><b>B</b></div><div>Driver shop (spend your cash)</div>
   </div>
   <div class="go" id="deployline">CLICK ANYWHERE TO DEPLOY</div>
+</div>
+
+<div id="shop" class="overlay" style="display:none">
+  <h1 style="font-size:32px">DRIVER SHOP</h1>
+  <div id="wallet">WALLET $0</div>
+  <div id="shopitems"></div>
+  <div class="go" id="shopclose">CLOSE SHOP (B)</div>
 </div>
 
 <div id="paused" class="overlay">

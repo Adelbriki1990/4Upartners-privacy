@@ -1273,11 +1273,17 @@ function makeCharacter(cfg, opts = {}) {
 
   // legs: hip pivots so the walk cycle bends at the joint
   const legs = [];
-  const legMat = cfg.skirt ? mSkinC : pants;
-  const legLen = cfg.skirt ? 0.34 : 0.42;
+  const sporty = cfg.shorts;
+  const legMat = (cfg.skirt || sporty) ? mSkinC : pants;
+  const legLen = cfg.skirt ? 0.34 : sporty ? 0.4 : 0.42;
   if (cfg.skirt) {
     const skirt = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.22, 0.3, 10), pants);
     skirt.position.y = 0.68; g.add(skirt);
+  }
+  if (sporty) { // athletic shorts in kit color
+    const shorts = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.19, 0.24, 10),
+      new THREE.MeshStandardMaterial({ color: cfg.shorts, roughness: 0.85 }));
+    shorts.position.y = 0.72; g.add(shorts);
   }
   for (const sx of [-1, 1]) {
     const pivot = new THREE.Group();
@@ -1828,9 +1834,13 @@ function buildClub() {
       new THREE.Vector3(9.6, 0.5, bz), new THREE.Vector3(1.8, 1, 0.6)));
   }
 
-  // people training outside — jumping jacks and squats to the music
+  // people training outside — real gym wear: bright tanks + athletic shorts
   for (let i = 0; i < 5; i++) {
-    const c = makeCivilian();
+    const look = randomLook();
+    look.team = new THREE.Color().setHSL((i * 0.19 + 0.05) % 1, 0.75, 0.5).getHex();
+    look.shorts = [0x14161a, 0x2a2e34, 0xd83030][i % 3];
+    look.skirt = false;
+    const c = makeCharacter(look);
     c.group.position.set(9.4 + Math.random() * 1.4, 0, z - 4.5 + i * 2.1 + Math.random());
     c.group.rotation.y = Math.PI / 2 + (Math.random() - 0.5) * 0.6;
     scene.add(c.group);
@@ -1962,6 +1972,7 @@ document.addEventListener('keydown', e => {
   if (e.code === 'Digit3') switchWeapon(2);
   if (e.code === 'KeyQ' && locked) drinkEnergy();
   if (e.code === 'KeyC' && driving) camMode = camMode === 'chase' ? 'hood' : 'chase';
+  if (e.code === 'KeyB' && (locked || shopOpen)) toggleShop();
   if (e.code === 'KeyM' && locked) {
     musicOn = !musicOn;
     addFeed(musicOn ? '♪ Music on' : '♪ Music off');
@@ -2017,12 +2028,13 @@ document.addEventListener('pointerlockchange', () => {
     if (!started) { started = true; startCinematic(); }
     else if (!cine.active) hudEl.style.display = 'block';
     if (AC && AC.state === 'suspended') AC.resume();
-  } else if (started && !player.dead) {
+  } else if (started && !player.dead && !shopOpen) {
     pausedEl.style.display = 'flex';
     firing = false; aiming = false;
     for (const k in keys) keys[k] = false;
   }
 });
+document.getElementById('shopclose').addEventListener('click', () => { if (shopOpen) toggleShop(); });
 
 function resolveCollisions(pos, height, radius = RADIUS) {
   let hit = false;
@@ -2249,7 +2261,7 @@ function fireBullet() {
   shake = Math.min(shake + 0.05, 0.22);
 
   if (hitEnemy) {
-    const dmg = headshot ? w.damage * 2 : w.damage;
+    const dmg = (headshot ? w.damage * 2 : w.damage) * (1 + 0.08 * upgLvl('weap'));
     damageEnemy(hitEnemy, dmg);
     showHitmarker(hitEnemy.dead);
   }
@@ -2579,7 +2591,7 @@ function updateDriving(dt) {
 const vignetteEl = document.getElementById('vignette');
 function hurtPlayer(dmg) {
   if (player.dead) return;
-  player.health -= dmg;
+  player.health -= dmg * (1 - 0.06 * upgLvl('vest'));
   player.lastHurt = game.time;
   shake = Math.min(shake + 0.45, 0.8);
   playHurt();
@@ -2624,9 +2636,68 @@ const game = { wave: 0, kills: 0, money: 0, deliveries: 0, streak: 0, time: 0, i
 // Driver progression — 100 levels, persistent across sessions
 // ---------------------------------------------------------------------------
 const prog = (() => {
-  try { return Object.assign({ level: 1, xp: 0, bank: 0 }, JSON.parse(localStorage.getItem('streetops.prog'))); }
-  catch { return { level: 1, xp: 0, bank: 0 }; }
+  try { return Object.assign({ level: 1, xp: 0, bank: 0, upg: {} }, JSON.parse(localStorage.getItem('streetops.prog'))); }
+  catch { return { level: 1, xp: 0, bank: 0, upg: {} }; }
 })();
+prog.upg = prog.upg || {};
+
+// ---------------------------------------------------------------------------
+// Driver Shop — spend earned cash on permanent upgrades (B)
+// ---------------------------------------------------------------------------
+const UPGRADES = [
+  { id: 'fit',  icon: '🏋', name: 'GYM TRAINING',  desc: '+8% sprint speed per level',   base: 120, max: 5 },
+  { id: 'meal', icon: '🍔', name: 'GYM MEAL PLAN', desc: '+10 max health per level',     base: 100, max: 5 },
+  { id: 'bag',  icon: '🎒', name: 'BIGGER BAG',    desc: '+1 Red Bull capacity',         base: 150, max: 3 },
+  { id: 'vest', icon: '🦺', name: 'COURIER VEST',  desc: '-6% damage taken per level',   base: 140, max: 5 },
+  { id: 'weap', icon: '🔧', name: 'WEAPON TUNING', desc: '+8% weapon damage per level',  base: 160, max: 5 },
+];
+function upgLvl(id) { return prog.upg[id] || 0; }
+function upgCost(u) { return u.base * (upgLvl(u.id) + 1); }
+function maxHealth() { return 100 + 10 * upgLvl('meal'); }
+function energyCap() { return 3 + upgLvl('bag'); }
+let shopOpen = false;
+function renderShop() {
+  document.getElementById('wallet').textContent = `WALLET $${prog.bank}`;
+  const box = document.getElementById('shopitems');
+  box.innerHTML = '';
+  for (const u of UPGRADES) {
+    const lvl = upgLvl(u.id), maxed = lvl >= u.max, cost = upgCost(u);
+    const row = document.createElement('div');
+    row.className = 'shopitem';
+    row.innerHTML = `<div class="ic">${u.icon}</div><div class="info">` +
+      `<div class="nm">${u.name}</div><div class="ds">${u.desc}</div>` +
+      `<div class="lv">LEVEL ${lvl} / ${u.max}</div></div>`;
+    const btn = document.createElement('button');
+    btn.className = 'buybtn';
+    btn.textContent = maxed ? 'MAXED' : `BUY $${cost}`;
+    btn.disabled = maxed || prog.bank < cost;
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      if (upgLvl(u.id) >= u.max || prog.bank < upgCost(u)) return;
+      prog.bank -= upgCost(u);
+      prog.upg[u.id] = upgLvl(u.id) + 1;
+      saveProg();
+      playClick(2000, 0.25);
+      addFeed(`🛒 ${u.name} → level ${upgLvl(u.id)}`);
+      renderShop();
+    });
+    row.appendChild(btn);
+    box.appendChild(row);
+  }
+}
+function toggleShop() {
+  if (!started || player.dead || cine.active) return;
+  shopOpen = !shopOpen;
+  const el = document.getElementById('shop');
+  if (shopOpen) {
+    renderShop();
+    el.style.display = 'flex';
+    document.exitPointerLock();
+  } else {
+    el.style.display = 'none';
+    requestLock();
+  }
+}
 function xpNeed(l) { return 40 + l * 12; }
 function saveProg() { localStorage.setItem('streetops.prog', JSON.stringify(prog)); }
 function addXP(n) {
@@ -2777,7 +2848,7 @@ const venues = [];      // { name, x, z, color, update? }
 const musicZones = [];  // positions where the dance/energy track plays
 const venueIdlers = []; // people idling/swaying at venues
 
-function marquee(text, color, x, z, rotY, w = 7) {
+function marquee(text, color, x, z, rotY, w = 7, y = 5) {
   const cv = document.createElement('canvas');
   cv.width = 1024; cv.height = 192;
   const g = cv.getContext('2d');
@@ -2791,7 +2862,7 @@ function marquee(text, color, x, z, rotY, w = 7) {
   tex.colorSpace = THREE.SRGBColorSpace;
   const sign = new THREE.Mesh(new THREE.PlaneGeometry(w, w * 0.19),
     new THREE.MeshBasicMaterial({ map: tex }));
-  sign.position.set(x, 5, z);
+  sign.position.set(x, y, z);
   sign.rotation.y = rotY;
   scene.add(sign);
   return sign;
@@ -2884,12 +2955,15 @@ function buildVenues() {
     const players = [];
     for (let i = 0; i < 6; i++) {
       const look = randomLook();
-      look.team = i % 2 === 0 ? 0xd83030 : 0x3050d8;
+      const team = i % 2 === 0 ? 0xd83030 : 0x3050d8;
+      look.team = team;
+      look.shorts = i % 2 === 0 ? 0xffffff : 0x14161a; // real football kit
       look.skirt = false;
+      look.hairLong = false;
       const c = makeCharacter(look);
       c.group.position.set(px + (Math.random() - 0.5) * 16, 0, pz + (Math.random() - 0.5) * 10);
       scene.add(c.group);
-      players.push({ rig: c, phase: Math.random() * 6, speed: 2.6 + Math.random() });
+      players.push({ rig: c, phase: Math.random() * 6, speed: 4.4 + Math.random() * 1.2 });
     }
     venues.push({ name: 'BALL', x: px, z: pz, color: '#7dff8a', update(dt) {
       ball.position.addScaledVector(ballVel, dt);
@@ -2901,17 +2975,22 @@ function buildVenues() {
         const gp = p.rig.group.position;
         const d = Math.hypot(ball.position.x - gp.x, ball.position.z - gp.z);
         if (d > 0.9) {
+          // sprint: fast stride, forward lean, pumping bent arms
           const dir = Math.atan2(ball.position.x - gp.x, ball.position.z - gp.z);
           p.rig.group.rotation.y = dir;
+          p.rig.group.rotation.x = 0.16;
           gp.x += Math.sin(dir) * p.speed * dt;
           gp.z += Math.cos(dir) * p.speed * dt;
-          p.phase += dt * 8;
-          const sw = Math.sin(p.phase) * 0.55;
+          p.phase += dt * 14;
+          const sw = Math.sin(p.phase) * 0.95;
           p.rig.legs[0].rotation.x = sw;
           p.rig.legs[1].rotation.x = -sw;
-          p.rig.arms[0].rotation.x = -sw * 0.6;
-          p.rig.arms[1].rotation.x = sw * 0.6;
-        } else if (ballVel.length() < 2) {
+          p.rig.arms[0].rotation.x = -0.5 - sw * 0.7;
+          p.rig.arms[1].rotation.x = -0.5 + sw * 0.7;
+        } else {
+          p.rig.group.rotation.x = 0;
+        }
+        if (d <= 0.9 && ballVel.length() < 2) {
           // kick toward a goal with some chaos
           const goalX = px + (Math.random() < 0.5 ? -11 : 11);
           const kd = new THREE.Vector3(goalX - ball.position.x, 0, pz + (Math.random() - 0.5) * 8 - ball.position.z).normalize();
@@ -3092,7 +3171,27 @@ function buildVenues() {
   // register the gym (built separately) for the map
   venues.push({ name: 'GYM', x: clubPos.x, z: clubPos.z, color: '#ffb02a' });
   musicZones.push(clubPos);
+
+  // --- named restaurants: real pickup points with visible signs ---
+  {
+    const names = [...SHOP_NAMES].concat(CITY.sponsors[0].name);
+    const spots = [[60, 33], [-60, -33], [0, -63], [120, 15], [-120, 45], [30, 117], [-30, -117], [90, -87]];
+    spots.forEach(([sx, sz], i) => {
+      const name = names[i % names.length];
+      const alongX = Math.abs(sx) === 60 || sx === 0 || Math.abs(sx) === 120 ? false : true;
+      // place at the building line facing the nearest street
+      const street = STREETS.reduce((a, b) => Math.abs(b - sx) < Math.abs(a - sx) ? b : a);
+      const side = sz > 0 ? 1 : -1;
+      const x = street + side * 10.9;
+      const z = sz;
+      const rotY = side > 0 ? -Math.PI / 2 : Math.PI / 2;
+      const color = THEME.neon[i % THEME.neon.length];
+      marquee(name, color, x + side * 0.2, z, rotY, 4.2, 3.4);
+      RESTAURANTS.push({ name, x: x - side * 1.6, z });
+    });
+  }
 }
+const RESTAURANTS = [];
 function updateVenues(dt) {
   for (const v of venues) if (v.update) v.update(dt);
   for (const p of venueIdlers) {
@@ -3197,7 +3296,7 @@ function updateEnergy(dt) {
     c.t += dt;
     c.mesh.position.y = 1.0 + Math.sin(c.t * 2) * 0.15;
     c.mesh.rotation.y += dt * 2.2;
-    if (energy.cans < 3 &&
+    if (energy.cans < energyCap() &&
         Math.hypot(c.mesh.position.x - player.pos.x, c.mesh.position.z - player.pos.z) < 1.8) {
       energy.cans++;
       playClick(2100, 0.25);
@@ -3273,14 +3372,23 @@ function setBeacon(x, z, color) {
   beacon.group.visible = true;
 }
 function newOrder() {
-  const from = streetPointNear(player.pos, 35, 110);
+  // collect from a real named restaurant (nearest few, picked at random)
+  const sorted = [...RESTAURANTS].sort((a, b) =>
+    Math.hypot(a.x - player.pos.x, a.z - player.pos.z) - Math.hypot(b.x - player.pos.x, b.z - player.pos.z));
+  const r = sorted[Math.floor(Math.random() * Math.min(4, sorted.length))] ||
+    { name: SHOP_NAMES[0], x: player.pos.x + 40, z: player.pos.z };
+  const from = new THREE.Vector3(r.x, 0, r.z);
   const to = streetPointNear(from, 70, 190);
-  const names = CITY.sponsors.map(s => s.name).concat(SHOP_NAMES);
   order.active = true;
   order.stage = 'pickup';
-  order.name = names[Math.floor(Math.random() * names.length)];
+  order.name = r.name;
   order.fx = from.x; order.fz = from.z;
   order.tx = to.x; order.tz = to.z;
+  // the guest who ordered waits at the drop-off
+  if (order.customer) { scene.remove(order.customer.group); order.customer = null; }
+  order.customer = makeCivilian();
+  order.customer.group.position.set(to.x, 0, to.z);
+  scene.add(order.customer.group);
   order.reward = Math.round((12 + Math.hypot(to.x - from.x, to.z - from.z) * 0.15) * (1 + prog.level * 0.02));
   // every third order is a VIP rush: 2.5x pay, deadline after pickup
   order.vip = game.deliveries > 0 && game.deliveries % 3 === 2;
@@ -3321,6 +3429,15 @@ function updateDelivery(dt) {
     beacon.ring.rotation.z += dt * 2;
     beacon.cyl.material.opacity = 0.16 + Math.sin(game.time * 3) * 0.06;
   }
+  // the waiting guest faces you and waves once you carry their order
+  if (order.customer) {
+    const cg = order.customer.group;
+    cg.rotation.y = Math.atan2(player.pos.x - cg.position.x, player.pos.z - cg.position.z);
+    if (order.stage === 'dropoff') {
+      order.customer.arms[1].rotation.x = -2.6;
+      order.customer.arms[1].rotation.z = Math.sin(game.time * 6) * 0.4 - 0.2;
+    }
+  }
   if (d < 4.5) {
     if (order.stage === 'pickup') {
       order.stage = 'dropoff';
@@ -3348,12 +3465,18 @@ function updateDelivery(dt) {
       game.streak++;
       prog.bank += pay;
       addXP(16 + pay / 2);
-      if (energy.cans < 3) energy.cans++;
+      if (energy.cans < energyCap()) energy.cans++;
       for (const w2 of WEAPONS) w2.reserve = Math.max(w2.reserve, w2.magSize * 4);
-      player.health = Math.min(100, player.health + 25);
+      player.health = Math.min(maxHealth(), player.health + 25);
       if (beacon) beacon.group.visible = false;
       showBanner(`Delivered! +$${pay}${game.streak > 1 ? ` · STREAK ×${mult2.toFixed(1)}` : ''}`);
-      addFeed(`${playerName()} +$${pay} — total $${game.money}`);
+      addFeed(`${playerName()} handed the order to the guest — +$${pay}`);
+      if (order.customer) {
+        const done = order.customer;
+        order.customer = null;
+        done.arms[0].rotation.x = done.arms[1].rotation.x = -2.4; // happy arms up
+        setTimeout(() => scene.remove(done.group), 4000);
+      }
       playClick(2400, 0.3);
       progressMission('delivery', 1);
       progressMission('cash', pay);
@@ -3737,7 +3860,8 @@ function tick() {
   } else if (!player.dead) {
     const sprinting = (keys['ShiftLeft'] || keys['ShiftRight']) && keys['KeyW'] && !aiming;
     const boost = energy.boostT > 0 ? 1.45 : 1;
-    const speed = (aiming ? 2.6 : sprinting ? 8.2 : 5.2) * boost;
+    const sprintSpd = 8.2 * (1 + 0.08 * upgLvl('fit'));
+    const speed = (aiming ? 2.6 : sprinting ? sprintSpd : 5.2) * boost;
     const fwd = new THREE.Vector3(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
     const right = new THREE.Vector3(-fwd.z, 0, fwd.x);
     const wish = new THREE.Vector3();
@@ -3767,8 +3891,8 @@ function tick() {
       player.yaw,
       strafeRoll + sway + (Math.random() - 0.5) * shake * 0.05);
 
-    if (player.health < 100 && game.time - player.lastHurt > 4)
-      player.health = Math.min(100, player.health + dt * 22);
+    if (player.health < maxHealth() && game.time - player.lastHurt > 4)
+      player.health = Math.min(maxHealth(), player.health + dt * 22);
 
     // ---- weapon: couriers stay unarmed until robbers attack ----
     const armed = mode === 'waves' || enemies.some(e => !e.dead);
@@ -3871,11 +3995,11 @@ function tick() {
     (prog.level >= 100 ? 100 : Math.min(100, prog.xp / xpNeed(prog.level) * 100)) + '%';
   magEl.textContent = W().mag;
   reserveEl.textContent = W().reserve;
-  healthfillEl.style.width = player.health + '%';
+  healthfillEl.style.width = (player.health / maxHealth() * 100) + '%';
   healthfillEl.style.background = player.health > 50
     ? 'linear-gradient(90deg,#3ddc7a,#8bf0b0)'
     : 'linear-gradient(90deg,#e0483a,#f09a5a)';
-  vignetteEl.style.opacity = Math.min(1, (100 - player.health) / 70 + (game.time - player.lastHurt < 0.4 ? 0.5 : 0));
+  vignetteEl.style.opacity = Math.min(1, (maxHealth() - player.health) / 70 + (game.time - player.lastHurt < 0.4 ? 0.5 : 0));
   if (hitmarkerTimer > 0) {
     hitmarkerTimer -= dt;
     if (hitmarkerTimer <= 0) hitmarkerEl.style.opacity = 0;
