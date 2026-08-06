@@ -140,6 +140,19 @@ const ROAD_HALF = 7;
 const CITY_HALF = 150;
 const BOUND = 132;
 
+// Fictional street names (deliberately not real streets)
+const AVE_NAMES = ['VOLT AVE', 'NOVA AVE', 'CENTRAL AVE', 'HARBOR AVE', 'SUNSET AVE'];
+const ST_NAMES = ['1ST STREET', '2ND STREET', '3RD STREET', '4TH STREET', '5TH STREET'];
+const DISTRICTS = ['NORTH HEIGHTS', 'OLD QUARTER', 'MARKET END', 'TOWER GARDENS'];
+function locationName(x, z) {
+  const ai = STREETS.findIndex(s => Math.abs(x - s) <= ROAD_HALF + 1.5);
+  const si = STREETS.findIndex(s => Math.abs(z - s) <= ROAD_HALF + 1.5);
+  if (ai >= 0 && si >= 0) return AVE_NAMES[ai] + ' × ' + ST_NAMES[si];
+  if (ai >= 0) return AVE_NAMES[ai];
+  if (si >= 0) return ST_NAMES[si];
+  return DISTRICTS[(x < 0 ? 0 : 1) + (z < 0 ? 0 : 2)];
+}
+
 // ---------------------------------------------------------------------------
 // Colliders + ray helpers (everything solid is an axis-aligned Box3)
 // ---------------------------------------------------------------------------
@@ -355,6 +368,31 @@ function updateMusic() {
   musicNodes.club.g.gain.value = musicOn ? 0.5 * Math.pow(prox, 1.6) : 0;
   musicNodes.club.filt.frequency.value = 320 + Math.pow(prox, 2) * 11000;
   musicNodes.city.g.gain.value = musicOn ? 0.05 * (1 - prox * 0.85) : 0;
+}
+
+function playCrash(k) {
+  if (!AC) return;
+  const t = AC.currentTime;
+  const src = AC.createBufferSource();
+  src.buffer = noiseBuffer(0.35);
+  const lp = AC.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.setValueAtTime(900, t);
+  lp.frequency.exponentialRampToValueAtTime(120, t + 0.3);
+  const g = AC.createGain();
+  g.gain.setValueAtTime(0.55 * k, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.32);
+  src.connect(lp).connect(g).connect(AC.destination);
+  src.start(t);
+  const osc = AC.createOscillator();
+  osc.type = 'square';
+  osc.frequency.setValueAtTime(170, t);
+  osc.frequency.exponentialRampToValueAtTime(55, t + 0.18);
+  const og = AC.createGain();
+  og.gain.setValueAtTime(0.3 * k, t);
+  og.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+  osc.connect(og).connect(AC.destination);
+  osc.start(t); osc.stop(t + 0.22);
 }
 
 let engineNodes = null;
@@ -963,7 +1001,7 @@ function registerVehicle(g, x, z, rotY, type) {
   g.rotation.y = rotY;
   scene.add(g);
   const stats = VEH_STATS[type];
-  const veh = { group: g, yaw: rotY, speed: 0, type, stats,
+  const veh = { group: g, yaw: rotY, speed: 0, type, stats, health: 100, smokeT: 0,
     box: addCollider(carBox(g.position, rotY, stats.size)) };
   vehicles.push(veh);
   return veh;
@@ -1640,16 +1678,16 @@ const clubbers = [];
 let clubLight = null;
 function buildClub() {
   const z = clubPos.z;
-  // marquee sign facing the street
+  // POWER GYM marquee facing the street
   const cv = document.createElement('canvas');
   cv.width = 1024; cv.height = 192;
   const g2 = cv.getContext('2d');
-  g2.fillStyle = '#0a0c12'; g2.fillRect(0, 0, 1024, 192);
-  g2.strokeStyle = '#ff4fd8'; g2.lineWidth = 8; g2.strokeRect(10, 10, 1004, 172);
-  g2.font = '900 100px Arial'; g2.textAlign = 'center';
-  g2.shadowColor = '#ff4fd8'; g2.shadowBlur = 34;
-  g2.fillStyle = '#ff8ae8';
-  g2.fillText('★ CLUB VOLT ★', 512, 130);
+  g2.fillStyle = '#0c0a08'; g2.fillRect(0, 0, 1024, 192);
+  g2.strokeStyle = '#ffb02a'; g2.lineWidth = 8; g2.strokeRect(10, 10, 1004, 172);
+  g2.font = '900 96px Arial'; g2.textAlign = 'center';
+  g2.shadowColor = '#ffb02a'; g2.shadowBlur = 30;
+  g2.fillStyle = '#ffd479';
+  g2.fillText('🏋 POWER GYM', 512, 128);
   const tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.SRGBColorSpace;
   const sign = new THREE.Mesh(new THREE.PlaneGeometry(8, 1.5),
@@ -1658,43 +1696,67 @@ function buildClub() {
   sign.rotation.y = -Math.PI / 2;
   scene.add(sign);
 
-  // sweeping beams
-  for (const [dz, col] of [[-2.2, 0xff4fd8], [2.2, 0x41d8ff]]) {
+  // warm entrance spotlights
+  for (const [dz, col] of [[-2.2, 0xffb02a], [2.2, 0xffd479]]) {
     const beam = new THREE.Mesh(
-      new THREE.ConeGeometry(1.1, 9, 12, 1, true),
-      new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.13,
+      new THREE.ConeGeometry(1.0, 8, 12, 1, true),
+      new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.08,
         blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
-    beam.position.set(10.6, 4.5, z + dz);
+    beam.position.set(10.6, 4, z + dz);
     scene.add(beam);
     clubBeams.push({ mesh: beam, phase: dz });
   }
-  clubLight = new THREE.PointLight(0xff4fd8, 8, 22, 2);
+  clubLight = new THREE.PointLight(0xffb02a, 7, 22, 2);
   clubLight.position.set(9.8, 3.5, z);
   scene.add(clubLight);
 
-  // dancing queue outside the door
+  // outdoor barbells
+  const mIron = new THREE.MeshStandardMaterial({ color: 0x24262a, roughness: 0.4, metalness: 0.7 });
+  for (const bz of [z - 6, z + 6]) {
+    const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.7, 8), mIron);
+    bar.rotation.z = Math.PI / 2;
+    bar.position.set(9.6, 0.5, bz);
+    scene.add(bar);
+    for (const px of [-0.7, 0.7]) {
+      const plate = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 0.1, 14), mIron);
+      plate.rotation.z = Math.PI / 2;
+      plate.position.set(9.6 + px, 0.5, bz);
+      scene.add(plate);
+    }
+    addCollider(new THREE.Box3().setFromCenterAndSize(
+      new THREE.Vector3(9.6, 0.5, bz), new THREE.Vector3(1.8, 1, 0.6)));
+  }
+
+  // people training outside — jumping jacks and squats to the music
   for (let i = 0; i < 5; i++) {
     const c = makeCivilian();
-    c.group.position.set(9.6 + Math.random() * 1.2, 0, z - 4.5 + i * 2.1 + Math.random());
-    c.group.rotation.y = Math.PI / 2 + (Math.random() - 0.5) * 0.8;
+    c.group.position.set(9.4 + Math.random() * 1.4, 0, z - 4.5 + i * 2.1 + Math.random());
+    c.group.rotation.y = Math.PI / 2 + (Math.random() - 0.5) * 0.6;
     scene.add(c.group);
-    clubbers.push({ rig: c, phase: Math.random() * 6 });
+    clubbers.push({ rig: c, phase: Math.random() * 6, jack: i % 2 === 0 });
   }
 }
 function updateClub(dt) {
   if (!clubLight) return;
   const beat = game.time * (126 / 60) * Math.PI * 2;
-  clubLight.color.setHSL((game.time * 0.22) % 1, 0.85, 0.55);
-  clubLight.intensity = (5 + 4 * Math.max(0, Math.sin(beat))) * (0.3 + 0.7 * NF);
+  clubLight.intensity = (5 + 3 * Math.max(0, Math.sin(beat))) * (0.35 + 0.65 * NF);
   for (const b of clubBeams) {
-    b.mesh.rotation.z = Math.sin(game.time * 1.4 + b.phase) * 0.45;
-    b.mesh.rotation.x = Math.cos(game.time * 1.1 + b.phase) * 0.25;
+    b.mesh.rotation.z = Math.sin(game.time * 0.8 + b.phase) * 0.2;
   }
   for (const c of clubbers) {
-    const bounce = Math.abs(Math.sin(beat / 2 + c.phase));
-    c.rig.group.position.y = bounce * 0.09;
-    c.rig.arms[0].rotation.x = -0.6 - bounce * 0.9;
-    c.rig.arms[1].rotation.x = -0.6 - Math.abs(Math.cos(beat / 2 + c.phase)) * 0.9;
+    const cyc = Math.abs(Math.sin(beat / 2 + c.phase));
+    if (c.jack) {
+      // jumping jacks: hop + arms swinging overhead
+      c.rig.group.position.y = cyc * 0.14;
+      c.rig.arms[0].rotation.z = 0.3 + cyc * 2.4;
+      c.rig.arms[1].rotation.z = -0.3 - cyc * 2.4;
+    } else {
+      // squats: dip with arms held forward (scale.x holds the height factor)
+      c.rig.group.scale.y = c.rig.group.scale.x * (1 - cyc * 0.12);
+      c.rig.arms[0].rotation.x = c.rig.arms[1].rotation.x = -1.4;
+      c.rig.legs[0].rotation.x = cyc * 0.5;
+      c.rig.legs[1].rotation.x = cyc * 0.5;
+    }
   }
 }
 
@@ -2277,9 +2339,12 @@ function updateDriving(dt) {
   const st = v.stats;
   const fwd = new THREE.Vector3(Math.sin(v.yaw), 0, Math.cos(v.yaw));
   const boost = energy.boostT > 0 ? 1.25 : 1;
-  const accel = keys['KeyW'] ? st.accel * boost : keys['KeyS'] ? -st.accel * 0.65 : 0;
+  const wrecked = v.health <= 0;
+  const accel = wrecked ? 0 : keys['KeyW'] ? st.accel * boost : keys['KeyS'] ? -st.accel * 0.65 : 0;
   v.speed += accel * dt;
   v.speed -= v.speed * 0.55 * dt;
+  // real brakes on Space
+  if (keys['Space']) v.speed -= Math.sign(v.speed) * Math.min(Math.abs(v.speed), 26 * dt);
   v.speed = Math.max(st.maxR, Math.min(st.maxF * boost, v.speed));
   const steer = (keys['KeyA'] ? 1 : 0) - (keys['KeyD'] ? 1 : 0);
   v.yaw += steer * Math.min(Math.abs(v.speed) / 6, 1) * st.turn * dt * Math.sign(v.speed || 1);
@@ -2287,9 +2352,36 @@ function updateDriving(dt) {
   // scooters and bikes lean into turns
   if (v.type !== 'car') v.group.rotation.z = -steer * Math.min(Math.abs(v.speed) / st.maxF, 1) * 0.25;
   v.group.position.addScaledVector(fwd, v.speed * dt);
+  const preSpeed = v.speed;
   if (resolveCollisions(v.group.position, 1.5, st.radius)) {
-    if (Math.abs(v.speed) > 6) { shake = Math.min(shake + 0.3, 0.6); playClick(260, 0.3); }
+    const impact = Math.abs(preSpeed);
+    if (impact > 6) {
+      // crash: damage, sparks, crunch, shake
+      v.health = Math.max(0, v.health - (impact - 5) * 3.2);
+      playCrash(Math.min(1, impact / 30));
+      const nose = v.group.position.clone().addScaledVector(fwd, Math.sign(preSpeed) * st.size[1] / 2);
+      nose.y = 0.7;
+      spawnImpact(nose);
+      spawnSmoke(nose);
+      shake = Math.min(shake + 0.15 + impact * 0.015, 0.9);
+      if (v.health <= 0 && !v.wrecked) {
+        v.wrecked = true;
+        engineStop();
+        addFeed('🚗 Vehicle wrecked — press E and find another ride');
+        showBanner('VEHICLE WRECKED');
+      }
+    } else if (impact > 2) playClick(260, 0.2);
     v.speed *= -0.25;
+  }
+  // damaged engine smokes
+  if (v.health < 45) {
+    v.smokeT -= dt;
+    if (v.smokeT <= 0) {
+      v.smokeT = v.health <= 0 ? 0.08 : 0.18;
+      const hood = v.group.position.clone().addScaledVector(fwd, st.size[1] * 0.35);
+      hood.y = 1.0;
+      spawnSmoke(hood);
+    }
   }
 
   if (Math.abs(v.speed) > 4)
@@ -2335,7 +2427,8 @@ function updateDriving(dt) {
   if (st.engine) {
     if (engineNodes) engineNodes.osc.frequency.value = st.freq + Math.abs(v.speed) * 5.5;
   }
-  speedoEl.textContent = st.label + ' · ' + Math.round(Math.abs(v.speed) * 3.6) + ' KM/H';
+  speedoEl.textContent = st.label + ' · ' + Math.round(Math.abs(v.speed) * 3.6) + ' KM/H'
+    + (v.health <= 0 ? ' · 💥 WRECKED' : v.health < 60 ? ` · ⚠ ${Math.round(v.health)}%` : '');
 
   const targetFov = BASE_FOV + Math.min(Math.abs(v.speed) * 0.5, 14);
   camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 6);
@@ -2443,6 +2536,32 @@ function startWave() {
 const energy = { cans: 1, boostT: 0, drinkT: 0 };
 const BOOST_DUR = 8;
 const canPickups = [];
+// real Red Bull label from ads/ (uploaded logo), graceful if missing
+const redbullTex = new THREE.TextureLoader().load('ads/redbull.png',
+  t => { t.colorSpace = THREE.SRGBColorSpace; });
+// optional real bottle photo — upload ads/redbull_bottle.png and pickups
+// switch from the 3D can to the actual bottle image
+let bottleTex = null;
+new THREE.TextureLoader().load('ads/redbull_bottle.png', t => {
+  t.colorSpace = THREE.SRGBColorSpace;
+  bottleTex = t;
+  for (const c of canPickups) applyBottleSprite(c.mesh);
+}, undefined, () => {});
+function applyBottleSprite(g) {
+  if (!bottleTex || g.userData.bottled) return;
+  g.userData.bottled = true;
+  for (const ch of g.children)
+    if (!(ch.geometry && ch.geometry.type === 'RingGeometry')) ch.visible = false;
+  const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: bottleTex, transparent: true }));
+  spr.scale.set(0.55, 0.8, 1);
+  g.add(spr);
+}
+function canLabel(w, h, z) {
+  const label = new THREE.Mesh(new THREE.PlaneGeometry(w, h),
+    new THREE.MeshBasicMaterial({ map: redbullTex, transparent: true }));
+  label.position.z = z;
+  return label;
+}
 function makeCanMesh() {
   const g = new THREE.Group();
   const silver = new THREE.MeshStandardMaterial({ color: 0xd2d6dc, roughness: 0.2, metalness: 0.9 });
@@ -2455,6 +2574,10 @@ function makeCanMesh() {
   const dot = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.05, 0.02), red);
   dot.position.set(0, 0, 0.1);
   g.add(dot);
+  g.add(canLabel(0.17, 0.13, 0.105));           // real logo, front
+  const backLabel = canLabel(0.17, 0.13, -0.105);
+  backLabel.rotation.y = Math.PI;
+  g.add(backLabel);
   const ring = new THREE.Mesh(
     new THREE.RingGeometry(0.35, 0.55, 20),
     new THREE.MeshBasicMaterial({ color: 0x3a6cff, transparent: true, opacity: 0.4,
@@ -2467,6 +2590,7 @@ function makeCanMesh() {
 function spawnCanPickup() {
   const p = streetPointNear(player.pos, 25, 115);
   const mesh = makeCanMesh();
+  applyBottleSprite(mesh);
   mesh.position.set(p.x, 1.0, p.z);
   scene.add(mesh);
   canPickups.push({ mesh, t: Math.random() * 6 });
@@ -2536,6 +2660,7 @@ const bottle = new THREE.Group();
     new THREE.MeshStandardMaterial({ color: 0x14161a, roughness: 0.5 }));
   cap.position.y = 0.1;
   bottle.add(cap);
+  bottle.add(canLabel(0.065, 0.05, 0.042));     // real logo on the bottle
   bottle.visible = false;
   camera.add(bottle);
 }
@@ -2599,7 +2724,8 @@ function updateDelivery(dt) {
   const tz = order.stage === 'pickup' ? order.fz : order.tz;
   const d = Math.hypot(player.pos.x - tx, player.pos.z - tz);
   orderTaskEl.textContent = order.stage === 'pickup'
-    ? `Pick up: ${order.name}` : 'Deliver to the customer';
+    ? `Pick up: ${order.name} — ${locationName(order.fx, order.fz)}`
+    : `Deliver to customer — ${locationName(order.tx, order.tz)}`;
   orderDistEl.textContent = Math.round(d) + ' m';
   orderPayEl.textContent = `Payout: $${order.reward}`;
   if (beacon) {
@@ -2660,9 +2786,11 @@ function drawMinimap() {
   mmCtx.fillStyle = 'rgba(200,200,200,.55)';
   for (const c of traffic)
     mmCtx.fillRect(M(c.group.position.x) - 1, M(c.group.position.z) - 1, 2, 2);
-  // nightclub marker
-  mmCtx.fillStyle = '#ff4fd8';
+  // gym marker + label
+  mmCtx.fillStyle = '#ffb02a';
   mmCtx.fillRect(M(clubPos.x) - 2, M(clubPos.z) - 2, 4, 4);
+  mmCtx.font = '7px Arial';
+  mmCtx.fillText('GYM', M(clubPos.x) + 4, M(clubPos.z) + 3);
   if (mode === 'delivery' && order.active) {
     const tx = order.stage === 'pickup' ? order.fx : order.tx;
     const tz = order.stage === 'pickup' ? order.fz : order.tz;
@@ -2895,7 +3023,31 @@ function playerName() { return (profile.name || '').trim().toUpperCase() || 'DRI
 // Main loop
 // ---------------------------------------------------------------------------
 const clock = new THREE.Clock();
-let bobPhase = 0, shake = 0, slowmo = 0, deathT = 0, frameNo = 0;
+let bobPhase = 0, shake = 0, slowmo = 0, deathT = 0, frameNo = 0, wasArmed = false;
+
+// 3D navigation arrow pointing to the active delivery target
+const navArrow = new THREE.Mesh(
+  new THREE.ConeGeometry(0.1, 0.32, 8),
+  new THREE.MeshBasicMaterial({ color: 0x41d8ff, transparent: true, opacity: 0.9, depthTest: false }));
+navArrow.renderOrder = 5;
+navArrow.visible = false;
+scene.add(navArrow);
+const _navDir = new THREE.Vector3(), _navFwd = new THREE.Vector3();
+function updateNavArrow() {
+  const show = mode === 'delivery' && order.active && !cine.active && !player.dead;
+  navArrow.visible = show;
+  if (!show) return;
+  const tx = order.stage === 'pickup' ? order.fx : order.tx;
+  const tz = order.stage === 'pickup' ? order.fz : order.tz;
+  camera.getWorldDirection(_navFwd);
+  _navFwd.y = 0;
+  _navFwd.normalize();
+  navArrow.position.copy(camera.position).addScaledVector(_navFwd, 2.4);
+  navArrow.position.y = camera.position.y - 0.75;
+  _navDir.set(tx - player.pos.x, 0, tz - player.pos.z).normalize();
+  navArrow.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), _navDir);
+  navArrow.material.color.set(order.stage === 'pickup' ? 0x41d8ff : 0x7dff8a);
+}
 
 function tick() {
   requestAnimationFrame(tick);
@@ -2971,7 +3123,18 @@ function tick() {
     if (player.health < 100 && game.time - player.lastHurt > 4)
       player.health = Math.min(100, player.health + dt * 22);
 
-    // ---- weapon ----
+    // ---- weapon: couriers stay unarmed until robbers attack ----
+    const armed = mode === 'waves' || enemies.some(e => !e.dead);
+    if (armed !== wasArmed) {
+      wasArmed = armed;
+      if (mode === 'delivery') {
+        addFeed(armed ? '⚠ Weapon drawn — defend your delivery!' : 'Weapon holstered');
+        playClick(armed ? 700 : 1200, 0.2);
+      }
+    }
+    gun.visible = armed;
+    document.getElementById('crosshair').style.display = armed ? 'block' : 'none';
+    document.getElementById('ammo').style.opacity = armed ? 1 : 0.25;
     weapon.cooldown -= dt;
     weapon.recoil = Math.max(0, weapon.recoil - dt * 10);
     const w = W();
@@ -2984,7 +3147,7 @@ function tick() {
         playClick(1600, 0.2);
         document.getElementById('reloadmsg').style.display = 'none';
       }
-    } else if ((w.auto ? firing : pendingShot) && weapon.cooldown <= 0) {
+    } else if (armed && (w.auto ? firing : pendingShot) && weapon.cooldown <= 0) {
       if (w.mag > 0) fireBullet();
       else { playClick(2100, 0.12); weapon.cooldown = 0.25; if (w.reserve > 0) startReload(); }
       pendingShot = false;
@@ -3040,6 +3203,7 @@ function tick() {
   updateEnergy(dt);
   updateClub(dt);
   updateMusic();
+  updateNavArrow();
   updateEffects(dt);
 
   // ---- HUD ----
@@ -3050,6 +3214,9 @@ function tick() {
   document.getElementById('deliveries').textContent = game.deliveries;
   document.getElementById('lvl').textContent = playerName() + ' · LVL ' + prog.level;
   document.getElementById('cans').textContent = '⚡ ×' + energy.cans;
+  if (++frameNo % 20 === 0)
+    document.getElementById('location').textContent =
+      '📍 ' + locationName(player.pos.x, player.pos.z) + ' · ' + CITY.name;
   document.getElementById('boostfill').style.width = Math.max(0, energy.boostT / BOOST_DUR * 100) + '%';
   document.getElementById('xpfill').style.width =
     (prog.level >= 100 ? 100 : Math.min(100, prog.xp / xpNeed(prog.level) * 100)) + '%';
