@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=30';
+import { CITIES } from './sponsors.js?v=31';
 
 // ---------------------------------------------------------------------------
 // Renderer / scene / camera
@@ -1511,51 +1511,70 @@ function loadRealAssets() {
       personTemplates.push({ root: normalizeModel(g.scene, 'person', 1.78), clips: g.animations || [] });
       placeRealPeople();
     }, undefined, () => {});
-  // real animated humans walking their beat. This model's skinned mesh
-  // does not survive SkeletonUtils.clone, so each walker parses its own
-  // copy (the file is cached by the browser after the first load).
-  for (let i = 0; i < 6; i++)
-    gltfLoader.load('models/person_soldier.glb', g => {
-      lockWalkRoot(g.animations || []);
-      const root = g.scene;
-      root.rotation.y = Math.PI; // model faces -Z
-      const p = normalizeModel(root, 'person', 1.8);
-      const wrap = new THREE.Group();
-      wrap.add(p);
-      scene.add(wrap);
-      const clips = g.animations || [];
-      const walk = clips.find(c => /^walk/i.test(c.name)) || clips.find(c => /run/i.test(c.name));
-      const mixer = new THREE.AnimationMixer(p);
-      if (walk) {
-        const a = mixer.clipAction(walk);
-        a.time = Math.random() * walk.duration;
-        a.play();
-      }
-      modelMixers.push(mixer);
-      realWalkers.push({
-        obj: wrap,
-        s: STREETS[(i * 2 + 1) % STREETS.length],
-        alongX: i % 2 === 0,
-        dir: Math.random() < 0.5 ? 1 : -1,
-        side: (i % 3 - 1 || 1) * (ROAD_HALF + 2.0),
-        v: -100 + Math.random() * 200,
-        speed: 1.5,
+  // Real animated characters. These skinned models don't all survive
+  // SkeletonUtils.clone, so each instance parses its own browser-cached
+  // copy of the file.
+  for (let i = 0; i < 4; i++)
+    loadWalker('models/person_soldier.glb', {
+      height: 1.8, faceOffset: Math.PI, clip: /^walk|run/i,
+      walker: { s: STREETS[(i * 2 + 1) % STREETS.length], alongX: i % 2 === 0,
+        dir: Math.random() < 0.5 ? 1 : -1, side: (i % 3 - 1 || 1) * (ROAD_HALF + 2.0),
+        v: -100 + Math.random() * 200, speed: 1.5 },
+    });
+  // charming delivery bots carrying pizza boxes on their routes
+  for (let i = 0; i < 3; i++)
+    loadWalker('models/robot_courier.glb', {
+      height: 1.5, clip: /^walking/i,
+      attach: root => {
+        // counter the root scale so the box stays pizza-sized
+        const inv = 1 / root.scale.x;
+        const box = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.075, 0.34),
+          new THREE.MeshStandardMaterial({ color: 0xf2ece0, roughness: 0.8 }));
+        box.scale.setScalar(inv);
+        box.position.set(0, 0.98 * inv, 0.32 * inv);
+        root.add(box);
+      },
+      walker: { s: STREETS[(i * 2) % STREETS.length], alongX: i % 2 === 1,
+        dir: Math.random() < 0.5 ? 1 : -1, side: (i % 2 ? 1 : -1) * (ROAD_HALF + 1.5),
+        v: -90 + Math.random() * 180, speed: 1.2 },
+    });
+  // one bot waves customers into the restaurant strip
+  loadWalker('models/robot_courier.glb', {
+    height: 1.5, clip: /^wave/i, place: { pos: [51.2, 0, 30], ry: -Math.PI / 2 } });
+  // clean android pedestrians with proper walk cycles
+  for (let i = 0; i < 3; i++)
+    loadWalker('models/person_xbot.glb', {
+      height: 1.75, clip: /^walk/i,
+      walker: { s: STREETS[(i * 2 + 1) % STREETS.length], alongX: i % 2 === 1,
+        dir: Math.random() < 0.5 ? 1 : -1, side: (i % 2 ? 1 : -1) * (ROAD_HALF + 2.6),
+        v: -90 + Math.random() * 180, speed: 1.4 },
+    });
+  // real samba dancers at the club and the live stage
+  loadWalker('models/person_dancer.glb', {
+    height: 1.7, clip: /samba/i, place: { pos: [-9.9, 0, -41.5], ry: Math.PI / 2 } });
+  loadWalker('models/person_dancer.glb', {
+    height: 1.7, clip: /samba/i, place: { pos: [-31.6, 0, 71], ry: Math.PI } });
+  // horses gallop through the desert medina
+  if (THEME.camels)
+    for (let i = 0; i < 2; i++)
+      loadWalker('models/horse.glb', {
+        height: 1.6, faceOffset: Math.PI / 2, clip: /./,
+        walker: { s: STREETS[(i * 3) % STREETS.length], alongX: i % 2 === 0,
+          dir: 1, side: (i % 2 ? 1 : -1) * (ROAD_HALF + 1.8), v: -80 + i * 60, speed: 6 },
       });
-      if (i === 0) addFeed('🚶 Patrols walking the streets');
-    }, undefined, () => {});
   // a fox lives in the park
   gltfLoader.load('models/fox.glb', g => {
-    const inner = normalizeModel(g.scene, 'person', 0.65);
-    inner.rotation.y = -Math.PI / 2; // model runs along +X
-    const wrap = new THREE.Group();
-    wrap.add(inner);
-    scene.add(wrap);
+    const root = g.scene;
+    const fbox = new THREE.Box3().setFromObject(root);
+    root.scale.setScalar(0.65 / fbox.getSize(new THREE.Vector3()).y);
+    root.traverse(o => { if (o.isMesh) o.castShadow = true; });
+    scene.add(root);
     const clips = g.animations || [];
     const walk = clips.find(c => /walk/i.test(c.name)) || clips[0];
-    const mixer = new THREE.AnimationMixer(inner);
+    const mixer = new THREE.AnimationMixer(root);
     if (walk) mixer.clipAction(walk).play();
     modelMixers.push(mixer);
-    modelWanderers.push({ obj: wrap, cx: PLAZAS[2].x, cz: PLAZAS[2].z,
+    modelWanderers.push({ obj: root, off: -Math.PI / 2, cx: PLAZAS[2].x, cz: PLAZAS[2].z,
       ang: Math.random() * 6, r: 10, speed: 0.9 });
   }, undefined, () => {});
   // desert-city assets load only where the theme wants them
@@ -1670,6 +1689,39 @@ function placeArabicMen() {
   }
 }
 const realWalkers = []; // animated characters walking the sidewalk lanes
+// Generic loader for animated characters that must not be cloned: each
+// instance parses its own copy (browser-cached). Mirrors the verified
+// viewer flow exactly: the scene root is scaled and positioned directly
+// (no wrapper group — some skinned rigs explode inside one). The
+// model's authored facing is handled as a per-frame yaw offset.
+// opts: height, faceOffset, clip (regex), attach(root),
+//       walker {lane fields} or place {pos, ry}.
+function loadWalker(url, opts) {
+  gltfLoader.load(url, g => {
+    lockWalkRoot(g.animations || []);
+    const root = g.scene;
+    const box = new THREE.Box3().setFromObject(root);
+    const dim = box.getSize(new THREE.Vector3());
+    root.scale.setScalar(opts.height / dim.y);
+    root.traverse(o => { if (o.isMesh) o.castShadow = true; });
+    scene.add(root);
+    const clips = g.animations || [];
+    const clip = clips.find(c => opts.clip.test(c.name)) || clips[0];
+    const mixer = new THREE.AnimationMixer(root);
+    if (clip) {
+      const a = mixer.clipAction(clip);
+      a.time = Math.random() * clip.duration;
+      a.play();
+    }
+    modelMixers.push(mixer);
+    if (opts.attach) opts.attach(root);
+    if (opts.walker) realWalkers.push({ obj: root, off: opts.faceOffset || 0, ...opts.walker });
+    else if (opts.place) {
+      root.position.set(opts.place.pos[0], opts.place.pos[1], opts.place.pos[2]);
+      root.rotation.y = opts.place.ry + (opts.faceOffset || 0);
+    }
+  }, undefined, () => {});
+}
 const modelMixers = [];   // animation players for real character models
 const modelBobbers = [];  // fallback idle for models without animations
 const modelWanderers = []; // characters walking a patrol with their walk clip
@@ -5339,17 +5391,17 @@ function updateVenues(dt) {
   for (const w of modelWanderers) {
     w.ang += dt * w.speed / w.r;
     w.obj.position.set(w.cx + Math.cos(w.ang) * w.r, 0, w.cz + Math.sin(w.ang) * w.r);
-    w.obj.rotation.y = Math.atan2(-Math.sin(w.ang), Math.cos(w.ang));
+    w.obj.rotation.y = Math.atan2(-Math.sin(w.ang), Math.cos(w.ang)) + (w.off || 0);
   }
   for (const w of realWalkers) {
     w.v += w.speed * w.dir * dt;
     if (w.v > 126 || w.v < -126) w.dir *= -1;
     if (w.alongX) {
       w.obj.position.set(w.v, 0, w.s + w.side);
-      w.obj.rotation.y = w.dir > 0 ? Math.PI / 2 : -Math.PI / 2;
+      w.obj.rotation.y = (w.dir > 0 ? Math.PI / 2 : -Math.PI / 2) + w.off;
     } else {
       w.obj.position.set(w.s + w.side, 0, w.v);
-      w.obj.rotation.y = w.dir > 0 ? 0 : Math.PI;
+      w.obj.rotation.y = (w.dir > 0 ? 0 : Math.PI) + w.off;
     }
   }
   for (const gc of gestureCyclers) {
