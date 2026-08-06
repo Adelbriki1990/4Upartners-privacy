@@ -105,6 +105,20 @@
 
   #grain { position: fixed; inset: -64px; z-index: 14; pointer-events: none; opacity: .055; display: none; }
 
+  /* ---------- driver profile ---------- */
+  #profile { display: flex; gap: 18px; align-items: center; margin-top: 26px;
+    background: rgba(14,20,28,.85); border: 1px solid #2a3a4c; border-radius: 10px; padding: 14px 20px; }
+  #charpreview { background: radial-gradient(ellipse at center, rgba(65,216,255,.12), transparent 70%); border-radius: 8px; }
+  #profilecol { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+  #profile .plabel { font-size: 11px; letter-spacing: 3px; color: #7fd0ff; }
+  #username { background: #0c1219; border: 1px solid #3a4c5e; border-radius: 6px; color: #fff;
+    font-size: 17px; letter-spacing: 2px; padding: 9px 12px; width: 240px; outline: none; text-transform: uppercase; }
+  #username:focus { border-color: #7fd0ff; }
+  #charrow { display: flex; gap: 8px; }
+  .charbtn { padding: 8px 14px; border: 1px solid #3a4c5e; border-radius: 6px; cursor: pointer;
+    color: #b9c7d4; font-size: 13px; background: rgba(10,15,22,.9); transition: all .15s; }
+  .charbtn.sel { border-color: #7fd0ff; color: #7fd0ff; box-shadow: 0 0 10px rgba(127,208,255,.3); }
+
   /* ---------- city select ---------- */
   #cities { display: flex; gap: 16px; margin-top: 30px; flex-wrap: wrap; justify-content: center; max-width: 900px; }
   .citycard { --accent: #41d8ff; width: 250px; text-align: left; padding: 16px 18px; cursor: pointer;
@@ -171,6 +185,18 @@
 <div id="menu" class="overlay">
   <h1>Street Ops</h1>
   <h2>3D URBAN COMBAT &mdash; CHOOSE YOUR CITY</h2>
+  <div id="profile">
+    <canvas id="charpreview" width="150" height="190"></canvas>
+    <div id="profilecol">
+      <div class="plabel">DRIVER PROFILE</div>
+      <input id="username" maxlength="14" placeholder="ENTER YOUR NAME" autocomplete="off" spellcheck="false">
+      <div id="charrow">
+        <div class="charbtn" data-g="m">👨 MAN</div>
+        <div class="charbtn" data-g="f">👩 WOMAN</div>
+        <div class="charbtn" id="lookbtn">🎲 NEW LOOK</div>
+      </div>
+    </div>
+  </div>
   <div id="cities"></div>
   <div id="modes">
     <div class="modebtn" data-mode="delivery">🛵 DELIVERY SHIFT</div>
