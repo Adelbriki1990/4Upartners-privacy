@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Street Ops — 3D Urban Combat</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='6' fill='none' stroke='%237fd0ff' stroke-width='1.5'/%3E%3Cpath d='M8 0v5M8 11v5M0 8h5M11 8h5' stroke='%237fd0ff' stroke-width='1.5'/%3E%3C/svg%3E">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #000; font-family: 'Segoe UI', Arial, sans-serif; user-select: none; }
+  #c { display: block; width: 100%; height: 100%; }
+
+  /* ---------- overlays ---------- */
+  .overlay {
+    position: fixed; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center;
+    background: radial-gradient(ellipse at center, rgba(10,14,20,.88), rgba(0,0,0,.96));
+    color: #e8eef5; z-index: 30;
+  }
+  .overlay h1 { font-size: 56px; letter-spacing: 8px; font-weight: 800; text-transform: uppercase;
+    background: linear-gradient(180deg,#fff,#8fb7d8); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .overlay h2 { font-size: 20px; letter-spacing: 3px; color: #7fd0ff; margin-top: 6px; font-weight: 400; }
+  .overlay .keys { margin-top: 34px; display: grid; grid-template-columns: auto auto; gap: 8px 22px; font-size: 15px; color: #b9c7d4; text-align: left; }
+  .overlay .keys b { color: #fff; font-family: monospace; background: #1c2733; border: 1px solid #3a4c5e; border-radius: 5px; padding: 2px 9px; display: inline-block; min-width: 78px; text-align: center; }
+  .overlay .go { margin-top: 40px; font-size: 22px; color: #ffd479; animation: pulse 1.4s infinite; letter-spacing: 2px; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+  #gameover { display: none; }
+  #gameover h1 { color: #ff5f5f; -webkit-text-fill-color: currentColor; }
+  #gameover .stats { margin-top: 20px; font-size: 22px; color: #cfe0ee; line-height: 1.8; }
+  #paused { display: none; }
+
+  /* ---------- HUD ---------- */
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; display: none; }
+
+  #crosshair { position: absolute; left: 50%; top: 50%; width: 26px; height: 26px; transform: translate(-50%,-50%); }
+  #crosshair span { position: absolute; background: rgba(255,255,255,.92); box-shadow: 0 0 3px rgba(0,0,0,.9); }
+  #crosshair .t { left: 12px; top: 0;    width: 2px; height: 7px; }
+  #crosshair .b { left: 12px; bottom: 0; width: 2px; height: 7px; }
+  #crosshair .l { top: 12px; left: 0;    width: 7px; height: 2px; }
+  #crosshair .r { top: 12px; right: 0;   width: 7px; height: 2px; }
+
+  #hitmarker { position: absolute; left: 50%; top: 50%; width: 34px; height: 34px; transform: translate(-50%,-50%) rotate(45deg); opacity: 0; }
+  #hitmarker span { position: absolute; background: #fff; box-shadow: 0 0 4px #000; }
+  #hitmarker .t { left: 16px; top: 0;    width: 2px; height: 10px; }
+  #hitmarker .b { left: 16px; bottom: 0; width: 2px; height: 10px; }
+  #hitmarker .l { top: 16px; left: 0;    width: 10px; height: 2px; }
+  #hitmarker .r { top: 16px; right: 0;   width: 10px; height: 2px; }
+  #hitmarker.kill span { background: #ff4d4d; }
+
+  #vignette { position: absolute; inset: 0; opacity: 0;
+    background: radial-gradient(ellipse at center, transparent 45%, rgba(180,0,0,.55) 100%); }
+
+  #ammo { position: absolute; right: 34px; bottom: 28px; color: #fff; text-align: right; text-shadow: 0 1px 4px #000; }
+  #ammo .mag { font-size: 44px; font-weight: 800; }
+  #ammo .res { font-size: 20px; color: #9fb2c4; }
+  #ammo .wname { font-size: 13px; letter-spacing: 3px; color: #7fd0ff; text-transform: uppercase; }
+  #reloadmsg { position: absolute; left: 50%; top: 58%; transform: translateX(-50%); color: #ffd479; font-size: 16px; letter-spacing: 2px; text-shadow: 0 1px 4px #000; display: none; }
+
+  #healthwrap { position: absolute; left: 34px; bottom: 32px; width: 240px; }
+  #healthwrap .label { color: #9fb2c4; font-size: 12px; letter-spacing: 2px; margin-bottom: 5px; text-shadow: 0 1px 3px #000; }
+  #healthbar { height: 12px; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.25); border-radius: 3px; overflow: hidden; }
+  #healthfill { height: 100%; width: 100%; background: linear-gradient(90deg,#3ddc7a,#8bf0b0); transition: width .15s; }
+
+  #topbar { position: absolute; top: 22px; left: 50%; transform: translateX(-50%); display: flex; gap: 40px; color: #dfe9f2; font-size: 15px; letter-spacing: 1px; text-shadow: 0 1px 4px #000; }
+  #topbar b { color: #7fd0ff; font-size: 19px; }
+
+  #wavebanner { position: absolute; top: 34%; left: 50%; transform: translateX(-50%); font-size: 40px; font-weight: 800;
+    letter-spacing: 8px; color: #fff; text-shadow: 0 2px 12px rgba(0,150,255,.8); opacity: 0; text-transform: uppercase; }
+
+  #feed { position: absolute; top: 70px; right: 30px; text-align: right; font-size: 13px; color: #cdd9e4; text-shadow: 0 1px 3px #000; }
+  #feed div { margin-bottom: 4px; opacity: .95; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="hud">
+  <div id="vignette"></div>
+  <div id="crosshair"><span class="t"></span><span class="b"></span><span class="l"></span><span class="r"></span></div>
+  <div id="hitmarker"><span class="t"></span><span class="b"></span><span class="l"></span><span class="r"></span></div>
+  <div id="topbar">
+    <div>WAVE <b id="wave">1</b></div>
+    <div>HOSTILES <b id="alive">0</b></div>
+    <div>ELIMINATIONS <b id="kills">0</b></div>
+  </div>
+  <div id="wavebanner"></div>
+  <div id="feed"></div>
+  <div id="healthwrap">
+    <div class="label">ARMOR / HEALTH</div>
+    <div id="healthbar"><div id="healthfill"></div></div>
+  </div>
+  <div id="ammo">
+    <div class="wname">MK-4 Assault Rifle</div>
+    <div><span class="mag" id="mag">30</span> <span class="res">/ <span id="reserve">120</span></span></div>
+  </div>
+  <div id="reloadmsg">RELOADING…</div>
+</div>
+
+<div id="menu" class="overlay">
+  <h1>Street Ops</h1>
+  <h2>3D URBAN COMBAT &mdash; HOLD THE BLOCK</h2>
+  <div class="keys">
+    <div><b>W A S D</b></div><div>Move</div>
+    <div><b>MOUSE</b></div><div>Look / Aim</div>
+    <div><b>LEFT CLICK</b></div><div>Fire (hold for auto)</div>
+    <div><b>RIGHT CLICK</b></div><div>Aim down sights</div>
+    <div><b>SHIFT</b></div><div>Sprint</div>
+    <div><b>SPACE</b></div><div>Jump</div>
+    <div><b>R</b></div><div>Reload</div>
+  </div>
+  <div class="go">CLICK ANYWHERE TO DEPLOY</div>
+</div>
+
+<div id="paused" class="overlay">
+  <h1 style="font-size:40px">Paused</h1>
+  <div class="go">CLICK TO RESUME</div>
+</div>
+
+<div id="gameover" class="overlay">
+  <h1>Mission Failed</h1>
+  <div class="stats">
+    Waves survived: <b id="go-wave">0</b><br>
+    Eliminations: <b id="go-kills">0</b>
+  </div>
+  <div class="go">CLICK TO REDEPLOY</div>
+</div>
+
+<script type="module" src="game.js"></script>
+</body>
+</html>
