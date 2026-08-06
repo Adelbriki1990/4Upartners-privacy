@@ -276,25 +276,38 @@ function noiseBuffer(dur) {
 function playShot(volume = 0.5, freq = 900) {
   if (!AC) return;
   const t = AC.currentTime;
+  const vol = Math.min(1, volume * 1.5); // punchier overall
+  // crack
   const src = AC.createBufferSource();
-  src.buffer = noiseBuffer(0.16);
+  src.buffer = noiseBuffer(0.2);
   const lp = AC.createBiquadFilter();
-  lp.type = 'lowpass'; lp.frequency.setValueAtTime(freq * 4, t);
-  lp.frequency.exponentialRampToValueAtTime(180, t + 0.14);
+  lp.type = 'lowpass'; lp.frequency.setValueAtTime(freq * 5, t);
+  lp.frequency.exponentialRampToValueAtTime(160, t + 0.18);
   const gain = AC.createGain();
-  gain.gain.setValueAtTime(volume, t);
-  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
+  gain.gain.setValueAtTime(vol, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
   src.connect(lp).connect(gain).connect(AC.destination);
   src.start(t);
+  // body
   const osc = AC.createOscillator();
   osc.type = 'triangle';
   osc.frequency.setValueAtTime(freq, t);
   osc.frequency.exponentialRampToValueAtTime(60, t + 0.09);
   const og = AC.createGain();
-  og.gain.setValueAtTime(volume * 0.7, t);
+  og.gain.setValueAtTime(vol * 0.7, t);
   og.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
   osc.connect(og).connect(AC.destination);
   osc.start(t); osc.stop(t + 0.11);
+  // sub-bass thump you feel in the chest
+  const sub = AC.createOscillator();
+  sub.type = 'sine';
+  sub.frequency.setValueAtTime(90, t);
+  sub.frequency.exponentialRampToValueAtTime(38, t + 0.14);
+  const sg = AC.createGain();
+  sg.gain.setValueAtTime(vol * 0.9, t);
+  sg.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
+  sub.connect(sg).connect(AC.destination);
+  sub.start(t); sub.stop(t + 0.18);
 }
 function playClick(pitch = 1400, vol = 0.15) {
   if (!AC) return;
@@ -469,13 +482,18 @@ function engineStart() {
   const osc = AC.createOscillator();
   osc.type = 'sawtooth';
   osc.frequency.value = 55;
+  const osc2 = AC.createOscillator();      // detuned growl layer
+  osc2.type = 'square';
+  osc2.frequency.value = 27.5;
   const lp = AC.createBiquadFilter();
-  lp.type = 'lowpass'; lp.frequency.value = 240;
+  lp.type = 'lowpass'; lp.frequency.value = 320;
   const g = AC.createGain();
-  g.gain.value = 0.05;
-  osc.connect(lp).connect(g).connect(AC.destination);
-  osc.start();
-  engineNodes = { osc, g };
+  g.gain.value = 0.12;
+  osc.connect(lp);
+  osc2.connect(lp);
+  lp.connect(g).connect(AC.destination);
+  osc.start(); osc2.start();
+  engineNodes = { osc, osc2, g };
 }
 function engineUpdate(speed) {
   if (engineNodes) engineNodes.osc.frequency.value = 55 + Math.abs(speed) * 5.5;
@@ -483,6 +501,7 @@ function engineUpdate(speed) {
 function engineStop() {
   if (!engineNodes) return;
   engineNodes.osc.stop();
+  if (engineNodes.osc2) engineNodes.osc2.stop();
   engineNodes = null;
 }
 
@@ -918,16 +937,21 @@ function buildCarMesh(bodyColor, style = 'car') {
   // rounded panels so bodies read as real sheet metal, not boxes
   const RB = (w, h, d, r) => new RoundedBoxGeometry(w, h, d, 3, r);
 
+  const wheels = [];
   const wheel = (wx, wz, r) => {
+    // spin group pivots at the axle so wheels can roll
+    const spin = new THREE.Group();
+    spin.position.set(wx, r, wz);
     const tire = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 0.26, 16), mDark);
     tire.rotation.z = Math.PI / 2;
-    tire.position.set(wx, r, wz);
-    g.add(tire);
+    spin.add(tire);
     const hub = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.55, r * 0.55, 0.27, 12), mHub);
     hub.rotation.z = Math.PI / 2;
-    hub.position.set(wx, r, wz);
-    g.add(hub);
+    spin.add(hub);
+    g.add(spin);
+    wheels.push({ grp: spin, r });
   };
+  g.userData.wheels = wheels;
   const lights = (frontZ, rearZ, y) => {
     const mGlow = new THREE.MeshBasicMaterial({ color: 0xfff2cc });
     const mTail = new THREE.MeshBasicMaterial({ color: 0xff3b30 });
@@ -1097,11 +1121,15 @@ function buildScooterMesh(boxColor) {
   const g = new THREE.Group();
   const mDark = new THREE.MeshStandardMaterial({ color: 0x14171b, roughness: 0.6 });
   const mBody = new THREE.MeshStandardMaterial({ color: 0xc8cdd4, roughness: 0.4, metalness: 0.5 });
+  g.userData.wheels = [];
   for (const wz of [0.72, -0.72]) {
+    const spin = new THREE.Group();
+    spin.position.set(0, 0.26, wz);
     const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.26, 0.12, 12), mDark);
     wheel.rotation.z = Math.PI / 2;
-    wheel.position.set(0, 0.26, wz);
-    g.add(wheel);
+    spin.add(wheel);
+    g.add(spin);
+    g.userData.wheels.push({ grp: spin, r: 0.26 });
   }
   const deck = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.1, 1.15), mBody);
   deck.position.set(0, 0.38, -0.05); g.add(deck);
@@ -1125,11 +1153,15 @@ function buildBicycleMesh() {
   const mDark = new THREE.MeshStandardMaterial({ color: 0x1a1d22, roughness: 0.6 });
   const mFrame = new THREE.MeshStandardMaterial({
     color: new THREE.Color().setHSL(Math.random(), 0.5, 0.4), roughness: 0.4, metalness: 0.4 });
+  g.userData.wheels = [];
   for (const wz of [0.62, -0.62]) {
+    const spin = new THREE.Group();
+    spin.position.set(0, 0.33, wz);
     const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.33, 0.03, 6, 16), mDark);
     wheel.rotation.y = Math.PI / 2;
-    wheel.position.set(0, 0.33, wz);
-    g.add(wheel);
+    spin.add(wheel);
+    g.add(spin);
+    g.userData.wheels.push({ grp: spin, r: 0.33 });
   }
   const tube1 = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 1.0), mFrame);
   tube1.position.set(0, 0.62, 0); tube1.rotation.x = 0.12; g.add(tube1);
@@ -1182,6 +1214,18 @@ function loadRealAssets() {
 }
 const modelMixers = [];   // animation players for real character models
 const modelBobbers = [];  // fallback idle for models without animations
+function spinWheels(group, dist) {
+  const ws = group.userData.wheels;
+  if (ws) for (const w of ws) w.grp.rotation.x += dist / w.r;
+  const nodes = group.userData.wheelNodes;
+  if (nodes) for (const n of nodes) n.rotation.x += dist / 0.33;
+}
+function collectWheelNodes(root) {
+  const nodes = [];
+  root.traverse(o => { if (/wheel|tyre|tire|rim/i.test(o.name)) nodes.push(o); });
+  return nodes;
+}
+
 let mercSpawned = false;
 function spawnMercFleet() {
   if (mercSpawned || !mercTemplate || !CITY) return;
@@ -1192,6 +1236,7 @@ function spawnMercFleet() {
     const m = SkeletonUtils.clone(mercTemplate);
     m.rotation.y = MERC_ORIENT;
     wrap.add(m);
+    wrap.userData.wheelNodes = collectWheelNodes(m);
     registerVehicle(wrap, x, z, ry, 'merc');
   }
   // and put a few E50s into moving traffic
@@ -1203,6 +1248,7 @@ function spawnMercFleet() {
       const m2 = SkeletonUtils.clone(mercTemplate);
       m2.rotation.y = MERC_ORIENT;
       g2.add(m2);
+      g2.userData.wheelNodes = collectWheelNodes(m2);
       g2.position.copy(c.group.position);
       g2.rotation.y = c.group.rotation.y;
       scene.remove(c.group);
@@ -1283,6 +1329,7 @@ function updateTraffic(dt) {
     c.cur = c.cur === undefined ? c.speed : c.cur;
     c.cur += (target - c.cur) * Math.min(1, dt * 3);
     c.v += c.cur * c.dir * dt;
+    spinWheels(c.group, c.cur * dt);
     if (c.v > 128) c.v = -128;
     if (c.v < -128) c.v = 128;
     placeTrafficCar(c);
@@ -2604,6 +2651,7 @@ function updateDriving(dt) {
   // scooters and bikes lean into turns
   if (v.type !== 'car') v.group.rotation.z = -steer * Math.min(Math.abs(v.speed) / st.maxF, 1) * 0.25;
   v.group.position.addScaledVector(fwd, v.speed * dt);
+  spinWheels(v.group, v.speed * dt);
   const preSpeed = v.speed;
   if (resolveCollisions(v.group.position, 1.5, st.radius)) {
     const impact = Math.abs(preSpeed);
@@ -2676,8 +2724,11 @@ function updateDriving(dt) {
     camera.rotation.x += (Math.random() - 0.5) * shake * 0.04;
     camera.rotation.z += (Math.random() - 0.5) * shake * 0.04;
   }
-  if (st.engine) {
-    if (engineNodes) engineNodes.osc.frequency.value = st.freq + Math.abs(v.speed) * 5.5;
+  if (st.engine && engineNodes) {
+    const f = st.freq + Math.abs(v.speed) * 5.5;
+    engineNodes.osc.frequency.value = f;
+    if (engineNodes.osc2) engineNodes.osc2.frequency.value = f / 2;
+    engineNodes.g.gain.value = 0.09 + Math.min(0.09, Math.abs(v.speed) * 0.003);
   }
   speedoEl.textContent = st.label + ' · ' + Math.round(Math.abs(v.speed) * 3.6) + ' KM/H'
     + (v.health <= 0 ? ' · 💥 WRECKED' : v.health < 60 ? ` · ⚠ ${Math.round(v.health)}%` : '');
