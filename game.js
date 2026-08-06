@@ -1,6 +1,10 @@
 // Street Ops — cinematic 3D urban combat in the browser (Three.js, no assets).
 // Three selectable cities, sponsor advertising, drivable cars, wave combat.
 import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { CITIES } from './sponsors.js';
 
 // ---------------------------------------------------------------------------
@@ -20,10 +24,24 @@ const scene = new THREE.Scene();
 const BASE_FOV = 75, ADS_FOV = 52;
 const camera = new THREE.PerspectiveCamera(BASE_FOV, window.innerWidth / window.innerHeight, 0.08, 500);
 
+// post-processing: bloom makes the neon actually glow
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight), 0.55, 0.5, 0.82);
+composer.addPass(bloomPass);
+composer.addPass(new OutputPass());
+function doRender() { composer.render(); }
+
+// cinematic color grade (death cam overrides with grayscale)
+const GRADE = 'saturate(1.14) contrast(1.05)';
+canvas.style.filter = GRADE;
+
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
 });
 
 // ---------------------------------------------------------------------------
@@ -131,6 +149,47 @@ let MOON_BASE = 1.6;
   moonSprite.position.set(-130, 150, -220);
   scene.add(moonSprite);
 }
+
+// gradient sky dome (repainted per city/time in buildCity)
+let skyCtx = null, skyTex = null;
+{
+  const cv = document.createElement('canvas');
+  cv.width = 64; cv.height = 512;
+  skyCtx = cv.getContext('2d');
+  skyTex = new THREE.CanvasTexture(cv);
+  skyTex.colorSpace = THREE.SRGBColorSpace;
+  const dome = new THREE.Mesh(
+    new THREE.SphereGeometry(430, 24, 16),
+    new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide, fog: false, depthWrite: false }));
+  dome.renderOrder = -10;
+  scene.add(dome);
+}
+function paintSky() {
+  const day = DAY[CITY.id] || DAY.neon;
+  const top = new THREE.Color(day.sky).multiplyScalar(0.72).lerp(new THREE.Color(0x03040a), NF);
+  const mid = new THREE.Color(day.sky).lerp(new THREE.Color(THEME.sky), NF);
+  const hor = mid.clone().lerp(new THREE.Color(THEME.lamp), 0.08 + 0.35 * NF); // city glow
+  const grad = skyCtx.createLinearGradient(0, 0, 0, 512);
+  grad.addColorStop(0, '#' + top.getHexString());
+  grad.addColorStop(0.52, '#' + mid.getHexString());
+  grad.addColorStop(0.76, '#' + hor.getHexString());
+  grad.addColorStop(1, '#' + mid.clone().multiplyScalar(0.45).getHexString());
+  skyCtx.fillStyle = grad;
+  skyCtx.fillRect(0, 0, 64, 512);
+  skyTex.needsUpdate = true;
+}
+// shared radial glow sprite texture (lamp halos etc.)
+const glowTexShared = (() => {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 64;
+  const g = cv.getContext('2d');
+  const grad = g.createRadialGradient(32, 32, 2, 32, 32, 32);
+  grad.addColorStop(0, 'rgba(255,255,255,.9)');
+  grad.addColorStop(0.4, 'rgba(255,255,255,.25)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grad; g.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(cv);
+})();
 
 // ---------------------------------------------------------------------------
 // City layout constants
@@ -1321,8 +1380,9 @@ function buildCity(city) {
   NF = nightFactorAt(localHour());
   const day = DAY[city.id] || DAY.neon;
   const skyCol = new THREE.Color(day.sky).lerp(new THREE.Color(THEME.sky), NF);
-  scene.background = skyCol;
+  scene.background = null;
   scene.fog = new THREE.FogExp2(skyCol, THEME.fog * (day.fogMul + (1 - day.fogMul) * NF));
+  paintSky();
   hemi.color.set(new THREE.Color(0xcfe0f0).lerp(new THREE.Color(THEME.hemi[0]), NF));
   hemi.groundColor.set(new THREE.Color(0x8a8478).lerp(new THREE.Color(THEME.hemi[1]), NF));
   hemi.intensity = 2.1 + (THEME.hemi[2] - 2.1) * NF;
@@ -1481,6 +1541,14 @@ function buildCity(city) {
         const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 8), bulbMat);
         bulb.position.set(lx, 5.65, lz);
         scene.add(bulb);
+        if (NF > 0.2) {
+          const halo = new THREE.Sprite(new THREE.SpriteMaterial({
+            map: glowTexShared, color: THEME.lamp, transparent: true,
+            opacity: 0.3 * NF, blending: THREE.AdditiveBlending, depthWrite: false }));
+          halo.scale.setScalar(2.8);
+          halo.position.set(lx, 5.6, lz);
+          scene.add(halo);
+        }
         const cone = new THREE.Mesh(
           new THREE.ConeGeometry(2.1, 5.2, 12, 1, true),
           new THREE.MeshBasicMaterial({ color: THEME.lamp, transparent: true, opacity: 0.05,
@@ -1953,24 +2021,43 @@ function resolveCollisions(pos, height, radius = RADIUS) {
 // ---------------------------------------------------------------------------
 const gun = new THREE.Group();
 {
-  const mGun = new THREE.MeshStandardMaterial({ color: 0x23272c, roughness: 0.45, metalness: 0.7 });
-  const mGrip = new THREE.MeshStandardMaterial({ color: 0x33281c, roughness: 0.8 });
-  const body = new THREE.Mesh(new THREE.BoxGeometry(0.062, 0.085, 0.42), mGun);
-  gun.add(body);
-  const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.3, 10), mGun);
-  barrel.rotation.x = Math.PI / 2;
-  barrel.position.set(0, 0.012, -0.33);
-  gun.add(barrel);
-  const mag = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.14, 0.075), mGrip);
-  mag.position.set(0, -0.1, 0.02);
-  mag.rotation.x = 0.18;
-  gun.add(mag);
-  const stock = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.075, 0.17), mGrip);
-  stock.position.set(0, -0.012, 0.27);
-  gun.add(stock);
-  const sight = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.035, 0.06), mGun);
-  sight.position.set(0, 0.06, -0.05);
-  gun.add(sight);
+  const mMetal = new THREE.MeshStandardMaterial({ color: 0x2a2e34, roughness: 0.35, metalness: 0.75 });
+  const mDark = new THREE.MeshStandardMaterial({ color: 0x17191d, roughness: 0.5, metalness: 0.6 });
+  const mPoly = new THREE.MeshStandardMaterial({ color: 0x24221e, roughness: 0.8 });
+  const mHand = new THREE.MeshStandardMaterial({ color: 0xb08a67, roughness: 0.8 });
+  const part = (geo, mat, x, y, z, rx = 0) => {
+    const p = new THREE.Mesh(geo, mat);
+    p.position.set(x, y, z);
+    p.rotation.x = rx;
+    gun.add(p);
+    return p;
+  };
+  // receiver + dust cover
+  part(new THREE.BoxGeometry(0.06, 0.08, 0.3), mMetal, 0, 0, 0);
+  part(new THREE.BoxGeometry(0.05, 0.025, 0.28), mDark, 0, 0.05, 0);
+  // handguard with rail slots
+  part(new THREE.BoxGeometry(0.054, 0.06, 0.26), mPoly, 0, -0.002, -0.27);
+  for (let i = 0; i < 3; i++)
+    part(new THREE.BoxGeometry(0.058, 0.012, 0.05), mDark, 0, -0.02, -0.19 - i * 0.08);
+  // barrel + muzzle brake
+  const barrel = part(new THREE.CylinderGeometry(0.013, 0.013, 0.18, 10), mDark, 0, 0.012, -0.48, Math.PI / 2);
+  part(new THREE.BoxGeometry(0.03, 0.032, 0.06), mMetal, 0, 0.012, -0.56);
+  // curved magazine (two angled segments)
+  part(new THREE.BoxGeometry(0.046, 0.1, 0.07), mDark, 0, -0.085, -0.015, 0.22);
+  part(new THREE.BoxGeometry(0.044, 0.08, 0.065), mDark, 0, -0.155, 0.008, 0.45);
+  // pistol grip + trigger guard
+  part(new THREE.BoxGeometry(0.042, 0.11, 0.06), mPoly, 0, -0.08, 0.09, -0.35);
+  part(new THREE.BoxGeometry(0.036, 0.008, 0.07), mDark, 0, -0.05, 0.035);
+  // stock: buffer tube + butt with riser
+  part(new THREE.CylinderGeometry(0.02, 0.02, 0.14, 8), mDark, 0, 0.005, 0.21, Math.PI / 2);
+  part(new THREE.BoxGeometry(0.05, 0.1, 0.06), mPoly, 0, -0.01, 0.3);
+  part(new THREE.BoxGeometry(0.04, 0.03, 0.09), mPoly, 0, 0.045, 0.27);
+  // sights
+  part(new THREE.BoxGeometry(0.018, 0.035, 0.03), mMetal, 0, 0.075, 0.06);
+  part(new THREE.BoxGeometry(0.014, 0.03, 0.02), mMetal, 0, 0.075, -0.36);
+  // hands: rear on the grip, lead under the handguard
+  part(new THREE.BoxGeometry(0.055, 0.06, 0.07), mHand, 0.008, -0.075, 0.1);
+  part(new THREE.BoxGeometry(0.06, 0.05, 0.09), mHand, -0.004, -0.045, -0.28);
 }
 const HIP_POS = new THREE.Vector3(0.24, -0.2, -0.48);
 const ADS_POS = new THREE.Vector3(0, -0.115, -0.34);
@@ -1981,7 +2068,7 @@ scene.add(camera);
 const muzzleFlash = new THREE.Mesh(
   new THREE.PlaneGeometry(0.16, 0.16),
   new THREE.MeshBasicMaterial({ color: 0xffd080, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
-muzzleFlash.position.set(0, 0.012, -0.52);
+muzzleFlash.position.set(0, 0.012, -0.62);
 gun.add(muzzleFlash);
 const muzzleLight = new THREE.PointLight(0xffb060, 0, 8, 2);
 muzzleLight.position.set(0, 0, -0.6);
@@ -3168,6 +3255,7 @@ function playerName() { return (profile.name || '').trim().toUpperCase() || 'DRI
 // ---------------------------------------------------------------------------
 const clock = new THREE.Clock();
 let bobPhase = 0, shake = 0, slowmo = 0, deathT = 0, frameNo = 0, wasArmed = false;
+let perfAccum = 0, perfFrames = 0, perfChecked = false;
 
 // 3D navigation arrow pointing to the active delivery target
 const navArrow = new THREE.Mesh(
@@ -3202,10 +3290,10 @@ function tick() {
       pv.char.group.rotation.y += dtRaw * 1.2;
       pv.renderer.render(pv.scene, pv.cam);
     }
-    renderer.render(scene, camera);
+    doRender();
     return;
   }
-  if (!locked && !player.dead) { renderer.render(scene, camera); return; }
+  if (!locked && !player.dead) { doRender(); return; }
 
   if (cine.active) {
     game.time += dtReal;
@@ -3214,7 +3302,7 @@ function tick() {
     updateClub(dtReal);
     updateMusic();
     updateEffects(dtReal);
-    renderer.render(scene, camera);
+    doRender();
     return;
   }
 
@@ -3223,6 +3311,18 @@ function tick() {
   game.time += dt;
   updateAtmosphere(dt);
   shake = Math.max(0, shake - dt * 2.2);
+
+  // adaptive quality: if the device can't hold ~25fps, drop bloom
+  if (!perfChecked) {
+    perfAccum += dtRaw; perfFrames++;
+    if (perfFrames >= 120) {
+      perfChecked = true;
+      if (perfAccum / perfFrames > 0.042) {
+        bloomPass.enabled = false;
+        addFeed('⚙ Performance mode — glow effects reduced');
+      }
+    }
+  }
 
   if (grainEl.style.display === 'block' && ++frameNo % 3 === 0)
     grainEl.style.transform = `translate(${(Math.random() * 64) | 0}px, ${(Math.random() * 64) | 0}px)`;
@@ -3382,7 +3482,7 @@ function tick() {
   }
   drawMinimap();
 
-  renderer.render(scene, camera);
+  doRender();
 }
 tick();
 
