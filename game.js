@@ -829,34 +829,82 @@ function updateTraffic(dt) {
 }
 
 // ---------------------------------------------------------------------------
-// Pedestrians — civilians walking the sidewalks, fleeing gunfire
+// Characters — men and women built from boxes: used for the player's
+// driver avatar, the menu preview, and every pedestrian on the street.
 // ---------------------------------------------------------------------------
-const peds = [];
-let lastShot = { x: 0, z: 0, t: -99 };
-function makeCivilian() {
+const SKINS = [0xd9b08c, 0xc59a76, 0xb08a67, 0x8a6248, 0x6b4a35];
+const HAIRS = [0x1c1712, 0x3a2a18, 0x6b4a26, 0x9a7b46, 0x666666, 0x2a2a35];
+function makeCharacter(cfg, opts = {}) {
   const g = new THREE.Group();
+  const female = cfg.gender === 'f';
+  const mSkinC = new THREE.MeshStandardMaterial({ color: cfg.skin, roughness: 0.85 });
   const shirt = new THREE.MeshStandardMaterial({
-    color: new THREE.Color().setHSL(Math.random(), 0.45, 0.3 + Math.random() * 0.3), roughness: 0.9 });
+    color: new THREE.Color().setHSL(cfg.shirtHue, 0.5, 0.32 + (cfg.shirtHue % 0.3)), roughness: 0.9 });
   const pants = new THREE.MeshStandardMaterial({
-    color: new THREE.Color().setHSL(Math.random(), 0.2, 0.15 + Math.random() * 0.2), roughness: 0.9 });
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.62, 0.26), shirt);
+    color: new THREE.Color().setHSL(cfg.pantsHue, 0.25, 0.16 + (cfg.pantsHue % 0.2)), roughness: 0.9 });
+  const hairM = new THREE.MeshStandardMaterial({ color: cfg.hairColor, roughness: 0.95 });
+
+  const torso = new THREE.Mesh(
+    new THREE.BoxGeometry(female ? 0.42 : 0.5, 0.6, female ? 0.23 : 0.27), shirt);
   torso.position.y = 1.1; g.add(torso);
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.26, 0.24), mSkin);
-  head.position.y = 1.58; g.add(head);
-  const legs = [];
-  for (const sx of [-1, 1]) {
-    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.6, 0.18), pants);
-    leg.position.set(sx * 0.12, 0.3, 0);
-    g.add(leg); legs.push(leg);
+
+  if (opts.head !== false) {
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.23, 0.26, 0.23), mSkinC);
+    head.position.y = 1.58; g.add(head);
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.09, 0.25), hairM);
+    cap.position.y = 1.72; g.add(cap);
+    if (cfg.hairLong) {
+      const back = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.4, 0.09), hairM);
+      back.position.set(0, 1.5, -0.14); g.add(back);
+    }
   }
+
+  const legs = [];
+  if (cfg.skirt) {
+    const skirt = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.3, 0.3), pants);
+    skirt.position.y = 0.66; g.add(skirt);
+    for (const sx of [-1, 1]) {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.5, 0.15), mSkinC);
+      leg.position.set(sx * 0.11, 0.25, 0);
+      g.add(leg); legs.push(leg);
+    }
+  } else {
+    for (const sx of [-1, 1]) {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.6, 0.17), pants);
+      leg.position.set(sx * 0.11, 0.3, 0);
+      g.add(leg); legs.push(leg);
+    }
+  }
+
   const arms = [];
   for (const sx of [-1, 1]) {
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.48, 0.14), shirt);
-    arm.position.set(sx * 0.31, 1.12, 0);
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.48, 0.13), shirt);
+    arm.position.set(sx * (female ? 0.28 : 0.32), 1.1, 0);
     g.add(arm); arms.push(arm);
   }
   g.traverse(o => { if (o.isMesh) o.castShadow = true; });
   return { group: g, legs, arms };
+}
+function randomLook() {
+  const f = Math.random() < 0.45;
+  return {
+    gender: f ? 'f' : 'm',
+    skin: SKINS[Math.floor(Math.random() * SKINS.length)],
+    shirtHue: Math.random(),
+    pantsHue: Math.random(),
+    hairColor: HAIRS[Math.floor(Math.random() * HAIRS.length)],
+    hairLong: f ? Math.random() < 0.75 : Math.random() < 0.1,
+    skirt: f && Math.random() < 0.5,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Pedestrians — real men and women walking the sidewalks, fleeing gunfire
+// ---------------------------------------------------------------------------
+const peds = [];
+let lastShot = { x: 0, z: 0, t: -99 };
+function makeCivilian() {
+  return makeCharacter(randomLook());
 }
 function spawnPed(nearPlayer) {
   const s = STREETS[Math.floor(Math.random() * STREETS.length)];
@@ -1814,6 +1862,7 @@ function toggleDrive() {
     resolveCollisions(player.pos, 1.75);
     v.box = addCollider(carBox(v.group.position, v.yaw, v.stats.size));
     if (v.light) { v.group.remove(v.light); v.group.remove(v.light.target); v.light = null; }
+    if (v.rider) { v.group.remove(v.rider.group); v.rider = null; }
     engineStop();
     speedoEl.style.display = 'none';
   } else {
@@ -1830,6 +1879,10 @@ function toggleDrive() {
       v.light.target.position.set(0, 0.2, 14);
       v.group.add(v.light);
       v.group.add(v.light.target);
+    }
+    if (v.type !== 'car') {
+      v.rider = makeRider();
+      v.group.add(v.rider.group);
     }
     if (v.stats.engine) engineStart();
     speedoEl.style.display = 'block';
@@ -1908,7 +1961,7 @@ function playerDie() {
   shake = 0.9;
   if (driving) { engineStop(); speedoEl.style.display = 'none'; driving = null; gun.visible = true; }
   canvas.style.filter = 'grayscale(0.85) brightness(0.75)';
-  document.querySelector('#gameover .stats').innerHTML = (mode === 'delivery'
+  document.querySelector('#gameover .stats').innerHTML = `<b>${playerName()}</b><br>` + (mode === 'delivery'
     ? `Deliveries completed: <b>${game.deliveries}</b><br>Cash earned: <b>$${game.money}</b><br>Eliminations: <b>${game.kills}</b>`
     : `Waves survived: <b>${game.wave}</b><br>Eliminations: <b>${game.kills}</b>`)
     + `<br>Driver level: <b>${prog.level} / 100</b>`;
@@ -2072,7 +2125,7 @@ function updateDelivery(dt) {
       player.health = Math.min(100, player.health + 25);
       if (beacon) beacon.group.visible = false;
       showBanner(`Delivered! +$${order.reward}`);
-      addFeed(`+$${order.reward} — total $${game.money}`);
+      addFeed(`${playerName()} +$${order.reward} — total $${game.money}`);
       playClick(2400, 0.3);
     }
   }
@@ -2193,6 +2246,67 @@ function updateCinematic(dt) {
 }
 
 // ---------------------------------------------------------------------------
+// Player profile — username + man/woman avatar, persisted
+// ---------------------------------------------------------------------------
+const profile = (() => {
+  try { return Object.assign({ name: '', gender: 'm', seed: Math.floor(Math.random() * 100000) },
+    JSON.parse(localStorage.getItem('streetops.profile'))); }
+  catch { return { name: '', gender: 'm', seed: Math.floor(Math.random() * 100000) }; }
+})();
+function saveProfile() { localStorage.setItem('streetops.profile', JSON.stringify(profile)); }
+function seededRnd(i) {
+  const x = Math.sin(profile.seed * 127.1 + i * 311.7) * 43758.5453;
+  return x - Math.floor(x);
+}
+function lookFromProfile() {
+  const f = profile.gender === 'f';
+  return {
+    gender: profile.gender,
+    skin: SKINS[Math.floor(seededRnd(1) * SKINS.length)],
+    shirtHue: seededRnd(2),
+    pantsHue: seededRnd(3),
+    hairColor: HAIRS[Math.floor(seededRnd(4) * HAIRS.length)],
+    hairLong: f ? seededRnd(5) < 0.8 : seededRnd(5) < 0.1,
+    skirt: false, // drivers ride in pants
+  };
+}
+// seated, headless copy of the player's avatar shown on scooters/bicycles
+function makeRider() {
+  const c = makeCharacter(lookFromProfile(), { head: false });
+  c.group.position.set(0, 0.42, -0.3);
+  c.legs[0].rotation.x = c.legs[1].rotation.x = -1.2;
+  c.arms[0].rotation.x = c.arms[1].rotation.x = -0.85;
+  return c;
+}
+
+// live rotating 3D preview of the avatar on the menu
+let pv = null;
+function initPreview() {
+  const cv = document.getElementById('charpreview');
+  if (!cv) return;
+  pv = {
+    renderer: new THREE.WebGLRenderer({ canvas: cv, antialias: true, alpha: true }),
+    scene: new THREE.Scene(),
+    cam: new THREE.PerspectiveCamera(35, cv.width / cv.height, 0.1, 10),
+    char: null,
+  };
+  pv.renderer.setSize(cv.width, cv.height, false);
+  pv.cam.position.set(0, 1.0, 3.2);
+  pv.cam.lookAt(0, 0.88, 0);
+  pv.scene.add(new THREE.HemisphereLight(0xcfe0f0, 0x443f38, 2.4));
+  const d = new THREE.DirectionalLight(0xffffff, 2.2);
+  d.position.set(2, 3, 2);
+  pv.scene.add(d);
+  refreshPreview();
+}
+function refreshPreview() {
+  if (!pv) return;
+  if (pv.char) pv.scene.remove(pv.char.group);
+  pv.char = makeCharacter(lookFromProfile());
+  pv.scene.add(pv.char.group);
+}
+
+// ---------------------------------------------------------------------------
 // City select menu
 // ---------------------------------------------------------------------------
 let selectedId = localStorage.getItem('streetops.city') || CITIES[0].id;
@@ -2227,7 +2341,35 @@ function selectedCity() { return CITIES.find(c => c.id === selectedId) || CITIES
       document.querySelectorAll('.modebtn').forEach(b => b.classList.toggle('sel', b === btn));
     });
   });
+
+  // driver profile: username + avatar
+  const profileBox = document.getElementById('profile');
+  if (profileBox) {
+    profileBox.addEventListener('click', e => e.stopPropagation());
+    const nameInput = document.getElementById('username');
+    nameInput.value = profile.name;
+    nameInput.addEventListener('input', () => {
+      profile.name = nameInput.value.slice(0, 14);
+      saveProfile();
+    });
+    document.querySelectorAll('.charbtn[data-g]').forEach(btn => {
+      btn.classList.toggle('sel', btn.dataset.g === profile.gender);
+      btn.addEventListener('click', () => {
+        profile.gender = btn.dataset.g;
+        saveProfile();
+        document.querySelectorAll('.charbtn[data-g]').forEach(b => b.classList.toggle('sel', b === btn));
+        refreshPreview();
+      });
+    });
+    document.getElementById('lookbtn').addEventListener('click', () => {
+      profile.seed = Math.floor(Math.random() * 100000);
+      saveProfile();
+      refreshPreview();
+    });
+    initPreview();
+  }
 }
+function playerName() { return (profile.name || '').trim().toUpperCase() || 'DRIVER'; }
 
 // ---------------------------------------------------------------------------
 // Main loop
@@ -2239,7 +2381,14 @@ function tick() {
   requestAnimationFrame(tick);
   const dtRaw = clock.getDelta();
   const dtReal = Math.min(dtRaw, 0.05);
-  if (!started) { renderer.render(scene, camera); return; }
+  if (!started) {
+    if (pv && pv.char) {
+      pv.char.group.rotation.y += dtRaw * 1.2;
+      pv.renderer.render(pv.scene, pv.cam);
+    }
+    renderer.render(scene, camera);
+    return;
+  }
   if (!locked && !player.dead) { renderer.render(scene, camera); return; }
 
   if (cine.active) {
@@ -2372,7 +2521,7 @@ function tick() {
   killsEl.textContent = game.kills;
   document.getElementById('cash').textContent = '$' + game.money;
   document.getElementById('deliveries').textContent = game.deliveries;
-  document.getElementById('lvl').textContent = 'LVL ' + prog.level;
+  document.getElementById('lvl').textContent = playerName() + ' · LVL ' + prog.level;
   document.getElementById('xpfill').style.width =
     (prog.level >= 100 ? 100 : Math.min(100, prog.xp / xpNeed(prog.level) * 100)) + '%';
   magEl.textContent = W().mag;
