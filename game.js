@@ -676,7 +676,9 @@ const VEH_STATS = {
   car:     { label: 'SEDAN',       maxF: 31, maxR: -9,  accel: 15, turn: 1.5, camH: 1.34, size: [2.0, 4.4], engine: true,  freq: 55, radius: 1.45, kill: 2.3 },
   suv:     { label: 'CRUISER 4X4', maxF: 28, maxR: -9,  accel: 13, turn: 1.35, camH: 1.62, size: [2.1, 4.6], engine: true, freq: 45, radius: 1.55, kill: 2.6 },
   sports:  { label: 'ROSSO GT',    maxF: 45, maxR: -10, accel: 24, turn: 1.7, camH: 1.12, size: [2.0, 4.3], engine: true,  freq: 75, radius: 1.4,  kill: 2.2 },
+  hyper:   { label: 'TORO HYPER',  maxF: 50, maxR: -10, accel: 27, turn: 1.75, camH: 1.05, size: [2.0, 4.4], engine: true, freq: 88, radius: 1.4,  kill: 2.2 },
   luxury:  { label: 'LUX SEDAN',   maxF: 36, maxR: -9,  accel: 17, turn: 1.5, camH: 1.34, size: [2.0, 4.9], engine: true,  freq: 50, radius: 1.5,  kill: 2.4 },
+  phantom: { label: 'PHANTOM LIMO', maxF: 34, maxR: -8, accel: 14, turn: 1.35, camH: 1.5,  size: [2.1, 5.2], engine: true,  freq: 42, radius: 1.55, kill: 2.5 },
   scooter: { label: 'SCOOTER',     maxF: 24, maxR: -5,  accel: 21, turn: 2.3, camH: 1.52, size: [0.8, 2.2], engine: true,  freq: 95, radius: 0.7,  kill: 1.4 },
   bicycle: { label: 'BICYCLE',     maxF: 13, maxR: -3,  accel: 9,  turn: 2.6, camH: 1.55, size: [0.7, 2.0], engine: false, freq: 0,  radius: 0.6,  kill: 1.2 },
 };
@@ -684,7 +686,9 @@ const CAR_STYLE_COLORS = {
   car:    [0x7a2f2f, 0x2f4a7a, 0x565b60, 0x6d6437, 0x3b4b41, 0x802a48, 0x1d5c66],
   suv:    [0x8a7a5c, 0x4a4a42, 0x2e3438, 0x5c5348, 0x3d4a3a, 0xd8d4c8],
   sports: [0xc41e1e, 0xe0b41e, 0xd84a10, 0x14161a, 0xd8d8d8],
+  hyper:  [0xf0a814, 0xf07800, 0x1a1c20, 0xb8bcc4, 0x38c04a],
   luxury: [0x0e1013, 0xe8e8ea, 0xb8bcc2, 0x1c2436, 0x2e2226],
+  phantom: [0x101216, 0xe8d8c8, 0xdfe2e6, 0x24182a, 0x2a2018],
 };
 function carBox(pos, yaw, size = [2.0, 4.4]) {
   const along = Math.abs(Math.sin(yaw)) > 0.5;
@@ -751,6 +755,45 @@ function buildCarMesh(bodyColor, style = 'car') {
     wing.position.set(0, 0.82, -2.05); g.add(wing);
     wheel(-0.95, 1.35, 0.33); wheel(0.95, 1.35, 0.33); wheel(-0.95, -1.4, 0.33); wheel(0.95, -1.4, 0.33);
     lights(2.15, -2.12, 0.45);
+  } else if (style === 'hyper') {
+    // ultra-low angular hypercar: sharp wedge, side intakes, big fixed wing
+    const body = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.36, 4.35), mBody);
+    body.position.y = 0.38; g.add(body);
+    const nose = new THREE.Mesh(new THREE.BoxGeometry(1.85, 0.2, 1.3), mBody);
+    nose.position.set(0, 0.34, 2.05);
+    nose.rotation.x = 0.14; g.add(nose);
+    const cab = new THREE.Mesh(new THREE.BoxGeometry(1.35, 0.3, 1.55), mDark);
+    cab.position.set(0, 0.7, -0.25); g.add(cab);
+    for (const sx of [-1.02, 1.02]) {
+      const intake = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.22, 0.9), mDark);
+      intake.position.set(sx, 0.45, -1.1); g.add(intake);
+    }
+    const diffuser = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.14, 0.3), mDark);
+    diffuser.position.set(0, 0.28, -2.15); g.add(diffuser);
+    for (const wx of [-0.7, 0.7]) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.24, 0.07), mDark);
+      post.position.set(wx, 0.72, -2.0); g.add(post);
+    }
+    const wing = new THREE.Mesh(new THREE.BoxGeometry(1.95, 0.05, 0.42), mBody);
+    wing.position.set(0, 0.88, -2.05); g.add(wing);
+    wheel(-0.95, 1.35, 0.33); wheel(0.95, 1.35, 0.33); wheel(-0.95, -1.4, 0.34); wheel(0.95, -1.4, 0.34);
+    lights(2.35, -2.16, 0.42);
+  } else if (style === 'phantom') {
+    // stately limousine: long tall body, upright chrome grille, hood strip
+    const body = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.75, 5.2), mBody);
+    body.position.y = 0.72; g.add(body);
+    const cab = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.56, 2.6), mDark);
+    cab.position.set(0, 1.36, -0.5); g.add(cab);
+    const grille = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.5, 0.14), mChrome);
+    grille.position.set(0, 0.8, 2.6); g.add(grille);
+    const hoodStrip = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.03, 1.6), mChrome);
+    hoodStrip.position.set(0, 1.11, 1.7); g.add(hoodStrip);
+    for (const sx of [-1.01, 1.01]) {
+      const trim = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.04, 4.8), mChrome);
+      trim.position.set(sx, 0.95, -0.1); g.add(trim);
+    }
+    wheel(-0.98, 1.7, 0.38); wheel(0.98, 1.7, 0.38); wheel(-0.98, -1.7, 0.38); wheel(0.98, -1.7, 0.38);
+    lights(2.61, -2.61, 0.8);
   } else if (style === 'luxury') {
     // long executive sedan: stretched body, chrome side trim, wide grille bar
     const body = new THREE.Mesh(new THREE.BoxGeometry(1.95, 0.6, 4.9), mBody);
@@ -779,7 +822,8 @@ function buildCarMesh(bodyColor, style = 'car') {
 }
 function randomCarStyle() {
   const r = Math.random();
-  return r < 0.4 ? 'car' : r < 0.65 ? 'suv' : r < 0.85 ? 'luxury' : 'sports';
+  return r < 0.34 ? 'car' : r < 0.54 ? 'suv' : r < 0.72 ? 'luxury'
+    : r < 0.84 ? 'sports' : r < 0.93 ? 'phantom' : 'hyper';
 }
 function carColorFor(style) {
   const pal = CAR_STYLE_COLORS[style] || CAR_STYLE_COLORS.car;
@@ -921,15 +965,42 @@ function makeCharacter(cfg, opts = {}) {
     color: new THREE.Color().setHSL(cfg.pantsHue, 0.25, 0.16 + (cfg.pantsHue % 0.2)), roughness: 0.9 });
   const hairM = new THREE.MeshStandardMaterial({ color: cfg.hairColor, roughness: 0.95 });
 
-  const torso = new THREE.Mesh(
-    new THREE.BoxGeometry(female ? 0.42 : 0.5, 0.6, female ? 0.23 : 0.27), shirt);
+  const uniformed = cfg.uniform !== undefined;
+  if (uniformed) shirt.color.set(cfg.uniform);
+  const tw = female ? 0.42 : 0.5, td = female ? 0.23 : 0.27;
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(tw, 0.6, td), shirt);
   torso.position.y = 1.1; g.add(torso);
+
+  if (uniformed) {
+    // courier kit: reflective safety stripes + branded delivery backpack
+    const mStripe = new THREE.MeshStandardMaterial({
+      color: 0xe8ecf0, roughness: 0.4, emissive: 0xaab4be, emissiveIntensity: 0.25 });
+    for (const sy of [1.24, 1.02]) {
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(tw + 0.02, 0.06, td + 0.02), mStripe);
+      stripe.position.y = sy; g.add(stripe);
+    }
+    const mPack = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(cfg.uniform).multiplyScalar(1.15), roughness: 0.55 });
+    const pack = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.48, 0.26), mPack);
+    pack.position.set(0, 1.16, -(td / 2 + 0.15)); g.add(pack);
+    const packBand = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.1, 0.27),
+      new THREE.MeshStandardMaterial({ color: 0xf0f2f4, roughness: 0.5 }));
+    packBand.position.set(0, 1.34, -(td / 2 + 0.15)); g.add(packBand);
+  }
 
   if (opts.head !== false) {
     const head = new THREE.Mesh(new THREE.BoxGeometry(0.23, 0.26, 0.23), mSkinC);
     head.position.y = 1.58; g.add(head);
     const cap = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.09, 0.25), hairM);
     cap.position.y = 1.72; g.add(cap);
+    if (uniformed) {
+      // branded courier cap with brim
+      const mCap = new THREE.MeshStandardMaterial({ color: cfg.uniform, roughness: 0.7 });
+      const ucap = new THREE.Mesh(new THREE.BoxGeometry(0.27, 0.08, 0.27), mCap);
+      ucap.position.y = 1.76; g.add(ucap);
+      const brim = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.03, 0.14), mCap);
+      brim.position.set(0, 1.73, 0.19); g.add(brim);
+    }
     if (cfg.hairLong) {
       const back = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.4, 0.09), hairM);
       back.position.set(0, 1.5, -0.14); g.add(back);
@@ -1397,6 +1468,7 @@ function buildCity(city) {
 
   spawnTraffic();
   spawnPeds();
+  for (let i = 0; i < 10; i++) spawnCanPickup();
 }
 
 // random point on some road
@@ -1498,13 +1570,14 @@ document.addEventListener('keydown', e => {
   if (e.code === 'Digit1') switchWeapon(0);
   if (e.code === 'Digit2') switchWeapon(1);
   if (e.code === 'Digit3') switchWeapon(2);
+  if (e.code === 'KeyQ' && locked) drinkEnergy();
 });
 document.addEventListener('keyup', e => { keys[e.code] = false; });
 
 let firing = false, aiming = false;
 document.addEventListener('mousedown', e => {
   if (!locked) return;
-  if (cine.active) { if (cine.t > 1) finishCinematic(); return; }
+  if (cine.active) { if (cine.t > 0.5) finishCinematic(); return; }
   if (driving) return;
   if (e.button === 0) { firing = true; pendingShot = true; }
   if (e.button === 2) aiming = true;
@@ -1969,10 +2042,11 @@ function updateDriving(dt) {
   const v = driving;
   const st = v.stats;
   const fwd = new THREE.Vector3(Math.sin(v.yaw), 0, Math.cos(v.yaw));
-  const accel = keys['KeyW'] ? st.accel : keys['KeyS'] ? -st.accel * 0.65 : 0;
+  const boost = energy.boostT > 0 ? 1.25 : 1;
+  const accel = keys['KeyW'] ? st.accel * boost : keys['KeyS'] ? -st.accel * 0.65 : 0;
   v.speed += accel * dt;
   v.speed -= v.speed * 0.55 * dt;
-  v.speed = Math.max(st.maxR, Math.min(st.maxF, v.speed));
+  v.speed = Math.max(st.maxR, Math.min(st.maxF * boost, v.speed));
   const steer = (keys['KeyA'] ? 1 : 0) - (keys['KeyD'] ? 1 : 0);
   v.yaw += steer * Math.min(Math.abs(v.speed) / 6, 1) * st.turn * dt * Math.sign(v.speed || 1);
   v.group.rotation.y = v.yaw;
@@ -2110,6 +2184,110 @@ function startWave() {
 }
 
 // ---------------------------------------------------------------------------
+// Red Bull energy boost — pick up cans around the city, press Q to drink,
+// move fast for a few seconds ("gives you wings")
+// ---------------------------------------------------------------------------
+const energy = { cans: 1, boostT: 0, drinkT: 0 };
+const BOOST_DUR = 8;
+const canPickups = [];
+function makeCanMesh() {
+  const g = new THREE.Group();
+  const silver = new THREE.MeshStandardMaterial({ color: 0xd2d6dc, roughness: 0.2, metalness: 0.9 });
+  const blue = new THREE.MeshStandardMaterial({ color: 0x1c4fd0, roughness: 0.35, metalness: 0.4 });
+  const red = new THREE.MeshBasicMaterial({ color: 0xe01b30 });
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.34, 12), silver);
+  g.add(body);
+  const band = new THREE.Mesh(new THREE.CylinderGeometry(0.102, 0.102, 0.13, 12), blue);
+  g.add(band);
+  const dot = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.05, 0.02), red);
+  dot.position.set(0, 0, 0.1);
+  g.add(dot);
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(0.35, 0.55, 20),
+    new THREE.MeshBasicMaterial({ color: 0x3a6cff, transparent: true, opacity: 0.4,
+      blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = -0.95;
+  g.add(ring);
+  return g;
+}
+function spawnCanPickup() {
+  const p = streetPointNear(player.pos, 25, 115);
+  const mesh = makeCanMesh();
+  mesh.position.set(p.x, 1.0, p.z);
+  scene.add(mesh);
+  canPickups.push({ mesh, t: Math.random() * 6 });
+}
+function drinkEnergy() {
+  if (energy.cans <= 0 || energy.boostT > 0 || player.dead || cine.active) return;
+  energy.cans--;
+  energy.boostT = BOOST_DUR;
+  energy.drinkT = 0.9;
+  playGulp();
+  addFeed('⚡ RED BULL — speed boost!');
+}
+function playGulp() {
+  if (!AC) return;
+  for (let i = 0; i < 3; i++) {
+    const t = AC.currentTime + i * 0.16;
+    const osc = AC.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(420 - i * 60, t);
+    osc.frequency.exponentialRampToValueAtTime(120, t + 0.1);
+    const g = AC.createGain();
+    g.gain.setValueAtTime(0.18, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+    osc.connect(g).connect(AC.destination);
+    osc.start(t); osc.stop(t + 0.13);
+  }
+}
+const boostfxEl = document.getElementById('boostfx');
+function updateEnergy(dt) {
+  for (const c of canPickups) {
+    c.t += dt;
+    c.mesh.position.y = 1.0 + Math.sin(c.t * 2) * 0.15;
+    c.mesh.rotation.y += dt * 2.2;
+    if (energy.cans < 3 &&
+        Math.hypot(c.mesh.position.x - player.pos.x, c.mesh.position.z - player.pos.z) < 1.8) {
+      energy.cans++;
+      playClick(2100, 0.25);
+      addFeed('Red Bull picked up — press Q to drink');
+      scene.remove(c.mesh);
+      canPickups.splice(canPickups.indexOf(c), 1);
+      setTimeout(spawnCanPickup, 100);
+    }
+  }
+  if (energy.boostT > 0) energy.boostT -= dt;
+  if (energy.drinkT > 0) energy.drinkT -= dt;
+  if (boostfxEl) boostfxEl.style.opacity = Math.min(0.75, Math.max(0, energy.boostT) / 3);
+  // drink animation: bottle raises and tips toward the mouth
+  const drinking = energy.drinkT > 0;
+  bottle.visible = drinking;
+  if (drinking) {
+    const p = 1 - energy.drinkT / 0.9;
+    const lift = Math.sin(p * Math.PI);
+    bottle.position.set(0.16 - lift * 0.12, -0.18 + lift * 0.13, -0.32);
+    bottle.rotation.x = lift * 1.1;
+  }
+}
+// bottle view model
+const bottle = new THREE.Group();
+{
+  const silver = new THREE.MeshStandardMaterial({ color: 0xd2d6dc, roughness: 0.2, metalness: 0.9 });
+  const blue = new THREE.MeshStandardMaterial({ color: 0x1c4fd0, roughness: 0.35, metalness: 0.4 });
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.04, 0.17, 10), silver);
+  bottle.add(body);
+  const band = new THREE.Mesh(new THREE.CylinderGeometry(0.037, 0.041, 0.06, 10), blue);
+  bottle.add(band);
+  const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.04, 8),
+    new THREE.MeshStandardMaterial({ color: 0x14161a, roughness: 0.5 }));
+  cap.position.y = 0.1;
+  bottle.add(cap);
+  bottle.visible = false;
+  camera.add(bottle);
+}
+
+// ---------------------------------------------------------------------------
 // Delivery mode — take orders from place to place; robbers may try to hit you
 // ---------------------------------------------------------------------------
 let mode = localStorage.getItem('streetops.mode') || 'delivery';
@@ -2197,6 +2375,7 @@ function updateDelivery(dt) {
       game.deliveries++;
       prog.bank += order.reward;
       addXP(16 + order.reward / 2);
+      if (energy.cans < 3) energy.cans++;
       for (const w2 of WEAPONS) w2.reserve = Math.max(w2.reserve, w2.magSize * 4);
       player.health = Math.min(100, player.health + 25);
       if (beacon) beacon.group.visible = false;
@@ -2266,6 +2445,7 @@ const grainEl = document.getElementById('grain');
 function startCinematic() {
   cine.active = true;
   cine.t = 0;
+  cine.start = performance.now();
   gun.visible = false;
   document.getElementById('cine-city').textContent = CITY.name + ' — 02:47 AM';
   cineEl.style.display = 'block';
@@ -2292,8 +2472,9 @@ const _cineB = new THREE.Vector3(30, 26, -32);
 const _cineC = new THREE.Vector3(4, EYE, 26);
 const _cinePos = new THREE.Vector3();
 const _cineLook = new THREE.Vector3();
-function updateCinematic(dt) {
-  cine.t += dt;
+function updateCinematic() {
+  // absolute wall-clock so the flyover lasts ~8s on any frame rate
+  cine.t = (performance.now() - cine.start) / 1000;
   const t = Math.min(cine.t / cine.dur, 1);
   const s = t * t * (3 - 2 * t);
   const u = 1 - s;
@@ -2346,9 +2527,15 @@ function lookFromProfile() {
     skirt: false, // drivers ride in pants
   };
 }
+// the player's look in full courier uniform (the selected city's app brand)
+function driverLook() {
+  const l = lookFromProfile();
+  l.uniform = new THREE.Color(selectedCity().sponsors[0].colorA).getHex();
+  return l;
+}
 // seated, headless copy of the player's avatar shown on scooters/bicycles
 function makeRider() {
-  const c = makeCharacter(lookFromProfile(), { head: false });
+  const c = makeCharacter(driverLook(), { head: false });
   c.group.position.set(0, 0.42, -0.3);
   c.legs[0].rotation.x = c.legs[1].rotation.x = -1.2;
   c.arms[0].rotation.x = c.arms[1].rotation.x = -0.85;
@@ -2378,7 +2565,7 @@ function initPreview() {
 function refreshPreview() {
   if (!pv) return;
   if (pv.char) pv.scene.remove(pv.char.group);
-  pv.char = makeCharacter(lookFromProfile());
+  pv.char = makeCharacter(driverLook());
   pv.scene.add(pv.char.group);
 }
 
@@ -2401,6 +2588,7 @@ function selectedCity() { return CITIES.find(c => c.id === selectedId) || CITIES
       localStorage.setItem('streetops.city', selectedId);
       for (const el of wrap.children) el.classList.remove('sel');
       card.classList.add('sel');
+      refreshPreview(); // uniform matches the selected city's app brand
     });
     wrap.appendChild(card);
   }
@@ -2468,8 +2656,7 @@ function tick() {
   if (!locked && !player.dead) { renderer.render(scene, camera); return; }
 
   if (cine.active) {
-    // the flyover runs on wall-clock time so it never stalls on slow machines
-    updateCinematic(Math.min(dtRaw, 0.5));
+    updateCinematic();
     updateAtmosphere(dtReal);
     updateEffects(dtReal);
     renderer.render(scene, camera);
@@ -2491,7 +2678,8 @@ function tick() {
     drivehintEl.style.display = 'none';
   } else if (!player.dead) {
     const sprinting = (keys['ShiftLeft'] || keys['ShiftRight']) && keys['KeyW'] && !aiming;
-    const speed = aiming ? 2.6 : sprinting ? 8.2 : 5.2;
+    const boost = energy.boostT > 0 ? 1.45 : 1;
+    const speed = (aiming ? 2.6 : sprinting ? 8.2 : 5.2) * boost;
     const fwd = new THREE.Vector3(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
     const right = new THREE.Vector3(-fwd.z, 0, fwd.x);
     const wish = new THREE.Vector3();
@@ -2548,7 +2736,8 @@ function tick() {
     gun.position.y += bob * 0.5;
     gun.position.z += weapon.recoil * 0.006;
     gun.rotation.x = weapon.recoil * 0.02;
-    const targetFov = aiming ? ADS_FOV : sprinting ? BASE_FOV + 7 : BASE_FOV;
+    const targetFov = (aiming ? ADS_FOV : sprinting ? BASE_FOV + 7 : BASE_FOV)
+      + (energy.boostT > 0 && !aiming ? 5 : 0);
     if (Math.abs(camera.fov - targetFov) > 0.1) {
       camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 14);
       camera.updateProjectionMatrix();
@@ -2589,6 +2778,7 @@ function tick() {
 
   updateTraffic(dt);
   updatePeds(dt);
+  updateEnergy(dt);
   updateEffects(dt);
 
   // ---- HUD ----
@@ -2598,6 +2788,8 @@ function tick() {
   document.getElementById('cash').textContent = '$' + game.money;
   document.getElementById('deliveries').textContent = game.deliveries;
   document.getElementById('lvl').textContent = playerName() + ' · LVL ' + prog.level;
+  document.getElementById('cans').textContent = '⚡ ×' + energy.cans;
+  document.getElementById('boostfill').style.width = Math.max(0, energy.boostT / BOOST_DUR * 100) + '%';
   document.getElementById('xpfill').style.width =
     (prog.level >= 100 ? 100 : Math.min(100, prog.xp / xpNeed(prog.level) * 100)) + '%';
   magEl.textContent = W().mag;
@@ -2623,6 +2815,7 @@ tick();
 
 // debug/testing handle
 window.__so = {
+  get cineT() { return cine.t; },
   get state() {
     return {
       cine: cine.active, driving: !!driving, firing, locked, started, mode,

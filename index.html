@@ -135,6 +135,15 @@
     color: #ffd479; font-size: 15px; letter-spacing: 3px; text-shadow: 0 1px 4px #000; }
   #speedo { position: absolute; right: 34px; bottom: 110px; display: none; color: #fff;
     font-size: 30px; font-weight: 800; letter-spacing: 2px; text-shadow: 0 1px 6px #000; }
+
+  /* Red Bull energy boost */
+  #boostfx { position: absolute; inset: 0; opacity: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center, transparent 40%, rgba(28,79,208,.45) 100%); }
+  #energy { position: absolute; right: 34px; bottom: 150px; text-align: right; }
+  #energy #cans { color: #7fa8ff; font-size: 19px; font-weight: 800; letter-spacing: 1px; text-shadow: 0 1px 4px #000; }
+  #boostbar { width: 120px; height: 6px; margin-top: 5px; margin-left: auto; background: rgba(0,0,0,.5);
+    border: 1px solid rgba(127,168,255,.4); border-radius: 3px; overflow: hidden; }
+  #boostfill { height: 100%; width: 0%; background: linear-gradient(90deg,#1c4fd0,#7fa8ff); }
 </style>
 </head>
 <body>
@@ -167,6 +176,8 @@
     <div class="label">ARMOR / HEALTH</div>
     <div id="healthbar"><div id="healthfill"></div></div>
   </div>
+  <div id="boostfx"></div>
+  <div id="energy"><span id="cans">⚡ ×1</span><div id="boostbar"><div id="boostfill"></div></div></div>
   <div id="ammo">
     <div class="wname" id="wname">MK-4 ASSAULT RIFLE</div>
     <div><span class="mag" id="mag">30</span> <span class="res">/ <span id="reserve">120</span></span></div>
@@ -213,6 +224,7 @@
     <div><b>R</b></div><div>Reload</div>
     <div><b>E</b></div><div>Enter / exit car</div>
     <div><b>1 2 3</b></div><div>Switch weapon</div>
+    <div><b>Q</b></div><div>Drink Red Bull (speed boost)</div>
   </div>
   <div class="go">CLICK ANYWHERE TO DEPLOY</div>
 </div>
