@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=29';
+import { CITIES } from './sponsors.js?v=30';
 
 // ---------------------------------------------------------------------------
 // Renderer / scene / camera
@@ -1511,6 +1511,53 @@ function loadRealAssets() {
       personTemplates.push({ root: normalizeModel(g.scene, 'person', 1.78), clips: g.animations || [] });
       placeRealPeople();
     }, undefined, () => {});
+  // real animated humans walking their beat. This model's skinned mesh
+  // does not survive SkeletonUtils.clone, so each walker parses its own
+  // copy (the file is cached by the browser after the first load).
+  for (let i = 0; i < 6; i++)
+    gltfLoader.load('models/person_soldier.glb', g => {
+      lockWalkRoot(g.animations || []);
+      const root = g.scene;
+      root.rotation.y = Math.PI; // model faces -Z
+      const p = normalizeModel(root, 'person', 1.8);
+      const wrap = new THREE.Group();
+      wrap.add(p);
+      scene.add(wrap);
+      const clips = g.animations || [];
+      const walk = clips.find(c => /^walk/i.test(c.name)) || clips.find(c => /run/i.test(c.name));
+      const mixer = new THREE.AnimationMixer(p);
+      if (walk) {
+        const a = mixer.clipAction(walk);
+        a.time = Math.random() * walk.duration;
+        a.play();
+      }
+      modelMixers.push(mixer);
+      realWalkers.push({
+        obj: wrap,
+        s: STREETS[(i * 2 + 1) % STREETS.length],
+        alongX: i % 2 === 0,
+        dir: Math.random() < 0.5 ? 1 : -1,
+        side: (i % 3 - 1 || 1) * (ROAD_HALF + 2.0),
+        v: -100 + Math.random() * 200,
+        speed: 1.5,
+      });
+      if (i === 0) addFeed('🚶 Patrols walking the streets');
+    }, undefined, () => {});
+  // a fox lives in the park
+  gltfLoader.load('models/fox.glb', g => {
+    const inner = normalizeModel(g.scene, 'person', 0.65);
+    inner.rotation.y = -Math.PI / 2; // model runs along +X
+    const wrap = new THREE.Group();
+    wrap.add(inner);
+    scene.add(wrap);
+    const clips = g.animations || [];
+    const walk = clips.find(c => /walk/i.test(c.name)) || clips[0];
+    const mixer = new THREE.AnimationMixer(inner);
+    if (walk) mixer.clipAction(walk).play();
+    modelMixers.push(mixer);
+    modelWanderers.push({ obj: wrap, cx: PLAZAS[2].x, cz: PLAZAS[2].z,
+      ang: Math.random() * 6, r: 10, speed: 0.9 });
+  }, undefined, () => {});
   // desert-city assets load only where the theme wants them
   if (THEME.camels)
     gltfLoader.load('models/camel.glb', g => {
@@ -1622,6 +1669,7 @@ function placeArabicMen() {
     }
   }
 }
+const realWalkers = []; // animated characters walking the sidewalk lanes
 const modelMixers = [];   // animation players for real character models
 const modelBobbers = [];  // fallback idle for models without animations
 const modelWanderers = []; // characters walking a patrol with their walk clip
@@ -3650,6 +3698,22 @@ const HIP_POS = new THREE.Vector3(0.24, -0.2, -0.48);
 const ADS_POS = new THREE.Vector3(0, -0.115, -0.34);
 gun.position.copy(HIP_POS);
 camera.add(gun);
+
+// the order you're carrying: a branded pizza box in your off hand
+const carryBox = new THREE.Group();
+{
+  const box = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.07, 0.34),
+    new THREE.MeshStandardMaterial({ color: 0xf2ece0, roughness: 0.8 }));
+  carryBox.add(box);
+  const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.345, 0.025, 0.345),
+    new THREE.MeshStandardMaterial({ color: 0xd8352a, roughness: 0.7 }));
+  stripe.position.y = 0.012;
+  carryBox.add(stripe);
+  carryBox.position.set(-0.3, -0.26, -0.5);
+  carryBox.rotation.set(0.15, 0.3, 0.05);
+  carryBox.visible = false;
+  camera.add(carryBox);
+}
 scene.add(camera);
 
 const muzzleFlash = new THREE.Mesh(
@@ -5244,6 +5308,20 @@ function buildVenues() {
       const rotY = side > 0 ? -Math.PI / 2 : Math.PI / 2;
       const color = THEME.neon[i % THEME.neon.length];
       const sign = marquee(name, color, x + side * 0.2, z, rotY, 4.2, 3.4);
+      // stack of pizza boxes waiting by the door for pickup
+      const mBoxW = new THREE.MeshStandardMaterial({ color: 0xf2ece0, roughness: 0.8 });
+      const mBoxR = new THREE.MeshStandardMaterial({ color: 0xd8352a, roughness: 0.7 });
+      for (let bI = 0; bI < 3; bI++) {
+        const pb = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.085, 0.42), bI === 1 ? mBoxR : mBoxW);
+        pb.position.set(x - side * 1.1, 0.34 + bI * 0.085, z + 1.35);
+        pb.rotation.y = Math.random() * 0.5;
+        pb.castShadow = true;
+        scene.add(pb);
+      }
+      const stand = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.3, 0.6),
+        new THREE.MeshStandardMaterial({ color: 0x5a4a34, roughness: 0.9 }));
+      stand.position.set(x - side * 1.1, 0.15, z + 1.35);
+      scene.add(stand);
       RESTAURANTS.push({ name, x: x - side * 1.6, z, sign });
     });
     applyBrandLogos();
@@ -5262,6 +5340,17 @@ function updateVenues(dt) {
     w.ang += dt * w.speed / w.r;
     w.obj.position.set(w.cx + Math.cos(w.ang) * w.r, 0, w.cz + Math.sin(w.ang) * w.r);
     w.obj.rotation.y = Math.atan2(-Math.sin(w.ang), Math.cos(w.ang));
+  }
+  for (const w of realWalkers) {
+    w.v += w.speed * w.dir * dt;
+    if (w.v > 126 || w.v < -126) w.dir *= -1;
+    if (w.alongX) {
+      w.obj.position.set(w.v, 0, w.s + w.side);
+      w.obj.rotation.y = w.dir > 0 ? Math.PI / 2 : -Math.PI / 2;
+    } else {
+      w.obj.position.set(w.s + w.side, 0, w.v);
+      w.obj.rotation.y = w.dir > 0 ? 0 : Math.PI;
+    }
   }
   for (const gc of gestureCyclers) {
     gc.t -= dt;
@@ -6095,6 +6184,8 @@ function tick() {
   updateTutorial(dt);
   updateHeat(dt);
   updateAmbient(dt);
+  carryBox.visible = mode === 'delivery' && order.active && order.stage === 'dropoff'
+    && !driving && !player.dead && !cine.active;
   // parked cars you damaged keep smoking where they stand
   for (const v2 of vehicles) {
     if (v2 === driving || v2.health >= 45) continue;
