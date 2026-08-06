@@ -25,8 +25,9 @@ const scene = new THREE.Scene();
 const BASE_FOV = 75, ADS_FOV = 52;
 const camera = new THREE.PerspectiveCamera(BASE_FOV, window.innerWidth / window.innerHeight, 0.08, 500);
 
-// post-processing: bloom makes the neon actually glow
-const composer = new EffectComposer(renderer);
+// post-processing: bloom makes the neon actually glow (MSAA target = clean edges)
+const composer = new EffectComposer(renderer,
+  new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, { samples: 4 }));
 composer.addPass(new RenderPass(scene, camera));
 const bloomPass = new UnrealBloomPass(
   new THREE.Vector2(window.innerWidth, window.innerHeight), 0.55, 0.5, 0.82);
@@ -903,7 +904,10 @@ function carBox(pos, yaw, size = [2.0, 4.4]) {
 // low sports GT, and a long luxury sedan.
 function buildCarMesh(bodyColor, style = 'car') {
   const g = new THREE.Group();
-  const mBody = new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.25, metalness: 0.65 });
+  // physical clearcoat = real automotive paint under the environment reflections
+  const mBody = new THREE.MeshPhysicalMaterial({
+    color: bodyColor, roughness: 0.32, metalness: 0.85,
+    clearcoat: 1.0, clearcoatRoughness: 0.06 });
   const mDark = new THREE.MeshStandardMaterial({ color: 0x11151a, roughness: 0.6 });
   const mCab = new THREE.MeshStandardMaterial({ color: 0x0d141c, roughness: 0.08, metalness: 0.85 });
   const mChrome = new THREE.MeshStandardMaterial({ color: 0xc8ccd2, roughness: 0.15, metalness: 0.9 });
@@ -1755,6 +1759,15 @@ function buildCity(city) {
   spawnTraffic();
   spawnPeds();
   for (let i = 0; i < 10; i++) spawnCanPickup();
+
+  // capture the finished city as the environment map: car paint, glass and
+  // wet asphalt now reflect the actual streets and sky around them
+  try {
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    const env = pmrem.fromScene(scene, 0, 0.5, 420);
+    scene.environment = env.texture;
+    pmrem.dispose();
+  } catch (e) { /* env reflections are an enhancement, never fatal */ }
 }
 
 // ---------------------------------------------------------------------------
@@ -1988,6 +2001,8 @@ const hudEl = document.getElementById('hud');
 function requestLock() { canvas.requestPointerLock(); }
 menuEl.addEventListener('click', () => {
   audioInit();
+  // real-game presentation: take the whole screen
+  try { document.documentElement.requestFullscreen?.()?.catch(() => {}); } catch {}
   if (!CITY) buildCity(selectedCity());
   requestLock();
 });
@@ -3526,10 +3541,13 @@ function initPreview() {
   pv.renderer.setSize(cv.width, cv.height, false);
   pv.cam.position.set(0, 1.0, 3.2);
   pv.cam.lookAt(0, 0.88, 0);
-  pv.scene.add(new THREE.HemisphereLight(0xcfe0f0, 0x443f38, 2.4));
-  const d = new THREE.DirectionalLight(0xffffff, 2.2);
+  pv.scene.add(new THREE.HemisphereLight(0xe0ecf8, 0x55504a, 3.2));
+  const d = new THREE.DirectionalLight(0xffffff, 3.4);
   d.position.set(2, 3, 2);
   pv.scene.add(d);
+  const rim = new THREE.DirectionalLight(0x7fd0ff, 1.6);
+  rim.position.set(-2, 2, -2);
+  pv.scene.add(rim);
   refreshPreview();
 }
 function refreshPreview() {
