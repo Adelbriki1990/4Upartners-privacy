@@ -41,16 +41,31 @@ into a `lib/` folder and point the import map at `./lib/three.module.min.js`.
 
 ### Gameplay
 
-- Escalating waves of hostiles spawn from the alleys and street ends —
-  they chase, strafe, and fire with real line-of-sight checks.
-- Use parked cars, concrete barriers, and crates as cover.
+- **Three selectable cities**, each with its own atmosphere and sponsor
+  roster: Neon District (rain-soaked megacity), Marina Bay (warm gulf
+  downtown), Red Harbor (old-town brick). Your choice is remembered.
+- A **full city grid** (~360 m across): streets, intersections, crosswalks,
+  storefronts with neon signs, towers with lit windows, rooftop clutter.
+- **Drivable cars** — walk to any parked car and press E; run hostiles
+  over, press E again to bail out.
+- Cinematic intro flyover, rain/thunder (per city), slow-mo wave-clears,
+  minimap with live enemy positions.
+- Escalating hostile waves spawn on nearby streets — enemies chase, strafe,
+  and fire with real line-of-sight checks. Use cars and barriers as cover.
 - COD-style regenerating health: break contact for 4 seconds to recover.
 - Headshots deal double damage; ammo reserve refills each wave.
 
 ## Sponsors / advertising
 
-Billboards on tower walls and street-level ad stands are configured in
-[`sponsors.js`](sponsors.js) — edit the list to change sponsor names,
-taglines, and brand colors. To show a real logo, add an image to the repo
-(e.g. `ads/mybrand.png`) and set that entry's `logo` field to its path.
+Each city has its own sponsor roster in [`sponsors.js`](sponsors.js) —
+sponsors appear as billboards on tower walls, street-level ad stands, and
+storefront signs in that city. Edit names, taglines, and brand colors there.
+
+To show a **real logo** (Snoonu, BMW, Coca-Cola, Red Bull, …): create an
+`ads/` folder in the repo, drop the official logo file in (e.g.
+`ads/snoonu.png`), and set that sponsor's `logo` field to the path — it is
+drawn on the billboards automatically. Use each brand's official assets and
+make sure you have the sponsor's permission before publishing the game
+commercially with their branding.
+
 The Unity version has the same system in `unity/StreetOps/SponsorConfig.cs`.
