@@ -720,6 +720,19 @@ function buildCarMesh(bodyColor, style = 'car') {
       tl.position.set(hx, y, rearZ); g.add(tl);
     }
   };
+  const mGlass = new THREE.MeshStandardMaterial({ color: 0x10161f, roughness: 0.12, metalness: 0.6 });
+  const glassPane = (w, h, y, z, tilt) => {
+    const p = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.04), mGlass);
+    p.position.set(0, y, z);
+    p.rotation.x = tilt;
+    g.add(p);
+  };
+  const mirrors = (wx, y, z) => {
+    for (const sx of [-1, 1]) {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.08, 0.06), mDark);
+      m.position.set(sx * wx, y, z); g.add(m);
+    }
+  };
 
   if (style === 'suv') {
     // tall boxy 4x4: high stance, roof rails, rear-mounted spare wheel
@@ -736,6 +749,9 @@ function buildCarMesh(bodyColor, style = 'car') {
     spare.position.set(0.5, 1.0, -2.42); g.add(spare);
     const bumper = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.24, 0.2), mChrome);
     bumper.position.set(0, 0.5, 2.35); g.add(bumper);
+    glassPane(1.72, 0.62, 1.5, 1.32, -0.35);
+    glassPane(1.72, 0.55, 1.5, -1.62, 0.4);
+    mirrors(1.05, 1.42, 1.12);
     wheel(-1.0, 1.5, 0.44); wheel(1.0, 1.5, 0.44); wheel(-1.0, -1.5, 0.44); wheel(1.0, -1.5, 0.44);
     lights(2.31, -2.31, 0.95);
   } else if (style === 'sports') {
@@ -753,6 +769,8 @@ function buildCarMesh(bodyColor, style = 'car') {
     wingPosts.position.set(0, 0.7, -2.0); g.add(wingPosts);
     const wing = new THREE.Mesh(new THREE.BoxGeometry(1.75, 0.06, 0.34), mBody);
     wing.position.set(0, 0.82, -2.05); g.add(wing);
+    glassPane(1.42, 0.42, 0.8, 0.6, -0.8);
+    mirrors(0.88, 0.74, 0.5);
     wheel(-0.95, 1.35, 0.33); wheel(0.95, 1.35, 0.33); wheel(-0.95, -1.4, 0.33); wheel(0.95, -1.4, 0.33);
     lights(2.15, -2.12, 0.45);
   } else if (style === 'hyper') {
@@ -776,6 +794,8 @@ function buildCarMesh(bodyColor, style = 'car') {
     }
     const wing = new THREE.Mesh(new THREE.BoxGeometry(1.95, 0.05, 0.42), mBody);
     wing.position.set(0, 0.88, -2.05); g.add(wing);
+    glassPane(1.32, 0.38, 0.72, 0.58, -0.92);
+    mirrors(0.9, 0.68, 0.42);
     wheel(-0.95, 1.35, 0.33); wheel(0.95, 1.35, 0.33); wheel(-0.95, -1.4, 0.34); wheel(0.95, -1.4, 0.34);
     lights(2.35, -2.16, 0.42);
   } else if (style === 'phantom') {
@@ -792,6 +812,9 @@ function buildCarMesh(bodyColor, style = 'car') {
       const trim = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.04, 4.8), mChrome);
       trim.position.set(sx, 0.95, -0.1); g.add(trim);
     }
+    glassPane(1.72, 0.55, 1.5, 0.92, -0.42);
+    glassPane(1.72, 0.5, 1.5, -1.88, 0.45);
+    mirrors(1.05, 1.36, 0.88);
     wheel(-0.98, 1.7, 0.38); wheel(0.98, 1.7, 0.38); wheel(-0.98, -1.7, 0.38); wheel(0.98, -1.7, 0.38);
     lights(2.61, -2.61, 0.8);
   } else if (style === 'luxury') {
@@ -806,6 +829,11 @@ function buildCarMesh(bodyColor, style = 'car') {
     }
     const grille = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.3, 0.08), mChrome);
     grille.position.set(0, 0.55, 2.46); g.add(grille);
+    glassPane(1.62, 0.52, 1.08, 0.98, -0.5);
+    glassPane(1.62, 0.48, 1.08, -1.6, 0.55);
+    mirrors(1.0, 0.98, 0.78);
+    const hood = new THREE.Mesh(new THREE.BoxGeometry(1.85, 0.1, 1.2), mBody);
+    hood.position.set(0, 0.9, 1.8); g.add(hood);
     wheel(-0.95, 1.6, 0.35); wheel(0.95, 1.6, 0.35); wheel(-0.95, -1.6, 0.35); wheel(0.95, -1.6, 0.35);
     lights(2.46, -2.46, 0.62);
   } else {
@@ -814,6 +842,9 @@ function buildCarMesh(bodyColor, style = 'car') {
     body.position.y = 0.55; g.add(body);
     const cab = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.55, 2.2), mDark);
     cab.position.set(0, 1.1, -0.2); g.add(cab);
+    glassPane(1.58, 0.52, 1.08, 0.92, -0.48);
+    glassPane(1.58, 0.48, 1.08, -1.32, 0.52);
+    mirrors(0.98, 0.98, 0.72);
     wheel(-0.95, 1.45, 0.34); wheel(0.95, 1.45, 0.34); wheel(-0.95, -1.45, 0.34); wheel(0.95, -1.45, 0.34);
     lights(2.21, -2.21, 0.62);
   }
@@ -955,81 +986,110 @@ function updateTraffic(dt) {
 // ---------------------------------------------------------------------------
 const SKINS = [0xd9b08c, 0xc59a76, 0xb08a67, 0x8a6248, 0x6b4a35];
 const HAIRS = [0x1c1712, 0x3a2a18, 0x6b4a26, 0x9a7b46, 0x666666, 0x2a2a35];
+// Rounded low-poly humans: capsule bodies, real heads with faces and hair,
+// jointed limbs (shoulder/hip pivots) and per-person height variation.
 function makeCharacter(cfg, opts = {}) {
   const g = new THREE.Group();
   const female = cfg.gender === 'f';
-  const mSkinC = new THREE.MeshStandardMaterial({ color: cfg.skin, roughness: 0.85 });
+  const mSkinC = new THREE.MeshStandardMaterial({ color: cfg.skin, roughness: 0.75 });
   const shirt = new THREE.MeshStandardMaterial({
-    color: new THREE.Color().setHSL(cfg.shirtHue, 0.5, 0.32 + (cfg.shirtHue % 0.3)), roughness: 0.9 });
+    color: new THREE.Color().setHSL(cfg.shirtHue, 0.5, 0.32 + (cfg.shirtHue % 0.3)), roughness: 0.85 });
   const pants = new THREE.MeshStandardMaterial({
     color: new THREE.Color().setHSL(cfg.pantsHue, 0.25, 0.16 + (cfg.pantsHue % 0.2)), roughness: 0.9 });
   const hairM = new THREE.MeshStandardMaterial({ color: cfg.hairColor, roughness: 0.95 });
+  const mDarkC = new THREE.MeshStandardMaterial({ color: 0x181a1e, roughness: 0.8 });
 
   const uniformed = cfg.uniform !== undefined;
   if (uniformed) shirt.color.set(cfg.uniform);
-  const tw = female ? 0.42 : 0.5, td = female ? 0.23 : 0.27;
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(tw, 0.6, td), shirt);
-  torso.position.y = 1.1; g.add(torso);
+
+  // torso + hips (capsules, squashed for shoulders)
+  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(female ? 0.14 : 0.16, 0.34, 4, 10), shirt);
+  torso.scale.set(1.35, 1, 0.8);
+  torso.position.y = 1.16; g.add(torso);
+  const hips = new THREE.Mesh(new THREE.CapsuleGeometry(female ? 0.135 : 0.145, 0.08, 4, 10), pants);
+  hips.scale.set(1.25, 1, 0.85);
+  hips.position.y = 0.85; g.add(hips);
 
   if (uniformed) {
-    // courier kit: reflective safety stripes + branded delivery backpack
     const mStripe = new THREE.MeshStandardMaterial({
       color: 0xe8ecf0, roughness: 0.4, emissive: 0xaab4be, emissiveIntensity: 0.25 });
-    for (const sy of [1.24, 1.02]) {
-      const stripe = new THREE.Mesh(new THREE.BoxGeometry(tw + 0.02, 0.06, td + 0.02), mStripe);
+    for (const sy of [1.26, 1.06]) {
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.05, 0.3), mStripe);
       stripe.position.y = sy; g.add(stripe);
     }
     const mPack = new THREE.MeshStandardMaterial({
       color: new THREE.Color(cfg.uniform).multiplyScalar(1.15), roughness: 0.55 });
-    const pack = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.48, 0.26), mPack);
-    pack.position.set(0, 1.16, -(td / 2 + 0.15)); g.add(pack);
-    const packBand = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.1, 0.27),
+    const pack = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.46, 0.24), mPack);
+    pack.position.set(0, 1.18, -0.28); g.add(pack);
+    const packBand = new THREE.Mesh(new THREE.BoxGeometry(0.43, 0.09, 0.25),
       new THREE.MeshStandardMaterial({ color: 0xf0f2f4, roughness: 0.5 }));
-    packBand.position.set(0, 1.34, -(td / 2 + 0.15)); g.add(packBand);
+    packBand.position.set(0, 1.35, -0.28); g.add(packBand);
   }
 
   if (opts.head !== false) {
-    const head = new THREE.Mesh(new THREE.BoxGeometry(0.23, 0.26, 0.23), mSkinC);
-    head.position.y = 1.58; g.add(head);
-    const cap = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.09, 0.25), hairM);
-    cap.position.y = 1.72; g.add(cap);
-    if (uniformed) {
-      // branded courier cap with brim
-      const mCap = new THREE.MeshStandardMaterial({ color: cfg.uniform, roughness: 0.7 });
-      const ucap = new THREE.Mesh(new THREE.BoxGeometry(0.27, 0.08, 0.27), mCap);
-      ucap.position.y = 1.76; g.add(ucap);
-      const brim = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.03, 0.14), mCap);
-      brim.position.set(0, 1.73, 0.19); g.add(brim);
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.055, 0.09, 8), mSkinC);
+    neck.position.y = 1.47; g.add(neck);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.135, 12, 10), mSkinC);
+    head.scale.set(0.95, 1.12, 0.98);
+    head.position.y = 1.63; g.add(head);
+    // face: eyes
+    for (const ex of [-0.05, 0.05]) {
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.016, 6, 6), mDarkC);
+      eye.position.set(ex, 1.65, 0.12); g.add(eye);
     }
+    // hair: rounded cap hugging the skull (+ long back for long hair)
+    const hair = new THREE.Mesh(new THREE.SphereGeometry(0.142, 12, 8), hairM);
+    hair.scale.set(0.97, 0.85, 1.0);
+    hair.position.y = 1.68; g.add(hair);
     if (cfg.hairLong) {
-      const back = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.4, 0.09), hairM);
+      const back = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.36, 0.08), hairM);
       back.position.set(0, 1.5, -0.14); g.add(back);
     }
+    if (uniformed) {
+      const mCap = new THREE.MeshStandardMaterial({ color: cfg.uniform, roughness: 0.7 });
+      const ucap = new THREE.Mesh(new THREE.SphereGeometry(0.148, 12, 8), mCap);
+      ucap.scale.set(1, 0.68, 1);
+      ucap.position.y = 1.7; g.add(ucap);
+      const brim = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.025, 0.13), mCap);
+      brim.position.set(0, 1.7, 0.19); g.add(brim);
+    }
   }
 
+  // legs: hip pivots so the walk cycle bends at the joint
   const legs = [];
+  const legMat = cfg.skirt ? mSkinC : pants;
+  const legLen = cfg.skirt ? 0.34 : 0.42;
   if (cfg.skirt) {
-    const skirt = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.3, 0.3), pants);
-    skirt.position.y = 0.66; g.add(skirt);
-    for (const sx of [-1, 1]) {
-      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.5, 0.15), mSkinC);
-      leg.position.set(sx * 0.11, 0.25, 0);
-      g.add(leg); legs.push(leg);
-    }
-  } else {
-    for (const sx of [-1, 1]) {
-      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.6, 0.17), pants);
-      leg.position.set(sx * 0.11, 0.3, 0);
-      g.add(leg); legs.push(leg);
-    }
+    const skirt = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.22, 0.3, 10), pants);
+    skirt.position.y = 0.68; g.add(skirt);
+  }
+  for (const sx of [-1, 1]) {
+    const pivot = new THREE.Group();
+    pivot.position.set(sx * 0.1, 0.82, 0);
+    const leg = new THREE.Mesh(new THREE.CapsuleGeometry(0.062, legLen, 4, 8), legMat);
+    leg.position.y = -(legLen / 2 + 0.12);
+    pivot.add(leg);
+    const foot = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.06, 0.2), mDarkC);
+    foot.position.set(0, -(legLen + 0.22), 0.04);
+    pivot.add(foot);
+    g.add(pivot); legs.push(pivot);
   }
 
+  // arms: shoulder pivots with skin hands
   const arms = [];
   for (const sx of [-1, 1]) {
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.48, 0.13), shirt);
-    arm.position.set(sx * (female ? 0.28 : 0.32), 1.1, 0);
-    g.add(arm); arms.push(arm);
+    const pivot = new THREE.Group();
+    pivot.position.set(sx * (female ? 0.235 : 0.27), 1.36, 0);
+    const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.05, 0.3, 4, 8), shirt);
+    arm.position.y = -0.2;
+    pivot.add(arm);
+    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), mSkinC);
+    hand.position.y = -0.42;
+    pivot.add(hand);
+    g.add(pivot); arms.push(pivot);
   }
+
+  g.scale.setScalar(cfg.height || 1);
   g.traverse(o => { if (o.isMesh) o.castShadow = true; });
   return { group: g, legs, arms };
 }
@@ -1043,6 +1103,7 @@ function randomLook() {
     hairColor: HAIRS[Math.floor(Math.random() * HAIRS.length)],
     hairLong: f ? Math.random() < 0.75 : Math.random() < 0.1,
     skirt: f && Math.random() < 0.5,
+    height: (f ? 0.92 : 0.97) + Math.random() * 0.12,
   };
 }
 
