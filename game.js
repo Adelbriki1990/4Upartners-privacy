@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=19';
+import { CITIES } from './sponsors.js?v=20';
 
 // ---------------------------------------------------------------------------
 // Renderer / scene / camera
@@ -60,6 +60,7 @@ const THEMES = {
     neon: ['#41d8ff', '#ff4fd8', '#7dff8a', '#d07dff', '#ffd23f'],
     rain: 1400, thunder: true, hMin: 18, hMax: 46,
     styles: { curtain: 0.5, brick: 0.05 }, tree: { color: 0x1e3022, every: 26, chance: 0.5 },
+    landmark: { x: 90, z: 90 }, // holo-spire block
   },
   marina: {
     sky: 0x141824, fog: 0.008, hemi: [0x5a6a8a, 0x2a2318, 1.6],
@@ -68,6 +69,7 @@ const THEMES = {
     neon: ['#ffd23f', '#ff9c41', '#41d8ff', '#ff5f6d', '#7dff8a'],
     rain: 0, thunder: false, hMin: 16, hMax: 42,
     styles: { curtain: 0.45, brick: 0.08 }, tree: { color: 0x2a4530, every: 20, chance: 0.65 },
+    waterfront: 'east', // corniche, palms, yachts along +x
   },
   sahara: {
     sky: 0x1a140c, fog: 0.009, hemi: [0x8a6f4a, 0x3a2c18, 1.5],
@@ -79,6 +81,8 @@ const THEMES = {
     tree: { color: 0x3a5a2a, every: 30, chance: 0.4, palm: true },
     ground: { base: '#b89a6a', road: '#7a6a50', line: '#e8dcc0' },
     arch: 'arabic', dress: 'arabic', camels: true,
+    landmark: { x: -90, z: 90 }, // kasbah watchtower block
+    gates: true,                 // adobe city gates over the main avenues
   },
   harbor: {
     sky: 0x14100e, fog: 0.0125, hemi: [0x6a5648, 0x241c14, 1.4],
@@ -87,6 +91,7 @@ const THEMES = {
     neon: ['#ff8a5f', '#ffd23f', '#ff5f6d', '#7dff8a', '#41d8ff'],
     rain: 750, thunder: true, hMin: 9, hMax: 24,
     styles: { curtain: 0.06, brick: 0.6 }, tree: { color: 0x2c3620, every: 22, chance: 0.55 },
+    docks: 'west', // container port, cranes, cargo ship along -x
   },
 };
 let CITY = null, THEME = null;
@@ -2036,6 +2041,7 @@ function buildCity(city) {
       for (const qx of [0, 1]) for (const qz of [0, 1]) {
         const lcx = x0 + lotW * qx + lotW / 2, lcz = z0 + lotD * qz + lotD / 2;
         if (PLAZAS.some(p => Math.hypot(lcx - p.x, lcz - p.z) < 27)) continue; // venue plaza
+        if (THEME.landmark && Math.hypot(lcx - THEME.landmark.x, lcz - THEME.landmark.z) < 22) continue;
         if (Math.random() < 0.12) continue; // empty lot
         const w = lotW * (0.62 + Math.random() * 0.28);
         const d = lotD * (0.62 + Math.random() * 0.28);
@@ -2051,12 +2057,13 @@ function buildCity(city) {
     }
 
   // ---- perimeter ring so the city feels endless ----
+  // (the waterfront/dock edge stays open so you can see the sea)
   for (let p = -120; p <= 120; p += 48) {
     const h = 30 + Math.random() * 22;
     addBuilding(p, -(CITY_HALF - 8), 34, 15, h, { ax: 'z', dir: 1 });
     addBuilding(p, CITY_HALF - 8, 34, 15, h, { ax: 'z', dir: -1 });
-    addBuilding(-(CITY_HALF - 8), p, 15, 34, h, { ax: 'x', dir: 1 });
-    addBuilding(CITY_HALF - 8, p, 15, 34, h, { ax: 'x', dir: -1 });
+    if (THEME.docks !== 'west') addBuilding(-(CITY_HALF - 8), p, 15, 34, h, { ax: 'x', dir: 1 });
+    if (THEME.waterfront !== 'east') addBuilding(CITY_HALF - 8, p, 15, 34, h, { ax: 'x', dir: -1 });
   }
 
   // ---- street lamps (real point lights only near the spawn avenue) ----
@@ -2320,6 +2327,7 @@ function buildCity(city) {
 
   buildClub();
   buildVenues();
+  addLandmarks();
   spawnTraffic();
   spawnPeds();
   spawnCamels();
@@ -2457,6 +2465,265 @@ function streetPointNear(center, rMin, rMax) {
 }
 
 // ---------------------------------------------------------------------------
+// City landmarks — each city gets a signature so no two feel the same:
+// Marina Bay opens onto the sea with a palm corniche and yachts, Red Harbor
+// gets a working container port, Neon District a glowing holo-spire, and
+// Old Sahara fortified city gates and a kasbah watchtower.
+// ---------------------------------------------------------------------------
+const seaBits = []; // boats and buoys that bob on the water
+function addLandmarks() {
+  if (THEME.waterfront === 'east') addSea(1, 0x0d4a66, true);
+  if (THEME.docks === 'west') { addSea(-1, 0x11333f, false); addDocks(); }
+  if (THEME.landmark) {
+    if (THEME.arch === 'arabic') addWatchtower(THEME.landmark.x, THEME.landmark.z);
+    else addHoloSpire(THEME.landmark.x, THEME.landmark.z);
+  }
+  if (THEME.gates) addCityGates();
+}
+function addSea(side, color, fancy) {
+  const water = new THREE.Mesh(new THREE.PlaneGeometry(330, 660),
+    new THREE.MeshStandardMaterial({ color, roughness: 0.12, metalness: 0.55 }));
+  water.rotation.x = -Math.PI / 2;
+  water.position.set(side * 303, 0.04, 0);
+  scene.add(water);
+  // quay apron along the shore
+  const mStone = new THREE.MeshStandardMaterial({ color: fancy ? 0xcdbFa2 : 0x74767a, roughness: 0.9 });
+  const quay = new THREE.Mesh(new THREE.BoxGeometry(9, 0.5, 300), mStone);
+  quay.position.set(side * 137, 0.25, 0);
+  scene.add(quay);
+  if (fancy) {
+    // corniche railing + palm walk
+    const mRail = new THREE.MeshStandardMaterial({ color: 0xe8e2d2, roughness: 0.5, metalness: 0.3 });
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 296), mRail);
+    rail.position.set(side * 140.6, 1.05, 0);
+    scene.add(rail);
+    for (let z = -145; z <= 145; z += 9) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.05, 0.1), mRail);
+      post.position.set(side * 140.6, 0.52, z);
+      scene.add(post);
+    }
+    const mTrunk = new THREE.MeshStandardMaterial({ color: 0x6a5638, roughness: 0.95 });
+    const mFrond = new THREE.MeshStandardMaterial({ color: 0x2a5a30, roughness: 0.95 });
+    for (let z = -140; z <= 140; z += 20) {
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.14, 4.6, 6), mTrunk);
+      trunk.position.set(side * 135, 2.3, z);
+      const crown = new THREE.Mesh(new THREE.SphereGeometry(1, 8, 6), mFrond);
+      crown.scale.set(2.1, 0.5, 2.1);
+      crown.position.set(side * 135, 4.7, z);
+      trunk.castShadow = crown.castShadow = true;
+      scene.add(trunk); scene.add(crown);
+    }
+    // white yachts moored off the corniche
+    const mHull = new THREE.MeshStandardMaterial({ color: 0xf2f4f6, roughness: 0.35 });
+    const mGlass2 = new THREE.MeshStandardMaterial({ color: 0x18242e, roughness: 0.15, metalness: 0.6 });
+    for (const [wx, wz, ry] of [[168, -75, 0.4], [178, 5, -0.2], [163, 88, 0.1], [195, -20, 0.7]]) {
+      const boat = new THREE.Group();
+      const hull = new THREE.Mesh(new THREE.CylinderGeometry(1.7, 1.1, 11, 8), mHull);
+      hull.rotation.x = Math.PI / 2; hull.rotation.z = Math.PI / 2;
+      hull.scale.y = 0.55;
+      hull.position.y = 0.7;
+      boat.add(hull);
+      const cabin = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.1, 4), mHull);
+      cabin.position.set(0, 1.7, -0.6); boat.add(cabin);
+      const wind = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.55, 1.2), mGlass2);
+      wind.position.set(0, 1.85, 1.6); boat.add(wind);
+      boat.position.set(side * wx, 0, wz);
+      boat.rotation.y = ry;
+      boat.traverse(o => { if (o.isMesh) o.castShadow = true; });
+      scene.add(boat);
+      seaBits.push({ obj: boat, baseY: 0, phase: Math.random() * 6 });
+    }
+  }
+}
+function addDocks() {
+  const side = -1;
+  // container stacks you can drive between
+  const boxCols = [0xb63a2e, 0x2e6db9, 0x3e8a4e, 0xb9902e, 0x7a4a8a];
+  for (let i = 0; i < 14; i++) {
+    const z = -115 + i * 17 + (Math.random() - 0.5) * 5;
+    if (STREETS.some(s => Math.abs(z - s) < ROAD_HALF + 5)) continue;
+    const x = side * (124 + Math.random() * 5);
+    const stackH = 1 + (Math.random() < 0.45 ? 1 : 0);
+    for (let hI = 0; hI < stackH; hI++) {
+      const box = new THREE.Mesh(new THREE.BoxGeometry(2.5, 2.6, 6.2),
+        new THREE.MeshStandardMaterial({ color: boxCols[(i + hI) % boxCols.length], roughness: 0.7, metalness: 0.25 }));
+      box.position.set(x, 1.3 + hI * 2.6, z);
+      box.castShadow = true;
+      scene.add(box);
+    }
+    addCollider(new THREE.Box3(
+      new THREE.Vector3(x - 1.3, 0, z - 3.2), new THREE.Vector3(x + 1.3, stackH * 2.6, z + 3.2)));
+  }
+  // gantry cranes over the quay
+  const mCrane = new THREE.MeshStandardMaterial({ color: 0xd8a018, roughness: 0.55, metalness: 0.4 });
+  for (const cz of [-55, 62]) {
+    const crane = new THREE.Group();
+    for (const [lx, lz] of [[-4, -5], [4, -5], [-4, 5], [4, 5]]) {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.9, 21, 0.9), mCrane);
+      leg.position.set(lx, 10.5, lz); crane.add(leg);
+    }
+    const beamA = new THREE.Mesh(new THREE.BoxGeometry(30, 1.4, 1.2), mCrane);
+    beamA.position.set(-8, 21.5, -5); crane.add(beamA);
+    const beamB = beamA.clone(); beamB.position.z = 5; crane.add(beamB);
+    const cab = new THREE.Mesh(new THREE.BoxGeometry(2.6, 2.2, 2.6), mCrane);
+    cab.position.set(-14, 19.6, 0); crane.add(cab);
+    const cable = new THREE.Mesh(new THREE.BoxGeometry(0.12, 9, 0.12), mCrane);
+    cable.position.set(-14, 14, 0); crane.add(cable);
+    crane.position.set(side * 137, 0, cz);
+    crane.traverse(o => { if (o.isMesh) o.castShadow = true; });
+    scene.add(crane);
+    addCollider(new THREE.Box3(
+      new THREE.Vector3(side * 137 - 5, 0, cz - 6), new THREE.Vector3(side * 137 + 5, 21, cz + 6)));
+  }
+  // cargo ship moored offshore, deck stacked with containers
+  const ship = new THREE.Group();
+  const mShipHull = new THREE.MeshStandardMaterial({ color: 0x6e2a20, roughness: 0.7, metalness: 0.3 });
+  const hull = new THREE.Mesh(new THREE.BoxGeometry(13, 7, 62), mShipHull);
+  hull.position.y = 3.5; ship.add(hull);
+  const bow = new THREE.Mesh(new THREE.CylinderGeometry(6.5, 4.5, 7, 3), mShipHull);
+  bow.position.set(0, 3.5, 34); bow.rotation.y = Math.PI; ship.add(bow);
+  const bridge = new THREE.Mesh(new THREE.BoxGeometry(11, 9, 7),
+    new THREE.MeshStandardMaterial({ color: 0xe8e6e0, roughness: 0.6 }));
+  bridge.position.set(0, 11.5, -24); ship.add(bridge);
+  for (let cI = 0; cI < 8; cI++) {
+    const cont = new THREE.Mesh(new THREE.BoxGeometry(2.4, 2.5, 6),
+      new THREE.MeshStandardMaterial({ color: boxCols[cI % boxCols.length], roughness: 0.7 }));
+    cont.position.set((cI % 2 ? 3 : -3), 8.25 + Math.floor(cI / 4) * 2.5, -8 + (cI % 4) * 8);
+    ship.add(cont);
+  }
+  ship.position.set(side * 172, 0, 15);
+  ship.rotation.y = 0.06;
+  ship.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  scene.add(ship);
+  seaBits.push({ obj: ship, baseY: 0, phase: 2.2 });
+  // harbor buoys
+  for (const [bx, bz] of [[150, -90], [158, 40], [147, 110]]) {
+    const buoy = new THREE.Mesh(new THREE.SphereGeometry(0.55, 8, 6),
+      new THREE.MeshStandardMaterial({ color: 0xd82a1e, roughness: 0.5 }));
+    buoy.position.set(side * bx, 0.3, bz);
+    scene.add(buoy);
+    seaBits.push({ obj: buoy, baseY: 0.3, phase: Math.random() * 6 });
+  }
+}
+function addHoloSpire(x, z) {
+  const spire = new THREE.Group();
+  const mDark = new THREE.MeshStandardMaterial({ color: 0x55637a, roughness: 0.55, metalness: 0.12 });
+  const podium = new THREE.Mesh(new THREE.BoxGeometry(17, 5, 17), mDark);
+  podium.position.y = 2.5; spire.add(podium);
+  let y = 5;
+  const tiers = [[13, 16], [10.5, 15], [8, 14], [5.8, 13], [3.8, 11]];
+  tiers.forEach(([w, h], i) => {
+    const tier = new THREE.Mesh(new THREE.BoxGeometry(w, h, w), mDark);
+    tier.position.y = y + h / 2; spire.add(tier);
+    const band = new THREE.Mesh(new THREE.BoxGeometry(w + 0.7, 1.1, w + 0.7),
+      new THREE.MeshBasicMaterial({ color: THEME.neon[i % THEME.neon.length] }));
+    band.position.y = y + h; spire.add(band);
+    y += h;
+  });
+  const antenna = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.3, 13, 6), mDark);
+  antenna.position.y = y + 6.5; spire.add(antenna);
+  const tip = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 6),
+    new THREE.MeshBasicMaterial({ color: 0xff4444 }));
+  tip.position.y = y + 13; spire.add(tip);
+  blinkers.push({ mesh: tip, phase: Math.random() * 2 });
+  spire.position.set(x, 0, z);
+  spire.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  scene.add(spire);
+  addCollider(new THREE.Box3(
+    new THREE.Vector3(x - 8.5, 0, z - 8.5), new THREE.Vector3(x + 8.5, y, z + 8.5)));
+}
+function addWatchtower(x, z) {
+  const mAdobe = new THREE.MeshStandardMaterial({ color: 0xa8895c, roughness: 0.95 });
+  const tower = new THREE.Group();
+  let y = 0;
+  for (const [w, h] of [[8, 9], [6.6, 8], [5.2, 7]]) {
+    const t = new THREE.Mesh(new THREE.BoxGeometry(w, h, w), mAdobe);
+    t.position.y = y + h / 2; tower.add(t);
+    y += h;
+  }
+  // crenellated crown
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    const merlon = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.2, 0.9), mAdobe);
+    merlon.position.set(Math.cos(a) * 2.3, y + 0.6, Math.sin(a) * 2.3);
+    tower.add(merlon);
+  }
+  // warm lit windows up the shaft
+  const mWin = new THREE.MeshBasicMaterial({ color: 0xffc37a });
+  for (let wy = 5; wy < y - 2; wy += 5) {
+    const win = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 1.3), mWin);
+    win.position.set(0, wy, 4.05 - (wy / y) * 1.4);
+    tower.add(win);
+  }
+  tower.position.set(x, 0, z);
+  tower.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  scene.add(tower);
+  addCollider(new THREE.Box3(
+    new THREE.Vector3(x - 4.2, 0, z - 4.2), new THREE.Vector3(x + 4.2, y, z + 4.2)));
+  // low kasbah wall around the tower yard, with an open gate to the south
+  for (const [wx, wz, ww, wd, skip] of [
+    [0, -13, 28, 1.4, true], [0, 13, 28, 1.4, false], [-13, 0, 1.4, 28, false], [13, 0, 1.4, 28, false]]) {
+    if (skip) { // south side: two wall stubs leaving a gate opening
+      for (const gx of [-9.5, 9.5]) {
+        const stub = new THREE.Mesh(new THREE.BoxGeometry(9, 3, 1.4), mAdobe);
+        stub.position.set(x + gx, 1.5, z + wz);
+        stub.castShadow = true;
+        scene.add(stub);
+        addCollider(new THREE.Box3(
+          new THREE.Vector3(x + gx - 4.5, 0, z + wz - 0.7), new THREE.Vector3(x + gx + 4.5, 3, z + wz + 0.7)));
+      }
+      continue;
+    }
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(ww, 3, wd), mAdobe);
+    wall.position.set(x + wx, 1.5, z + wz);
+    wall.castShadow = true;
+    scene.add(wall);
+    addCollider(new THREE.Box3(
+      new THREE.Vector3(x + wx - ww / 2, 0, z + wz - wd / 2), new THREE.Vector3(x + wx + ww / 2, 3, z + wz + wd / 2)));
+  }
+}
+function addCityGates() {
+  const mAdobe = new THREE.MeshStandardMaterial({ color: 0x9a7f54, roughness: 0.95 });
+  const gates = [[0, -118, 0], [0, 118, 0], [-118, 0, Math.PI / 2], [118, 0, Math.PI / 2]];
+  for (const [gx, gz, ry] of gates) {
+    const gate = new THREE.Group();
+    for (const tside of [-1, 1]) {
+      const tx = tside * (ROAD_HALF + 3.2);
+      const towr = new THREE.Mesh(new THREE.BoxGeometry(5.5, 13, 5.5), mAdobe);
+      towr.position.set(tx, 6.5, 0); gate.add(towr);
+      for (let mI = 0; mI < 4; mI++) {
+        const merlon = new THREE.Mesh(new THREE.BoxGeometry(1, 1.1, 1), mAdobe);
+        merlon.position.set(tx - 2 + mI * 1.33, 13.55, 2.2); gate.add(merlon);
+        const merlon2 = merlon.clone(); merlon2.position.z = -2.2; gate.add(merlon2);
+      }
+    }
+    // lintel spanning the road — traffic passes underneath
+    const lintel = new THREE.Mesh(new THREE.BoxGeometry((ROAD_HALF + 3.2) * 2 + 5.5, 3.4, 4.6), mAdobe);
+    lintel.position.set(0, 10.6, 0); gate.add(lintel);
+    // warm lantern strip under the arch so the gate glows at any hour
+    const lamp = new THREE.Mesh(new THREE.BoxGeometry(ROAD_HALF * 2, 0.35, 0.5),
+      new THREE.MeshBasicMaterial({ color: 0xffb35c }));
+    lamp.position.set(0, 8.85, 0); gate.add(lamp);
+    for (let mI = 0; mI < 9; mI++) {
+      const merlon = new THREE.Mesh(new THREE.BoxGeometry(1, 1.1, 1), mAdobe);
+      merlon.position.set(-8 + mI * 2, 12.85, 1.6); gate.add(merlon);
+    }
+    gate.position.set(gx, 0, gz);
+    gate.rotation.y = ry;
+    gate.traverse(o => { if (o.isMesh) o.castShadow = true; });
+    scene.add(gate);
+    // collide only with the two towers, keeping the road open
+    for (const tside of [-1, 1]) {
+      const c = new THREE.Vector3(ROAD_HALF + 3.2, 0, 0).multiplyScalar(tside);
+      c.applyAxisAngle(new THREE.Vector3(0, 1, 0), ry);
+      addCollider(new THREE.Box3(
+        new THREE.Vector3(gx + c.x - 2.8, 0, gz + c.z - 2.8),
+        new THREE.Vector3(gx + c.x + 2.8, 13, gz + c.z + 2.8)));
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Rain + thunder
 // ---------------------------------------------------------------------------
 const RAIN_N = 1400;
@@ -2513,6 +2780,14 @@ function updateAtmosphere(dt) {
   }
 
   for (const b of blinkers) b.mesh.visible = ((game.time * 1.4 + b.phase) % 2) < 1.5;
+
+  // boats, ships and buoys ride a gentle swell
+  for (const b of seaBits) {
+    const t = game.time + b.phase;
+    b.obj.position.y = b.baseY + Math.sin(t * 0.8) * 0.14;
+    b.obj.rotation.z = Math.sin(t * 0.6) * 0.025;
+    b.obj.rotation.x = Math.sin(t * 0.45 + 1.3) * 0.018;
+  }
 
   if (THEME && THEME.thunder && weather.state === 'rain') {
     thunderIn -= dt;
@@ -4755,6 +5030,7 @@ tick();
 // debug/testing handle
 window.__so = {
   get cineT() { return cine.t; },
+  tp(x, z, yaw = 0) { player.pos.set(x, 0, z); player.yaw = yaw; player.pitch = 0; },
   get state() {
     return {
       cine: cine.active, driving: !!driving, firing, locked, started, mode,
