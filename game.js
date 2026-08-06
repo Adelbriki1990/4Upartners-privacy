@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=18';
+import { CITIES } from './sponsors.js?v=19';
 
 // ---------------------------------------------------------------------------
 // Renderer / scene / camera
@@ -260,9 +260,19 @@ function hasLineOfSight(from, to) {
 // Audio — procedural WebAudio, no files
 // ---------------------------------------------------------------------------
 let AC = null;
+let MASTER = null; // loudness bus: boosted gain into a limiter so it never clips
 function audioInit() {
   if (AC) return;
   AC = new (window.AudioContext || window.webkitAudioContext)();
+  const comp = AC.createDynamicsCompressor();
+  comp.threshold.value = -12;
+  comp.knee.value = 18;
+  comp.ratio.value = 14;
+  comp.attack.value = 0.002;
+  comp.release.value = 0.2;
+  MASTER = AC.createGain();
+  MASTER.gain.value = 1.9;
+  MASTER.connect(comp).connect(AC.destination);
   const src = AC.createBufferSource();
   src.buffer = noiseBuffer(2);
   src.loop = true;
@@ -275,7 +285,7 @@ function audioInit() {
   const lfoGain = AC.createGain();
   lfoGain.gain.value = 0.02;
   lfo.connect(lfoGain).connect(g.gain);
-  src.connect(lp).connect(g).connect(AC.destination);
+  src.connect(lp).connect(g).connect(MASTER);
   src.start(); lfo.start();
   renderMusic(); // async: loops fade in once rendered
 }
@@ -298,7 +308,7 @@ function playShot(volume = 0.5, freq = 900) {
   const gain = AC.createGain();
   gain.gain.setValueAtTime(vol, t);
   gain.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
-  src.connect(lp).connect(gain).connect(AC.destination);
+  src.connect(lp).connect(gain).connect(MASTER);
   src.start(t);
   // body
   const osc = AC.createOscillator();
@@ -308,7 +318,7 @@ function playShot(volume = 0.5, freq = 900) {
   const og = AC.createGain();
   og.gain.setValueAtTime(vol * 0.7, t);
   og.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
-  osc.connect(og).connect(AC.destination);
+  osc.connect(og).connect(MASTER);
   osc.start(t); osc.stop(t + 0.11);
   // sub-bass thump you feel in the chest
   const sub = AC.createOscillator();
@@ -318,7 +328,7 @@ function playShot(volume = 0.5, freq = 900) {
   const sg = AC.createGain();
   sg.gain.setValueAtTime(vol * 0.9, t);
   sg.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
-  sub.connect(sg).connect(AC.destination);
+  sub.connect(sg).connect(MASTER);
   sub.start(t); sub.stop(t + 0.18);
 }
 function playClick(pitch = 1400, vol = 0.15) {
@@ -330,7 +340,7 @@ function playClick(pitch = 1400, vol = 0.15) {
   const g = AC.createGain();
   g.gain.setValueAtTime(vol, t);
   g.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
-  osc.connect(g).connect(AC.destination);
+  osc.connect(g).connect(MASTER);
   osc.start(t); osc.stop(t + 0.06);
 }
 function playHurt() {
@@ -343,7 +353,7 @@ function playHurt() {
   const g = AC.createGain();
   g.gain.setValueAtTime(0.22, t);
   g.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
-  osc.connect(g).connect(AC.destination);
+  osc.connect(g).connect(MASTER);
   osc.start(t); osc.stop(t + 0.22);
 }
 function playThunder() {
@@ -359,7 +369,7 @@ function playThunder() {
   g.gain.setValueAtTime(0.0001, t);
   g.gain.exponentialRampToValueAtTime(0.3, t + 0.15);
   g.gain.exponentialRampToValueAtTime(0.001, t + 2.1);
-  src.connect(lp).connect(g).connect(AC.destination);
+  src.connect(lp).connect(g).connect(MASTER);
   src.start(t);
 }
 // ---------------------------------------------------------------------------
@@ -444,7 +454,7 @@ async function renderMusic() {
     filt.type = 'lowpass'; filt.frequency.value = 18000;
     const g = AC.createGain();
     g.gain.value = 0;
-    src.connect(filt).connect(g).connect(AC.destination);
+    src.connect(filt).connect(g).connect(MASTER);
     src.start();
     return { src, g, filt };
   };
@@ -475,7 +485,7 @@ function playCrash(k) {
   const g = AC.createGain();
   g.gain.setValueAtTime(0.55 * k, t);
   g.gain.exponentialRampToValueAtTime(0.001, t + 0.32);
-  src.connect(lp).connect(g).connect(AC.destination);
+  src.connect(lp).connect(g).connect(MASTER);
   src.start(t);
   const osc = AC.createOscillator();
   osc.type = 'square';
@@ -484,7 +494,7 @@ function playCrash(k) {
   const og = AC.createGain();
   og.gain.setValueAtTime(0.3 * k, t);
   og.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
-  osc.connect(og).connect(AC.destination);
+  osc.connect(og).connect(MASTER);
   osc.start(t); osc.stop(t + 0.22);
 }
 
@@ -503,7 +513,7 @@ function engineStart() {
   g.gain.value = 0.12;
   osc.connect(lp);
   osc2.connect(lp);
-  lp.connect(g).connect(AC.destination);
+  lp.connect(g).connect(MASTER);
   osc.start(); osc2.start();
   engineNodes = { osc, osc2, g };
 }
@@ -1294,6 +1304,7 @@ function loadRealAssets() {
   }, undefined, () => {});
   for (const url of ['models/person_cool.glb', 'models/person_suit.glb'])
     gltfLoader.load(url, g => {
+      stripBaseDiscs(g.scene);
       personTemplates.push({ root: normalizeModel(g.scene, 'person', 1.78), clips: g.animations || [] });
       placeRealPeople();
     }, undefined, () => {});
@@ -1335,6 +1346,20 @@ function boneBounds(root) {
   root.traverse(o => { if (o.isBone) box.expandByPoint(o.getWorldPosition(v)); });
   return box;
 }
+// Some character exports ship with a flat pedestal disc under the feet —
+// looks like a black puddle on the sidewalk. Detect and drop those meshes.
+function stripBaseDiscs(root) {
+  root.updateMatrixWorld(true);
+  const whole = new THREE.Box3().setFromObject(root).getSize(new THREE.Vector3());
+  const drop = [];
+  root.traverse(o => {
+    if (!o.isMesh) return;
+    const size = new THREE.Box3().setFromObject(o).getSize(new THREE.Vector3());
+    const wide = Math.max(size.x, size.z);
+    if (size.y < 0.06 * wide && wide > 0.25 * whole.y) drop.push(o);
+  });
+  for (const m of drop) m.parent.remove(m);
+}
 // Swap the procedural camels for the real scanned model once it arrives,
 // keeping each caravan's route and pacing.
 function upgradeCamels() {
@@ -1362,10 +1387,15 @@ let arabicPlaced = false;
 function placeArabicMen() {
   if (arabicPlaced || !arabicTemplate) return;
   arabicPlaced = true;
-  const spots = [[9.6, 22, -Math.PI / 2], [-9.6, -34, Math.PI / 2], [50.4, -9, Math.PI / 2], [-9.6, 66, Math.PI / 2]];
+  const spots = [[9.0, 22, -Math.PI / 2], [-9.0, -34, Math.PI / 2], [51.0, -9, Math.PI / 2],
+    [-9.0, 66, Math.PI / 2], [69.0, 34, -Math.PI / 2], [-51.0, -70, Math.PI / 2]];
   for (const [x, z, ry] of spots) {
     const p = SkeletonUtils.clone(arabicTemplate.root);
-    p.position.set(x, 0, z);
+    // push the spot out of any building/prop collider so he never stands
+    // half-inside a wall
+    const pos = new THREE.Vector3(x, 0, z);
+    resolveCollisions(pos, 1.8, 0.6);
+    p.position.set(pos.x, 0, pos.z);
     p.rotation.y = ry;
     scene.add(p);
     const picks = pickClips(arabicTemplate.clips);
@@ -1494,7 +1524,7 @@ function placeRealPeople() {
 // ---------------------------------------------------------------------------
 const traffic = [];
 function spawnTraffic() {
-  for (let i = 0; i < 12; i++) {
+  for (let i = 0; i < 20; i++) {
     const s = STREETS[Math.floor(Math.random() * STREETS.length)];
     const alongX = Math.random() < 0.5;
     const dir = Math.random() < 0.5 ? 1 : -1;
@@ -1762,7 +1792,7 @@ function makeCamel() {
 }
 function spawnCamels() {
   if (!THEME.camels) return;
-  for (let c = 0; c < 3; c++) {                 // three caravans
+  for (let c = 0; c < 4; c++) {                 // four caravans
     const s = STREETS[(c * 2) % STREETS.length];
     const alongX = c % 2 === 0;
     const dir = Math.random() < 0.5 ? 1 : -1;
@@ -1833,7 +1863,7 @@ function placePed(p) {
   }
 }
 function spawnPeds() {
-  const n = Math.round(26 + 10 * (1 - NF)); // busier by day
+  const n = Math.round(48 + 18 * (1 - NF)); // busier by day
   for (let i = 0; i < n; i++) spawnPed(false);
 }
 function updatePeds(dt) {
@@ -2069,11 +2099,11 @@ function buildCity(city) {
 
   // ---- parked cars along curbs (all drivable, mixed real-world designs) ----
   for (const s of STREETS)
-    for (let v = -110; v <= 110; v += 24) {
+    for (let v = -110; v <= 110; v += 20) {
       if (STREETS.some(t => Math.abs(v - t) < 13)) continue;
-      if (Math.random() < 0.4)
+      if (Math.random() < 0.55)
         addCar(s + (Math.random() < 0.5 ? ROAD_HALF - 1.9 : -(ROAD_HALF - 1.9)), v + Math.random() * 6, Math.random() < 0.1 ? 0.06 : 0, randomCarStyle());
-      if (Math.random() < 0.4)
+      if (Math.random() < 0.55)
         addCar(v + Math.random() * 6, s + (Math.random() < 0.5 ? ROAD_HALF - 1.9 : -(ROAD_HALF - 1.9)), Math.PI / 2, randomCarStyle());
     }
 
@@ -2086,16 +2116,65 @@ function buildCity(city) {
         if (STREETS.some(t => Math.abs(v - t) < 11)) continue;
         const side = Math.random() < 0.5 ? 1 : -1;
         const r = Math.random();
-        if (r < 0.17 && nScooter < 18) {
+        if (r < 0.24 && nScooter < 26) {
           nScooter++;
           registerVehicle(buildScooterMesh(boxCol),
             s + side * (ROAD_HALF + 1.0), v + Math.random() * 5, Math.random() * 6.28, 'scooter');
-        } else if (r < 0.3 && nBike < 12) {
+        } else if (r < 0.4 && nBike < 18) {
           nBike++;
           registerVehicle(buildBicycleMesh(),
             v + Math.random() * 5, s + side * (ROAD_HALF + 1.0), Math.random() * 6.28, 'bicycle');
         }
       }
+  }
+
+  // ---- souq market stalls: striped canopies + goods along the medina lanes ----
+  if (THEME.camels) {
+    const stallCols = [0xb9382e, 0x2e6db9, 0xb9902e, 0x3e8a4e];
+    const mWood = new THREE.MeshStandardMaterial({ color: 0x6a4a26, roughness: 0.9 });
+    const mGoods = new THREE.MeshStandardMaterial({ color: 0x9a7434, roughness: 0.95 });
+    for (let i = 0; i < 14; i++) {
+      const s = STREETS[i % STREETS.length];
+      const along = -104 + (i * 37) % 208;
+      if (STREETS.some(t => Math.abs(along - t) < 12)) continue;
+      const side = (i % 2 ? 1 : -1) * (ROAD_HALF + 2.7);
+      const onX = i % 3 !== 0;
+      const x = onX ? along : s + side, z = onX ? s + side : along;
+      const stall = new THREE.Group();
+      for (const [px, pz] of [[-1.1, -0.8], [1.1, -0.8], [-1.1, 0.8], [1.1, 0.8]]) {
+        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.2, 6), mWood);
+        post.position.set(px, 1.1, pz);
+        stall.add(post);
+      }
+      const cnv = document.createElement('canvas');
+      cnv.width = 64; cnv.height = 64;
+      const cx = cnv.getContext('2d');
+      const col = stallCols[i % stallCols.length];
+      for (let st = 0; st < 8; st++) {
+        cx.fillStyle = st % 2 ? '#f2e6cf' : '#' + col.toString(16).padStart(6, '0');
+        cx.fillRect(st * 8, 0, 8, 64);
+      }
+      const canopy = new THREE.Mesh(new THREE.BoxGeometry(2.7, 0.06, 2.1),
+        new THREE.MeshStandardMaterial({ map: new THREE.CanvasTexture(cnv), roughness: 0.85 }));
+      canopy.position.y = 2.24;
+      canopy.rotation.z = 0.06;
+      stall.add(canopy);
+      const table = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.75, 1.2), mWood);
+      table.position.y = 0.38;
+      stall.add(table);
+      for (let gI = 0; gI < 4; gI++) {
+        const sack = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 6), mGoods);
+        sack.scale.y = 0.7;
+        sack.position.set(-0.8 + gI * 0.55, 0.86, (gI % 2 ? 0.25 : -0.2));
+        stall.add(sack);
+      }
+      stall.position.set(x, 0, z);
+      stall.rotation.y = onX ? 0 : Math.PI / 2;
+      stall.traverse(o => { if (o.isMesh) o.castShadow = true; });
+      scene.add(stall);
+      addCollider(new THREE.Box3(
+        new THREE.Vector3(x - 1.4, 0, z - 1.2), new THREE.Vector3(x + 1.4, 2.3, z + 1.2)));
+    }
   }
 
   // ---- cover props + sponsor ad stands near the spawn area ----
@@ -2226,9 +2305,13 @@ function buildCity(city) {
     scene.add(inst);
   }
 
-  // rain amount per theme
-  rainPts.visible = THEME.rain > 0;
-  rainPts.geometry.setDrawRange(0, THEME.rain);
+  // live forecast: rain-prone cities shower often, the desert almost never
+  weather.prob = THEME.rain > 0 ? 0.6 : THEME.camels ? 0.08 : 0.3;
+  weather.state = THEME.rain > 0 ? 'rain' : 'sun';
+  weather.amount = THEME.rain;
+  weather.t = 50 + Math.random() * 70;
+  rainPts.visible = weather.amount > 0;
+  rainPts.geometry.setDrawRange(0, weather.amount | 0);
 
   // day/night dimming: window glow and street lamps fade out in daylight
   const glow = 0.12 + 0.88 * NF;
@@ -2395,10 +2478,28 @@ let rainPts, rainSpeeds;
   scene.add(rainPts);
 }
 let thunderIn = 9 + Math.random() * 12, thunderT = 0;
+// live weather that changes while you play, like a real forecast
+const weather = { state: 'sun', amount: 0, prob: 0.3, t: 60 };
 function updateAtmosphere(dt) {
-  if (THEME && THEME.rain > 0) {
+  weather.t -= dt;
+  if (weather.t <= 0) {
+    weather.t = 60 + Math.random() * 90;
+    const wantRain = Math.random() < weather.prob;
+    if (wantRain !== (weather.state === 'rain')) {
+      weather.state = wantRain ? 'rain' : 'sun';
+      if (started && !cine.active) {
+        addFeed(weather.state === 'rain' ? '🌧 Rain shower rolling in' : '☀ Skies clearing up');
+        showBanner(weather.state === 'rain' ? 'RAIN SHOWER' : 'SUNNY SKIES');
+      }
+    }
+  }
+  const targetRain = weather.state === 'rain' ? Math.max(THEME ? THEME.rain : 0, 900) : 0;
+  weather.amount += (targetRain - weather.amount) * Math.min(1, dt * 0.3);
+  const n = weather.amount | 0;
+  rainPts.visible = n > 4;
+  rainPts.geometry.setDrawRange(0, n);
+  if (n > 4) {
     const p = rainPts.geometry.attributes.position.array;
-    const n = THEME.rain;
     for (let i = 0; i < n; i++) {
       p[i * 3 + 1] -= rainSpeeds[i] * dt;
       p[i * 3] += 3.5 * dt;
@@ -2413,7 +2514,7 @@ function updateAtmosphere(dt) {
 
   for (const b of blinkers) b.mesh.visible = ((game.time * 1.4 + b.phase) % 2) < 1.5;
 
-  if (THEME && THEME.thunder) {
+  if (THEME && THEME.thunder && weather.state === 'rain') {
     thunderIn -= dt;
     if (thunderIn <= 0) {
       thunderIn = 16 + Math.random() * 22;
@@ -3893,7 +3994,7 @@ function playGulp() {
     const g = AC.createGain();
     g.gain.setValueAtTime(0.18, t);
     g.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
-    osc.connect(g).connect(AC.destination);
+    osc.connect(g).connect(MASTER);
     osc.start(t); osc.stop(t + 0.13);
   }
 }
@@ -4663,6 +4764,7 @@ window.__so = {
       peds: peds.length, traffic: traffic.length, nf: NF,
       pos: [player.pos.x, player.pos.z],
       camels: camels.length, realCamels: camels.filter(c => !c.rig.legs).length,
+      weather: weather.state, rain: weather.amount | 0, vehicles: vehicles.length,
     };
   },
 };
