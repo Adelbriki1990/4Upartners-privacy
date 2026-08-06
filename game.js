@@ -619,6 +619,13 @@ function makeFacadeCanvases(wall, hue, style) {
       m.fillRect(0, gy - 2, S, 2);
       m.fillRect(0, gy + gh, S, 3);
     }
+    // vertical sky-reflection sheen sweeping across the glass
+    const sheen = m.createLinearGradient(0, 0, S, 0);
+    sheen.addColorStop(0, 'rgba(160,190,230,0)');
+    sheen.addColorStop(0.42, 'rgba(160,190,230,.09)');
+    sheen.addColorStop(0.55, 'rgba(205,225,248,.15)');
+    sheen.addColorStop(0.72, 'rgba(160,190,230,0)');
+    m.fillStyle = sheen; m.fillRect(0, 0, S, S);
   } else if (style === 'brick') {
     // masonry: mortar courses, smaller punched windows with lintels
     m.fillStyle = `hsl(${wall.h}, ${wall.s + 12}%, ${wall.l - 2 + Math.random() * 6}%)`;
@@ -657,6 +664,15 @@ function makeFacadeCanvases(wall, hue, style) {
         }
         m.fillStyle = 'rgba(0,0,0,.5)';
         m.fillRect(wx + ww / 2 - 1, wy, 2, wh);
+        if (f > 0 && Math.random() < 0.3) {
+          // balcony: concrete slab + iron railing in front of the window
+          m.fillStyle = 'rgba(185,180,168,.6)';
+          m.fillRect(wx - 6, wy + wh + 2, ww + 12, 4);
+          m.fillStyle = 'rgba(24,26,30,.9)';
+          m.fillRect(wx - 5, wy + wh * 0.5, ww + 10, 2); // top rail
+          for (let px = wx - 5; px <= wx + ww + 5; px += 6)
+            m.fillRect(px, wy + wh * 0.5, 2, wh * 0.5 + 4); // posts
+        }
       }
     }
   } else if (style === 'adobe') {
@@ -4265,7 +4281,43 @@ function marquee(text, color, x, z, rotY, w = 7, y = 5) {
   sign.position.set(x, y, z);
   sign.rotation.y = rotY;
   scene.add(sign);
+  sign.userData.repaint = img => { // real brand logo replaces the text
+    g.fillStyle = '#0e0f12'; g.fillRect(0, 0, 1024, 192);
+    g.strokeStyle = '#f2f2f2'; g.lineWidth = 6; g.strokeRect(8, 8, 1008, 176);
+    const s = Math.min(880 / img.width, 156 / img.height);
+    g.shadowBlur = 0;
+    g.drawImage(img, 512 - img.width * s / 2, 96 - img.height * s / 2, img.width * s, img.height * s);
+    tex.needsUpdate = true;
+  };
   return sign;
+}
+// Real food brands: drop a logo into ads/ (e.g. ads/mcdonalds.png,
+// ads/burgerking.png) and a restaurant in every city becomes that brand
+// with the actual logo on its sign.
+const BRAND_SLOTS = [
+  { file: 'mcdonalds', name: "MCDONALD'S" },
+  { file: 'burgerking', name: 'BURGER KING' },
+  { file: 'kfc', name: 'KFC' },
+  { file: 'starbucks', name: 'STARBUCKS' },
+  { file: 'pizzahut', name: 'PIZZA HUT' },
+  { file: 'dominos', name: 'DOMINOS' },
+  { file: 'subway', name: 'SUBWAY' },
+];
+function applyBrandLogos() {
+  let slot = 0;
+  for (const b of BRAND_SLOTS) {
+    const img = new Image();
+    img.onload = () => {
+      // rebrand the next unbranded restaurant with the uploaded logo
+      const r = RESTAURANTS.find(r0 => !r0.branded);
+      if (!r || !r.sign) return;
+      r.branded = true;
+      r.name = b.name;
+      r.sign.userData.repaint(img);
+      slot++;
+    };
+    img.src = 'ads/' + b.file + '.png';
+  }
 }
 function sitPose(rig) {
   rig.legs[0].rotation.x = rig.legs[1].rotation.x = -1.45;
@@ -4689,9 +4741,10 @@ function buildVenues() {
       const z = sz;
       const rotY = side > 0 ? -Math.PI / 2 : Math.PI / 2;
       const color = THEME.neon[i % THEME.neon.length];
-      marquee(name, color, x + side * 0.2, z, rotY, 4.2, 3.4);
-      RESTAURANTS.push({ name, x: x - side * 1.6, z });
+      const sign = marquee(name, color, x + side * 0.2, z, rotY, 4.2, 3.4);
+      RESTAURANTS.push({ name, x: x - side * 1.6, z, sign });
     });
+    applyBrandLogos();
   }
 }
 const RESTAURANTS = [];
