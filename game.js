@@ -69,6 +69,17 @@ const THEMES = {
     rain: 0, thunder: false, hMin: 16, hMax: 42,
     styles: { curtain: 0.45, brick: 0.08 }, tree: { color: 0x2a4530, every: 20, chance: 0.65 },
   },
+  sahara: {
+    sky: 0x1a140c, fog: 0.009, hemi: [0x8a6f4a, 0x3a2c18, 1.5],
+    moonColor: 0xd8c8a8, lamp: 0xffb35c,
+    wall: { h: 36, s: 30, l: 46 }, windowHues: [38, 42, 34, 46, 40, 36],
+    neon: ['#e8c06a', '#ff9c41', '#7dff8a', '#ff5f6d', '#41d8ff'],
+    rain: 0, thunder: false, hMin: 6, hMax: 13,
+    styles: { curtain: 0, brick: 0.15, adobe: 0.8 },
+    tree: { color: 0x3a5a2a, every: 30, chance: 0.4, palm: true },
+    ground: { base: '#b89a6a', road: '#7a6a50', line: '#e8dcc0' },
+    arch: 'arabic', dress: 'arabic', camels: true,
+  },
   harbor: {
     sky: 0x14100e, fog: 0.0125, hemi: [0x6a5648, 0x241c14, 1.4],
     moonColor: 0xd8c8b0, lamp: 0xffa04a,
@@ -104,6 +115,7 @@ let NF = 1; // current night factor
 const DAY = {
   neon:   { sky: 0x8d9aab, fogMul: 0.55 },   // overcast rainy day
   marina: { sky: 0x9dbcdd, fogMul: 0.4 },    // clear blue
+  sahara: { sky: 0xd8b98a, fogMul: 0.6 },    // sandy haze
   harbor: { sky: 0x9aa4ac, fogMul: 0.6 },
 };
 const lampLights = [];   // point lights that dim at day
@@ -593,6 +605,47 @@ function makeFacadeCanvases(wall, hue, style) {
         m.fillRect(wx + ww / 2 - 1, wy, 2, wh);
       }
     }
+  } else if (style === 'adobe') {
+    // desert plaster: warm sand walls, small arched windows, wooden lintels
+    m.fillStyle = `hsl(${wall.h + Math.random() * 6}, ${wall.s}%, ${wall.l + Math.random() * 8}%)`;
+    m.fillRect(0, 0, S, S);
+    for (let i = 0; i < 2600; i++) {
+      m.fillStyle = `rgba(${Math.random() < 0.5 ? '255,240,210' : '60,40,20'},${0.02 + Math.random() * 0.05})`;
+      m.fillRect(Math.random() * S, Math.random() * S, 3, 2);
+    }
+    const BAYS = 6, bw = S / BAYS;
+    for (let f = 0; f < FLOORS; f++) {
+      // subtle weathering line between floors
+      m.fillStyle = 'rgba(80,55,25,.14)';
+      m.fillRect(0, f * fh + fh - 3, S, 3);
+      for (let b = 0; b < BAYS; b++) {
+        if (Math.random() < 0.25) continue; // plain wall bay
+        const wx = b * bw + bw * 0.3, wy = f * fh + fh * 0.3;
+        const ww = bw * 0.4, wh = fh * 0.48;
+        // wooden lintel
+        m.fillStyle = 'rgba(90,60,30,.85)';
+        m.fillRect(wx - 4, wy - 5, ww + 8, 5);
+        // arched window: rectangle with a rounded dome top
+        const lit = Math.random() < 0.4 - f * 0.02;
+        const col = lit ? `hsl(${hue}, 70%, ${55 + Math.random() * 20}%)` : '#241a10';
+        m.fillStyle = col;
+        m.fillRect(wx, wy + wh * 0.25, ww, wh * 0.75);
+        m.beginPath();
+        m.arc(wx + ww / 2, wy + wh * 0.25, ww / 2, Math.PI, 0);
+        m.fill();
+        if (lit) {
+          e.fillStyle = col;
+          e.fillRect(wx, wy + wh * 0.25, ww, wh * 0.75);
+          e.beginPath();
+          e.arc(wx + ww / 2, wy + wh * 0.25, ww / 2, Math.PI, 0);
+          e.fill();
+          // wooden mashrabiya bars
+          m.fillStyle = 'rgba(60,40,20,.55)';
+          m.fillRect(wx + ww / 2 - 1, wy, 2, wh);
+          m.fillRect(wx, wy + wh * 0.55, ww, 2);
+        }
+      }
+    }
   } else {
     // punched concrete (refined): framed windows, blinds, floor slabs
     m.fillStyle = `hsl(${wall.h + Math.random() * 12}, ${wall.s}%, ${wall.l + Math.random() * 10}%)`;
@@ -780,6 +833,37 @@ function towerSection(x, yBase, z, w, d, h, fac) {
 }
 
 function addRoofClutter(x, yTop, z, w, d) {
+  if (THEME.arch === 'arabic') {
+    // traditional roofline: raised parapet, corner posts, domes, wind towers
+    const mSand = new THREE.MeshStandardMaterial({ color: 0xc4a670, roughness: 0.9 });
+    const lip2 = new THREE.Mesh(new THREE.BoxGeometry(w + 0.4, 0.8, d + 0.4), mSand);
+    lip2.position.set(x, yTop + 0.4, z);
+    scene.add(lip2);
+    for (const [cx2, cz2] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.3, 0.5), mSand);
+      post.position.set(x + cx2 * (w / 2 - 0.1), yTop + 0.65, z + cz2 * (d / 2 - 0.1));
+      scene.add(post);
+    }
+    if (Math.random() < 0.3) {
+      const dome = new THREE.Mesh(new THREE.SphereGeometry(Math.min(w, d) * 0.22, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2),
+        new THREE.MeshStandardMaterial({ color: 0xd8e0e2, roughness: 0.4, metalness: 0.2 }));
+      dome.position.set(x, yTop + 0.8, z);
+      dome.castShadow = true;
+      scene.add(dome);
+    } else if (Math.random() < 0.4) {
+      // barjeel wind tower
+      const tower = new THREE.Mesh(new THREE.BoxGeometry(1.4, 3.2, 1.4), mSand);
+      tower.position.set(x + (Math.random() - 0.5) * w * 0.4, yTop + 1.6, z + (Math.random() - 0.5) * d * 0.4);
+      tower.castShadow = true;
+      scene.add(tower);
+      const slot = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.9, 0.3),
+        new THREE.MeshStandardMaterial({ color: 0x2a1d10, roughness: 1 }));
+      slot.position.copy(tower.position);
+      slot.position.y += 0.9;
+      scene.add(slot);
+    }
+    return;
+  }
   const lip = new THREE.Mesh(new THREE.BoxGeometry(w + 0.3, 0.5, d + 0.3), mRoofBox);
   lip.position.set(x, yTop + 0.25, z);
   scene.add(lip);
@@ -1375,6 +1459,7 @@ function makeCharacter(cfg, opts = {}) {
   const uniformed = cfg.uniform !== undefined;
   if (uniformed) shirt.color.set(cfg.uniform);
   if (cfg.team !== undefined) shirt.color.set(cfg.team); // sports kit, no courier gear
+  if (cfg.robe !== undefined) shirt.color.set(cfg.robe); // traditional dress
 
   // torso + hips (capsules, squashed for shoulders)
   const torso = new THREE.Mesh(new THREE.CapsuleGeometry(female ? 0.14 : 0.16, 0.34, 4, 10), shirt);
@@ -1427,9 +1512,36 @@ function makeCharacter(cfg, opts = {}) {
       const brim = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.025, 0.13), mCap);
       brim.position.set(0, 1.7, 0.19); g.add(brim);
     }
+    if (cfg.headwrap !== undefined) {
+      // ghutra (with black agal) for men, hijab for women
+      const mWrap = new THREE.MeshStandardMaterial({ color: cfg.headwrap, roughness: 0.9 });
+      const wrapCap = new THREE.Mesh(new THREE.SphereGeometry(0.152, 12, 8), mWrap);
+      wrapCap.scale.set(1.02, female ? 1.0 : 0.8, 1.05);
+      wrapCap.position.y = female ? 1.64 : 1.7;
+      g.add(wrapCap);
+      if (!female) {
+        const drape = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.4, 0.06), mWrap);
+        drape.position.set(0, 1.5, -0.14); g.add(drape);
+        const agal = new THREE.Mesh(new THREE.TorusGeometry(0.14, 0.022, 8, 16),
+          new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.8 }));
+        agal.rotation.x = Math.PI / 2;
+        agal.position.y = 1.73;
+        g.add(agal);
+      } else {
+        const drape = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.34, 0.07), mWrap);
+        drape.position.set(0, 1.46, -0.13); g.add(drape);
+      }
+    }
   }
 
   // legs: hip pivots so the walk cycle bends at the joint
+  if (cfg.robe !== undefined) {
+    // flowing thobe/abaya from the shoulders to the ground
+    const robe = new THREE.Mesh(new THREE.CylinderGeometry(female ? 0.17 : 0.19, 0.3, 1.2, 12),
+      new THREE.MeshStandardMaterial({ color: cfg.robe, roughness: 0.92 }));
+    robe.position.y = 0.62;
+    g.add(robe);
+  }
   const legs = [];
   const sporty = cfg.shorts;
   const legMat = (cfg.skirt || sporty) ? mSkinC : pants;
@@ -1475,6 +1587,21 @@ function makeCharacter(cfg, opts = {}) {
 }
 function randomLook() {
   const f = Math.random() < 0.45;
+  if (THEME && THEME.dress === 'arabic' && Math.random() < 0.8) {
+    // traditional dress: white/cream thobes + ghutra, abayas + hijab
+    const menRobes = [0xf2f0ea, 0xe8e2d2, 0xd8d4c8, 0xb8b4a8];
+    const womenRobes = [0x16161a, 0x2a1a2e, 0x3a1518, 0x1a2038, 0x4a3a20];
+    return {
+      gender: f ? 'f' : 'm',
+      skin: SKINS[Math.floor(Math.random() * SKINS.length)],
+      shirtHue: Math.random(), pantsHue: Math.random(),
+      hairColor: HAIRS[0], hairLong: false, skirt: false,
+      robe: f ? womenRobes[Math.floor(Math.random() * womenRobes.length)]
+              : menRobes[Math.floor(Math.random() * menRobes.length)],
+      headwrap: f ? [0x16161a, 0x3a2a40, 0x4a2028][Math.floor(Math.random() * 3)] : 0xf4f2ec,
+      height: (f ? 0.92 : 0.97) + Math.random() * 0.12,
+    };
+  }
   return {
     gender: f ? 'f' : 'm',
     skin: SKINS[Math.floor(Math.random() * SKINS.length)],
@@ -1485,6 +1612,82 @@ function randomLook() {
     skirt: f && Math.random() < 0.5,
     height: (f ? 0.92 : 0.97) + Math.random() * 0.12,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Camels — desert caravans strolling the medina lanes (Sahara city)
+// ---------------------------------------------------------------------------
+const camels = [];
+function makeCamel() {
+  const g = new THREE.Group();
+  const mHide = new THREE.MeshStandardMaterial({ color: 0xb08a55, roughness: 0.95 });
+  const mDarkC = new THREE.MeshStandardMaterial({ color: 0x6a5638, roughness: 0.9 });
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.42, 1.0, 4, 10), mHide);
+  body.rotation.x = Math.PI / 2;
+  body.position.y = 1.2;
+  g.add(body);
+  const hump = new THREE.Mesh(new THREE.SphereGeometry(0.3, 10, 8), mHide);
+  hump.scale.set(1, 0.9, 1.2);
+  hump.position.set(0, 1.68, -0.1);
+  g.add(hump);
+  const neck = new THREE.Mesh(new THREE.CapsuleGeometry(0.13, 0.7, 4, 8), mHide);
+  neck.position.set(0, 1.72, 0.78);
+  neck.rotation.x = -0.5;
+  g.add(neck);
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.22, 0.4), mHide);
+  head.position.set(0, 2.12, 1.06);
+  g.add(head);
+  const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.02, 0.5, 6), mDarkC);
+  tail.position.set(0, 1.25, -0.85);
+  tail.rotation.x = 0.4;
+  g.add(tail);
+  const legs = [];
+  for (const [lx, lz] of [[-0.22, 0.45], [0.22, 0.45], [-0.22, -0.45], [0.22, -0.45]]) {
+    const pivot = new THREE.Group();
+    pivot.position.set(lx, 1.05, lz);
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.06, 1.05, 8), mHide);
+    leg.position.y = -0.52;
+    pivot.add(leg);
+    g.add(pivot);
+    legs.push(pivot);
+  }
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  return { group: g, legs };
+}
+function spawnCamels() {
+  if (!THEME.camels) return;
+  for (let c = 0; c < 3; c++) {                 // three caravans
+    const s = STREETS[(c * 2) % STREETS.length];
+    const alongX = c % 2 === 0;
+    const dir = Math.random() < 0.5 ? 1 : -1;
+    let v = -100 + Math.random() * 200;
+    for (let i = 0; i < 3; i++) {               // three camels each, in a line
+      const rig = makeCamel();
+      scene.add(rig.group);
+      camels.push({ rig, s, alongX, dir, v: v - i * 3.2 * dir, side: (ROAD_HALF - 2) * (c % 2 ? 1 : -1),
+        speed: 1.1 + Math.random() * 0.2, phase: Math.random() * 6 });
+    }
+  }
+}
+function updateCamels(dt) {
+  for (const c of camels) {
+    c.v += c.speed * c.dir * dt;
+    if (c.v > 126 || c.v < -126) c.dir *= -1;
+    if (c.alongX) {
+      c.rig.group.position.set(c.v, 0, c.s + c.side);
+      c.rig.group.rotation.y = c.dir > 0 ? Math.PI / 2 : -Math.PI / 2;
+    } else {
+      c.rig.group.position.set(c.s + c.side, 0, c.v);
+      c.rig.group.rotation.y = c.dir > 0 ? 0 : Math.PI;
+    }
+    c.phase += dt * 3.2;
+    const sw = Math.sin(c.phase) * 0.4;
+    c.rig.legs[0].rotation.x = sw;
+    c.rig.legs[3].rotation.x = sw;
+    c.rig.legs[1].rotation.x = -sw;
+    c.rig.legs[2].rotation.x = -sw;
+    c.rig.group.position.y = Math.abs(Math.sin(c.phase)) * 0.04;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1582,8 +1785,10 @@ function buildCity(city) {
   for (let i = 0; i < 9; i++) {
     const hue = THEME.windowHues[i % THEME.windowHues.length];
     const r = Math.random();
-    const style = r < THEME.styles.curtain ? 'curtain'
-      : r < THEME.styles.curtain + THEME.styles.brick ? 'brick' : 'punched';
+    const st = THEME.styles;
+    const style = r < st.curtain ? 'curtain'
+      : r < st.curtain + st.brick ? 'brick'
+      : r < st.curtain + st.brick + (st.adobe || 0) ? 'adobe' : 'punched';
     FACADES.push(makeFacadeCanvases(THEME.wall, hue, style));
   }
   STOREFRONTS = [0, 1, 2, 3, 4, 5].map(makeStorefrontCanvas);
@@ -1596,8 +1801,9 @@ function buildCity(city) {
     const g = cv.getContext('2d');
     const W = v => (v + CITY_HALF) * sc;
 
-    // sidewalk concrete with paving-slab joints and grime
-    g.fillStyle = '#3d4046'; g.fillRect(0, 0, T, T);
+    const GC = THEME.ground || { base: '#3d4046', road: '#25282d', line: '#c9c5aa' };
+    // sidewalk/ground with paving joints and grime
+    g.fillStyle = GC.base; g.fillRect(0, 0, T, T);
     g.strokeStyle = 'rgba(0,0,0,.22)'; g.lineWidth = 1.5;
     for (let v = -CITY_HALF; v <= CITY_HALF; v += 2) {
       g.beginPath(); g.moveTo(W(v), 0); g.lineTo(W(v), T); g.stroke();
@@ -1612,7 +1818,7 @@ function buildCity(city) {
     }
 
     // asphalt streets
-    g.fillStyle = '#25282d';
+    g.fillStyle = GC.road;
     for (const s of STREETS) {
       g.fillRect(W(s - ROAD_HALF), 0, ROAD_HALF * 2 * sc, T);
       g.fillRect(0, W(s - ROAD_HALF), T, ROAD_HALF * 2 * sc);
@@ -1634,7 +1840,7 @@ function buildCity(city) {
       g.fillRect(0, W(s + e) + (e > 0 ? -6 : 2), T, 4);
     }
     // lane dashes (skip intersections)
-    g.fillStyle = '#c9c5aa';
+    g.fillStyle = GC.line;
     const inIntersection = v => STREETS.some(s => Math.abs(v - s) < ROAD_HALF + 4);
     for (const s of STREETS)
       for (let v = -CITY_HALF + 4; v < CITY_HALF - 4; v += 7) {
@@ -1838,18 +2044,20 @@ function buildCity(city) {
         }
       }
     if (spots.length) {
+      const palm = !!t.palm;
       const trunks = new THREE.InstancedMesh(
-        new THREE.CylinderGeometry(0.09, 0.16, 2.6, 6),
-        new THREE.MeshStandardMaterial({ color: 0x3a2c1c, roughness: 0.95 }), spots.length);
+        new THREE.CylinderGeometry(palm ? 0.07 : 0.09, palm ? 0.13 : 0.16, palm ? 4.4 : 2.6, 6),
+        new THREE.MeshStandardMaterial({ color: palm ? 0x6a5638 : 0x3a2c1c, roughness: 0.95 }), spots.length);
       const cans = new THREE.InstancedMesh(
         new THREE.SphereGeometry(1, 8, 6),
         new THREE.MeshStandardMaterial({ color: t.color, roughness: 0.95 }), spots.length);
       const m4 = new THREE.Matrix4();
       spots.forEach(([x, z], i) => {
-        m4.makeTranslation(x, 1.3, z);
+        m4.makeTranslation(x, palm ? 2.2 : 1.3, z);
         trunks.setMatrixAt(i, m4);
         const s = 1.2 + Math.random() * 0.9;
-        m4.makeScale(s * 1.25, s, s * 1.25).setPosition(x, 2.9 + s * 0.4, z);
+        if (palm) m4.makeScale(s * 1.8, s * 0.4, s * 1.8).setPosition(x, 4.5, z); // frond crown
+        else m4.makeScale(s * 1.25, s, s * 1.25).setPosition(x, 2.9 + s * 0.4, z);
         cans.setMatrixAt(i, m4);
         shadowSpots.push({ x, z, sx: 3.2, sz: 3.2 });
         addCollider(new THREE.Box3().setFromCenterAndSize(
@@ -1922,6 +2130,7 @@ function buildCity(city) {
   buildVenues();
   spawnTraffic();
   spawnPeds();
+  spawnCamels();
   for (let i = 0; i < 10; i++) spawnCanPickup();
   loadRealAssets();
   spawnMercFleet();   // in case the model finished loading before the city
@@ -4008,6 +4217,7 @@ function tick() {
       updateVenues(dtReal);
       updateTraffic(dtReal);
       updatePeds(dtReal);
+      updateCamels(dtReal);
     }
     doRender();
     return;
@@ -4164,6 +4374,7 @@ function tick() {
 
   updateTraffic(dt);
   updatePeds(dt);
+  updateCamels(dt);
   updateEnergy(dt);
   updateClub(dt);
   updateVenues(dt);

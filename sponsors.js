@@ -36,6 +36,17 @@ export const CITIES = [
     ],
   },
   {
+    id: 'sahara',
+    name: 'OLD SAHARA',
+    blurb: 'Traditional desert medina. Sand walls, souq lanes, camel caravans.',
+    accent: '#e8c06a',
+    sponsors: [
+      { name: 'SNOONU',   tagline: 'Delivered in minutes', colorA: '#e01f43', colorB: '#5c0d1e', logo: 'ads/snoonu.png' },
+      { name: 'RED BULL', tagline: 'Energy for the dunes', colorA: '#16305e', colorB: '#0a1430', logo: 'ads/redbull.png' },
+      { name: 'AL SOUQ',  tagline: 'The heart of the medina', colorA: '#8a5a1e', colorB: '#3a2408', logo: null },
+    ],
+  },
+  {
     id: 'harbor',
     name: 'RED HARBOR',
     blurb: 'Old-town brick and sodium lamps. Low rooftops, tight corners.',
