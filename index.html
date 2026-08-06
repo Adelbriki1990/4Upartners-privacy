@@ -151,6 +151,50 @@
   .citycard p { color: #a9b8c6; font-size: 12.5px; line-height: 1.5; }
   .citycard .sp { margin-top: 10px; font-size: 10.5px; letter-spacing: 1px; color: #7d8fa2; text-transform: uppercase; }
 
+  /* ---------- touch controls (phones / tablets) ---------- */
+  #touchui { display: none; position: absolute; inset: 0; pointer-events: none; }
+  #joy { position: absolute; left: 26px; bottom: 90px; width: 120px; height: 120px;
+    border: 2px solid rgba(255,255,255,.35); border-radius: 50%; background: rgba(10,16,24,.3); pointer-events: none; }
+  #joyknob { position: absolute; left: 38px; top: 38px; width: 44px; height: 44px;
+    border-radius: 50%; background: rgba(255,255,255,.45); }
+  .tbtn { position: absolute; pointer-events: auto; display: flex; align-items: center; justify-content: center;
+    width: 74px; height: 74px; border-radius: 50%; font-size: 30px; user-select: none; -webkit-user-select: none;
+    background: rgba(10,16,24,.45); border: 2px solid rgba(255,255,255,.3); touch-action: none; }
+  .tbtn.sm { width: 56px; height: 56px; font-size: 22px; }
+  #btnFire { right: 26px; bottom: 96px; }
+  #btnAim  { right: 116px; bottom: 40px; }
+  #btnJump { right: 32px; bottom: 190px; }
+  #btnAct  { right: 122px; bottom: 176px; }
+  #btnQ    { right: 200px; bottom: 120px; }
+  #btnShop { right: 208px; bottom: 40px; }
+  .tbtn.on { background: rgba(127,208,255,.45); }
+  @media (max-width: 980px) {
+    #missions { display: none !important; }
+    #topbar { gap: 16px; font-size: 12px; }
+    #ammo .mag { font-size: 30px; }
+    #minimap { width: 110px; height: 110px; }
+    #location { width: 110px; top: 138px; font-size: 8.5px; }
+    #orderpanel { top: 172px; width: 178px; padding: 8px 10px; }
+    #orderpanel .dist { font-size: 15px; }
+    #healthwrap { width: 170px; }
+    #healthbar, #healthfill { max-width: 170px; }
+  }
+  /* landscape phones: keep the left column clear of the joystick and the
+     ammo block clear of the action buttons */
+  @media (max-height: 500px) {
+    #minimap { width: 90px; height: 90px; }
+    #location { width: 90px; top: 114px; font-size: 8px; }
+    #orderpanel { top: 56px; left: 122px; width: 168px; padding: 7px 10px; }
+    #orderpanel .dist { font-size: 14px; }
+    #missions { display: none !important; }
+    #ammo { right: 230px; bottom: 16px; }
+    #ammo .mag { font-size: 26px; }
+    #ammo .res { font-size: 14px; }
+    #ammo .wname { display: none; }
+    #healthwrap { width: 150px; }
+    #healthbar, #healthfill { max-width: 150px; }
+  }
+
   /* ---------- driver shop ---------- */
   #wallet { margin-top: 8px; font-size: 20px; font-weight: 800; color: #7dff8a; letter-spacing: 2px; }
   #shopitems { margin-top: 18px; display: flex; flex-direction: column; gap: 10px; width: min(560px, 92vw); }
@@ -224,6 +268,16 @@
     <div><span class="mag" id="mag">30</span> <span class="res">/ <span id="reserve">120</span></span></div>
   </div>
   <div id="reloadmsg">RELOADING…</div>
+
+  <div id="touchui">
+    <div id="joy"><div id="joyknob"></div></div>
+    <div class="tbtn" id="btnFire">🔥</div>
+    <div class="tbtn sm" id="btnAim">🎯</div>
+    <div class="tbtn sm" id="btnJump">⤒</div>
+    <div class="tbtn sm" id="btnAct">🚗</div>
+    <div class="tbtn sm" id="btnQ">⚡</div>
+    <div class="tbtn sm" id="btnShop">🛒</div>
+  </div>
 </div>
 
 <div id="cine">
@@ -301,6 +355,6 @@
   "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.1/examples/jsm/"
 } }
 </script>
-<script type="module" src="game.js?v=16"></script>
+<script type="module" src="game.js?v=17"></script>
 </body>
 </html>

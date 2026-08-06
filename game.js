@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=16';
+import { CITIES } from './sponsors.js?v=17';
 
 // ---------------------------------------------------------------------------
 // Renderer / scene / camera
@@ -1284,6 +1284,8 @@ function normalizeModel(root, kind, target) {
   return root;
 }
 let mercTemplate = null;
+let camelTemplate = null;
+let arabicTemplate = null;
 const personTemplates = [];
 function loadRealAssets() {
   gltfLoader.load('models/car_mercedes.glb', g => {
@@ -1295,6 +1297,62 @@ function loadRealAssets() {
       personTemplates.push({ root: normalizeModel(g.scene, 'person', 1.78), clips: g.animations || [] });
       placeRealPeople();
     }, undefined, () => {});
+  // desert-city assets load only where the theme wants them
+  if (THEME.camels)
+    gltfLoader.load('models/camel.glb', g => {
+      camelTemplate = { root: normalizeModel(g.scene, 'person', 2.2), clips: g.animations || [] };
+      upgradeCamels();
+    }, undefined, () => {});
+  if (THEME.dress === 'arabic')
+    gltfLoader.load('models/person_arabic.glb', g => {
+      arabicTemplate = { root: normalizeModel(g.scene, 'person', 1.78), clips: g.animations || [] };
+      placeArabicMen();
+    }, undefined, () => {});
+}
+// Swap the procedural camels for the real scanned model once it arrives,
+// keeping each caravan's route and pacing.
+const CAMEL_ORIENT = 0;
+function upgradeCamels() {
+  if (!camelTemplate) return;
+  const picks = pickClips(camelTemplate.clips);
+  for (const c of camels) {
+    scene.remove(c.rig.group);
+    const wrap = new THREE.Group();
+    const m = SkeletonUtils.clone(camelTemplate.root);
+    m.rotation.y = CAMEL_ORIENT;
+    wrap.add(m);
+    scene.add(wrap);
+    c.rig = { group: wrap, legs: null };
+    const clip = picks.walk || picks.any;
+    if (clip) {
+      const mixer = new THREE.AnimationMixer(m);
+      const a = mixer.clipAction(clip);
+      a.time = Math.random() * clip.duration; // desync the caravan
+      a.play();
+      modelMixers.push(mixer);
+    }
+  }
+  addFeed('🐪 Camel caravans crossing the medina');
+}
+let arabicPlaced = false;
+function placeArabicMen() {
+  if (arabicPlaced || !arabicTemplate) return;
+  arabicPlaced = true;
+  const spots = [[9.6, 22, -Math.PI / 2], [-9.6, -34, Math.PI / 2], [50.4, -9, Math.PI / 2], [-9.6, 66, Math.PI / 2]];
+  for (const [x, z, ry] of spots) {
+    const p = SkeletonUtils.clone(arabicTemplate.root);
+    p.position.set(x, 0, z);
+    p.rotation.y = ry;
+    scene.add(p);
+    const picks = pickClips(arabicTemplate.clips);
+    if (picks.any) {
+      const mixer = new THREE.AnimationMixer(p);
+      mixer.clipAction(picks.any).play();
+      modelMixers.push(mixer);
+    } else {
+      modelBobbers.push({ obj: p, phase: Math.random() * 6, baseY: 0, baseRot: ry });
+    }
+  }
 }
 const modelMixers = [];   // animation players for real character models
 const modelBobbers = [];  // fallback idle for models without animations
@@ -1704,13 +1762,16 @@ function updateCamels(dt) {
       c.rig.group.position.set(c.s + c.side, 0, c.v);
       c.rig.group.rotation.y = c.dir > 0 ? 0 : Math.PI;
     }
-    c.phase += dt * 3.2;
-    const sw = Math.sin(c.phase) * 0.4;
-    c.rig.legs[0].rotation.x = sw;
-    c.rig.legs[3].rotation.x = sw;
-    c.rig.legs[1].rotation.x = -sw;
-    c.rig.legs[2].rotation.x = -sw;
-    c.rig.group.position.y = Math.abs(Math.sin(c.phase)) * 0.04;
+    if (c.rig.legs) {
+      // procedural rig: swing the leg pivots ourselves
+      c.phase += dt * 3.2;
+      const sw = Math.sin(c.phase) * 0.4;
+      c.rig.legs[0].rotation.x = sw;
+      c.rig.legs[3].rotation.x = sw;
+      c.rig.legs[1].rotation.x = -sw;
+      c.rig.legs[2].rotation.x = -sw;
+      c.rig.group.position.y = Math.abs(Math.sin(c.phase)) * 0.04;
+    }
   }
 }
 
@@ -2403,6 +2464,81 @@ document.addEventListener('mousemove', e => {
   player.pitch = Math.max(-1.45, Math.min(1.45, player.pitch));
 });
 
+// ---------------------------------------------------------------------------
+// Touch controls — phones and tablets play with a virtual joystick,
+// drag-to-look, and on-screen action buttons
+// ---------------------------------------------------------------------------
+const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+const touchMove = { x: 0, y: 0, hard: false };
+let joyTouchId = null, lookTouchId = null, lastLook = null;
+if (isTouch) {
+  const ui = document.getElementById('touchui');
+  ui.style.display = 'block';
+  const joy = document.getElementById('joy');
+  const knob = document.getElementById('joyknob');
+  const setKnob = (dx, dy) => { knob.style.transform = `translate(${dx}px, ${dy}px)`; };
+  const joyCenter = () => {
+    const r = joy.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  };
+  document.addEventListener('touchstart', e => {
+    if (!started || player.dead) return;
+    if (cine.active) { if (cine.t > 0.5) finishCinematic(); return; }
+    for (const t of e.changedTouches) {
+      if (t.target.closest && t.target.closest('.tbtn, #shop, .overlay')) continue;
+      if (t.clientX < window.innerWidth * 0.42 && t.clientY > window.innerHeight * 0.4 && joyTouchId === null) {
+        joyTouchId = t.identifier;
+      } else if (lookTouchId === null) {
+        lookTouchId = t.identifier;
+        lastLook = { x: t.clientX, y: t.clientY };
+      }
+    }
+  }, { passive: true });
+  document.addEventListener('touchmove', e => {
+    for (const t of e.changedTouches) {
+      if (t.identifier === joyTouchId) {
+        const c = joyCenter();
+        let dx = t.clientX - c.x, dy = t.clientY - c.y;
+        const len = Math.hypot(dx, dy), max = 55;
+        if (len > max) { dx = dx / len * max; dy = dy / len * max; }
+        setKnob(dx, dy);
+        touchMove.x = dx / max;
+        touchMove.y = dy / max;
+        touchMove.hard = len > max * 0.9;
+      } else if (t.identifier === lookTouchId && lastLook) {
+        player.yaw -= (t.clientX - lastLook.x) * 0.005;
+        player.pitch -= (t.clientY - lastLook.y) * 0.005;
+        player.pitch = Math.max(-1.45, Math.min(1.45, player.pitch));
+        lastLook = { x: t.clientX, y: t.clientY };
+      }
+    }
+  }, { passive: true });
+  document.addEventListener('touchend', e => {
+    for (const t of e.changedTouches) {
+      if (t.identifier === joyTouchId) {
+        joyTouchId = null;
+        touchMove.x = touchMove.y = 0;
+        touchMove.hard = false;
+        setKnob(0, 0);
+      }
+      if (t.identifier === lookTouchId) { lookTouchId = null; lastLook = null; }
+    }
+  }, { passive: true });
+
+  const hold = (id, down, up) => {
+    const el = document.getElementById(id);
+    el.addEventListener('touchstart', e => { e.preventDefault(); el.classList.add('on'); down(); }, { passive: false });
+    el.addEventListener('touchend', e => { e.preventDefault(); el.classList.remove('on'); if (up) up(); }, { passive: false });
+  };
+  hold('btnFire', () => { firing = true; pendingShot = true; }, () => { firing = false; });
+  hold('btnAim', () => { aiming = !aiming; document.getElementById('btnAim').classList.toggle('on', aiming); }, () => {
+    document.getElementById('btnAim').classList.toggle('on', aiming); });
+  hold('btnJump', () => { keys['Space'] = true; }, () => { keys['Space'] = false; });
+  hold('btnAct', () => toggleDrive(), null);
+  hold('btnQ', () => drinkEnergy(), null);
+  hold('btnShop', () => toggleShop(), null);
+}
+
 const menuEl = document.getElementById('menu');
 const pausedEl = document.getElementById('paused');
 const gameoverEl = document.getElementById('gameover');
@@ -2414,9 +2550,22 @@ menuEl.addEventListener('click', () => {
   // real-game presentation: take the whole screen
   try { document.documentElement.requestFullscreen?.()?.catch(() => {}); } catch {}
   if (!CITY) buildCity(selectedCity());
-  requestLock();
+  if (isTouch) {
+    // phones have no pointer lock — start the game directly
+    locked = true;
+    menuEl.style.display = 'none';
+    pausedEl.style.display = 'none';
+    if (!started) { started = true; startCinematic(); }
+    else if (!cine.active) hudEl.style.display = 'block';
+    if (AC && AC.state === 'suspended') AC.resume();
+  } else {
+    requestLock();
+  }
 });
-pausedEl.addEventListener('click', requestLock);
+pausedEl.addEventListener('click', () => {
+  if (isTouch) { locked = true; pausedEl.style.display = 'none'; hudEl.style.display = 'block'; }
+  else requestLock();
+});
 gameoverEl.addEventListener('click', () => location.reload());
 
 document.addEventListener('pointerlockchange', () => {
@@ -2889,13 +3038,20 @@ function updateDriving(dt) {
   const fwd = new THREE.Vector3(Math.sin(v.yaw), 0, Math.cos(v.yaw));
   const boost = energy.boostT > 0 ? 1.25 : 1;
   const wrecked = v.health <= 0;
-  const accel = wrecked ? 0 : keys['KeyW'] ? st.accel * boost : keys['KeyS'] ? -st.accel * 0.65 : 0;
+  const touchAccel = -touchMove.y; // joystick up = throttle, down = reverse
+  const accel = wrecked ? 0
+    : keys['KeyW'] ? st.accel * boost
+    : keys['KeyS'] ? -st.accel * 0.65
+    : touchAccel > 0.15 ? st.accel * boost * touchAccel
+    : touchAccel < -0.15 ? st.accel * 0.65 * touchAccel
+    : 0;
   v.speed += accel * dt;
   v.speed -= v.speed * 0.55 * dt;
   // real brakes on Space
   if (keys['Space']) v.speed -= Math.sign(v.speed) * Math.min(Math.abs(v.speed), 26 * dt);
   v.speed = Math.max(st.maxR, Math.min(st.maxF * boost, v.speed));
-  const steer = (keys['KeyA'] ? 1 : 0) - (keys['KeyD'] ? 1 : 0);
+  const steer = (keys['KeyA'] ? 1 : 0) - (keys['KeyD'] ? 1 : 0)
+    - (Math.abs(touchMove.x) > 0.15 ? touchMove.x : 0);
   v.yaw += steer * Math.min(Math.abs(v.speed) / 6, 1) * st.turn * dt * Math.sign(v.speed || 1);
   v.group.rotation.y = v.yaw;
   // scooters and bikes lean into turns
@@ -3095,10 +3251,10 @@ function toggleShop() {
   if (shopOpen) {
     renderShop();
     el.style.display = 'flex';
-    document.exitPointerLock();
+    if (!isTouch) document.exitPointerLock();
   } else {
     el.style.display = 'none';
-    requestLock();
+    if (!isTouch) requestLock();
   }
 }
 function xpNeed(l) { return 40 + l * 12; }
@@ -4298,11 +4454,18 @@ function tick() {
     grainEl.style.transform = `translate(${(Math.random() * 64) | 0}px, ${(Math.random() * 64) | 0}px)`;
 
   // ---- player movement / driving ----
+  if (isTouch) {
+    // buttons change meaning behind the wheel: jump→brake, enter→exit
+    const j = document.getElementById('btnJump'), a = document.getElementById('btnAct');
+    const jl = driving ? '🛑' : '⤒', al = driving ? '🚶' : '🚗';
+    if (j.textContent !== jl) j.textContent = jl;
+    if (a.textContent !== al) a.textContent = al;
+  }
   if (!player.dead && driving) {
     updateDriving(dt);
     drivehintEl.style.display = 'none';
   } else if (!player.dead) {
-    const sprinting = (keys['ShiftLeft'] || keys['ShiftRight']) && keys['KeyW'] && !aiming;
+    const sprinting = (((keys['ShiftLeft'] || keys['ShiftRight']) && keys['KeyW']) || touchMove.hard) && !aiming;
     const boost = energy.boostT > 0 ? 1.45 : 1;
     const sprintSpd = 8.2 * (1 + 0.08 * upgLvl('fit'));
     const speed = (aiming ? 2.6 : sprinting ? sprintSpd : 5.2) * boost;
@@ -4313,6 +4476,8 @@ function tick() {
     if (keys['KeyS']) wish.sub(fwd);
     if (keys['KeyD']) wish.add(right);
     if (keys['KeyA']) wish.sub(right);
+    wish.addScaledVector(fwd, -touchMove.y);
+    wish.addScaledVector(right, touchMove.x);
     if (wish.lengthSq() > 0) wish.normalize().multiplyScalar(speed);
     player.vel.x += (wish.x - player.vel.x) * Math.min(1, dt * 12);
     player.vel.z += (wish.z - player.vel.z) * Math.min(1, dt * 12);
@@ -4473,6 +4638,7 @@ window.__so = {
       money: game.money, order: order.active ? order.stage : null,
       peds: peds.length, traffic: traffic.length, nf: NF,
       pos: [player.pos.x, player.pos.z],
+      camels: camels.length, realCamels: camels.filter(c => !c.rig.legs).length,
     };
   },
 };
