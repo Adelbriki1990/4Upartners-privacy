@@ -423,8 +423,12 @@ async function renderMusic() {
 }
 function updateMusic() {
   if (!musicNodes) return;
-  const d = Math.hypot(player.pos.x - clubPos.x, player.pos.z - clubPos.z);
-  const prox = Math.max(0, 1 - d / 52);
+  let prox = 0;
+  for (const zone of (musicZones.length ? musicZones : [clubPos])) {
+    const d = Math.hypot(player.pos.x - zone.x, player.pos.z - zone.z);
+    prox = Math.max(prox, 1 - d / 52);
+  }
+  prox = Math.max(0, prox);
   musicNodes.club.g.gain.value = musicOn ? 0.5 * Math.pow(prox, 1.6) : 0;
   musicNodes.club.filt.frequency.value = 320 + Math.pow(prox, 2) * 11000;
   musicNodes.city.g.gain.value = musicOn ? 0.05 * (1 - prox * 0.85) : 0;
@@ -1208,6 +1212,7 @@ function makeCharacter(cfg, opts = {}) {
 
   const uniformed = cfg.uniform !== undefined;
   if (uniformed) shirt.color.set(cfg.uniform);
+  if (cfg.team !== undefined) shirt.color.set(cfg.team); // sports kit, no courier gear
 
   // torso + hips (capsules, squashed for shoulders)
   const torso = new THREE.Mesh(new THREE.CapsuleGeometry(female ? 0.14 : 0.16, 0.34, 4, 10), shirt);
@@ -1516,6 +1521,8 @@ function buildCity(city) {
       const z0 = STREETS[iz] + ROAD_HALF + 3.5, z1 = STREETS[iz + 1] - ROAD_HALF - 3.5;
       const lotW = (x1 - x0) / 2, lotD = (z1 - z0) / 2;
       for (const qx of [0, 1]) for (const qz of [0, 1]) {
+        const lcx = x0 + lotW * qx + lotW / 2, lcz = z0 + lotD * qz + lotD / 2;
+        if (PLAZAS.some(p => Math.hypot(lcx - p.x, lcz - p.z) < 27)) continue; // venue plaza
         if (Math.random() < 0.12) continue; // empty lot
         const w = lotW * (0.62 + Math.random() * 0.28);
         const d = lotD * (0.62 + Math.random() * 0.28);
@@ -1744,6 +1751,7 @@ function buildCity(city) {
   for (const l of lampLights) l.intensity = 20 * NF;
 
   buildClub();
+  buildVenues();
   spawnTraffic();
   spawnPeds();
   for (let i = 0; i < 10; i++) spawnCanPickup();
@@ -2742,6 +2750,343 @@ function startWave() {
 }
 
 // ---------------------------------------------------------------------------
+// City venues & activities — gym, nightclub, football court, street market,
+// park with fountain, café terrace, arcade. Each lives in its own district.
+// ---------------------------------------------------------------------------
+const PLAZAS = [
+  { x: 90, z: -30, type: 'court' },
+  { x: -90, z: 30, type: 'market' },
+  { x: -30, z: 90, type: 'park' },
+];
+const venues = [];      // { name, x, z, color, update? }
+const musicZones = [];  // positions where the dance/energy track plays
+const venueIdlers = []; // people idling/swaying at venues
+
+function marquee(text, color, x, z, rotY, w = 7) {
+  const cv = document.createElement('canvas');
+  cv.width = 1024; cv.height = 192;
+  const g = cv.getContext('2d');
+  g.fillStyle = '#0a0c10'; g.fillRect(0, 0, 1024, 192);
+  g.strokeStyle = color; g.lineWidth = 8; g.strokeRect(10, 10, 1004, 172);
+  g.font = '900 96px Arial'; g.textAlign = 'center';
+  g.shadowColor = color; g.shadowBlur = 30;
+  g.fillStyle = color;
+  g.fillText(text, 512, 128);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(w, w * 0.19),
+    new THREE.MeshBasicMaterial({ map: tex }));
+  sign.position.set(x, 5, z);
+  sign.rotation.y = rotY;
+  scene.add(sign);
+  return sign;
+}
+function sitPose(rig) {
+  rig.legs[0].rotation.x = rig.legs[1].rotation.x = -1.45;
+  rig.group.position.y = -0.3;
+}
+
+function buildVenues() {
+  // --- CLUB VOLT (west Central Ave) ---
+  {
+    const z = -45, x = -11.5;
+    marquee('★ CLUB VOLT ★', '#ff4fd8', x + 0.3, z, Math.PI / 2, 8);
+    const beams = [];
+    for (const [dz, col] of [[-2.2, 0xff4fd8], [2.2, 0x41d8ff]]) {
+      const beam = new THREE.Mesh(
+        new THREE.ConeGeometry(1.1, 9, 12, 1, true),
+        new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.12,
+          blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+      beam.position.set(x + 0.9, 4.5, z + dz);
+      scene.add(beam);
+      beams.push(beam);
+    }
+    const light = new THREE.PointLight(0xff4fd8, 8, 20, 2);
+    light.position.set(x + 1.6, 3.5, z);
+    scene.add(light);
+    const dancers = [];
+    for (let i = 0; i < 4; i++) {
+      const c = makeCivilian();
+      c.group.position.set(x + 1.6 + Math.random(), 0, z - 3.5 + i * 2.2);
+      c.group.rotation.y = -Math.PI / 2;
+      scene.add(c.group);
+      dancers.push({ rig: c, phase: Math.random() * 6 });
+    }
+    musicZones.push(new THREE.Vector3(x, 0, z));
+    venues.push({ name: 'CLUB', x, z, color: '#ff4fd8', update(dt) {
+      const beat = game.time * (126 / 60) * Math.PI * 2;
+      light.color.setHSL((game.time * 0.22) % 1, 0.85, 0.55);
+      light.intensity = (5 + 4 * Math.max(0, Math.sin(beat))) * (0.3 + 0.7 * NF);
+      beams[0].rotation.z = Math.sin(game.time * 1.4) * 0.45;
+      beams[1].rotation.z = Math.cos(game.time * 1.2) * 0.45;
+      for (const d of dancers) {
+        const b = Math.abs(Math.sin(beat / 2 + d.phase));
+        d.rig.group.position.y = b * 0.1;
+        d.rig.arms[0].rotation.x = -0.6 - b * 1.1;
+        d.rig.arms[1].rotation.x = -0.6 - Math.abs(Math.cos(beat / 2 + d.phase)) * 1.1;
+      }
+    } });
+  }
+
+  // --- STREET FOOTBALL COURT (Tower Gardens plaza) — a live match ---
+  {
+    const { x: px, z: pz } = PLAZAS[0];
+    const cv = document.createElement('canvas');
+    cv.width = 512; cv.height = 320;
+    const g = cv.getContext('2d');
+    g.fillStyle = '#2c6b3a'; g.fillRect(0, 0, 512, 320);
+    g.strokeStyle = 'rgba(255,255,255,.85)'; g.lineWidth = 4;
+    g.strokeRect(14, 14, 484, 292);
+    g.beginPath(); g.moveTo(256, 14); g.lineTo(256, 306); g.stroke();
+    g.beginPath(); g.arc(256, 160, 46, 0, Math.PI * 2); g.stroke();
+    const tex = new THREE.CanvasTexture(cv);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const pitch = new THREE.Mesh(new THREE.PlaneGeometry(24, 15),
+      new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9 }));
+    pitch.rotation.x = -Math.PI / 2;
+    pitch.rotation.z = Math.PI / 2 * 0; // court runs along x
+    pitch.position.set(px, 0.03, pz);
+    pitch.receiveShadow = true;
+    scene.add(pitch);
+    const mGoal = new THREE.MeshStandardMaterial({ color: 0xe8ecf0, roughness: 0.4 });
+    for (const gx of [-11.5, 11.5]) {
+      for (const dz of [-1.8, 1.8]) {
+        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.6, 8), mGoal);
+        post.position.set(px + gx, 0.8, pz + dz);
+        scene.add(post);
+      }
+      const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 3.7, 8), mGoal);
+      bar.rotation.x = Math.PI / 2;
+      bar.position.set(px + gx, 1.6, pz);
+      scene.add(bar);
+    }
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8),
+      new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.4 }));
+    ball.position.set(px, 0.16, pz);
+    ball.castShadow = true;
+    scene.add(ball);
+    const ballVel = new THREE.Vector3();
+    const players = [];
+    for (let i = 0; i < 6; i++) {
+      const look = randomLook();
+      look.team = i % 2 === 0 ? 0xd83030 : 0x3050d8;
+      look.skirt = false;
+      const c = makeCharacter(look);
+      c.group.position.set(px + (Math.random() - 0.5) * 16, 0, pz + (Math.random() - 0.5) * 10);
+      scene.add(c.group);
+      players.push({ rig: c, phase: Math.random() * 6, speed: 2.6 + Math.random() });
+    }
+    venues.push({ name: 'BALL', x: px, z: pz, color: '#7dff8a', update(dt) {
+      ball.position.addScaledVector(ballVel, dt);
+      ballVel.multiplyScalar(1 - dt * 0.6);
+      ball.rotation.x += ballVel.z * dt * 6;
+      if (Math.abs(ball.position.x - px) > 11) { ballVel.x *= -0.8; ball.position.x = px + Math.sign(ball.position.x - px) * 11; }
+      if (Math.abs(ball.position.z - pz) > 6.6) { ballVel.z *= -0.8; ball.position.z = pz + Math.sign(ball.position.z - pz) * 6.6; }
+      for (const p of players) {
+        const gp = p.rig.group.position;
+        const d = Math.hypot(ball.position.x - gp.x, ball.position.z - gp.z);
+        if (d > 0.9) {
+          const dir = Math.atan2(ball.position.x - gp.x, ball.position.z - gp.z);
+          p.rig.group.rotation.y = dir;
+          gp.x += Math.sin(dir) * p.speed * dt;
+          gp.z += Math.cos(dir) * p.speed * dt;
+          p.phase += dt * 8;
+          const sw = Math.sin(p.phase) * 0.55;
+          p.rig.legs[0].rotation.x = sw;
+          p.rig.legs[1].rotation.x = -sw;
+          p.rig.arms[0].rotation.x = -sw * 0.6;
+          p.rig.arms[1].rotation.x = sw * 0.6;
+        } else if (ballVel.length() < 2) {
+          // kick toward a goal with some chaos
+          const goalX = px + (Math.random() < 0.5 ? -11 : 11);
+          const kd = new THREE.Vector3(goalX - ball.position.x, 0, pz + (Math.random() - 0.5) * 8 - ball.position.z).normalize();
+          ballVel.copy(kd.multiplyScalar(5 + Math.random() * 5));
+        }
+        gp.x = Math.max(px - 11, Math.min(px + 11, gp.x));
+        gp.z = Math.max(pz - 6.5, Math.min(pz + 6.5, gp.z));
+      }
+    } });
+  }
+
+  // --- STREET MARKET (Old Quarter plaza) ---
+  {
+    const { x: px, z: pz } = PLAZAS[1];
+    const mWood = new THREE.MeshStandardMaterial({ color: 0x5b4630, roughness: 0.9 });
+    for (let i = 0; i < 4; i++) {
+      const sx = px - 9 + i * 6, sz = pz;
+      const counter = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.0, 1.3), mWood);
+      counter.position.set(sx, 0.5, sz);
+      counter.castShadow = true;
+      scene.add(counter);
+      addCollider(new THREE.Box3().setFromCenterAndSize(
+        new THREE.Vector3(sx, 0.6, sz), new THREE.Vector3(2.7, 1.2, 1.4)));
+      const awn = new THREE.Mesh(new THREE.BoxGeometry(3.0, 0.08, 2.2),
+        new THREE.MeshStandardMaterial({ color: THEME.neon[i % THEME.neon.length], roughness: 0.85 }));
+      awn.position.set(sx, 2.2, sz);
+      awn.rotation.x = -0.12;
+      awn.castShadow = true;
+      scene.add(awn);
+      for (const [wx2, wz2] of [[-1.35, -0.9], [1.35, -0.9], [-1.35, 0.9], [1.35, 0.9]]) {
+        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 2.2, 6), mWood);
+        post.position.set(sx + wx2, 1.1, sz + wz2);
+        scene.add(post);
+      }
+      for (let b = 0; b < 3; b++) {
+        const box = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.3, 0.5),
+          new THREE.MeshStandardMaterial({ color: new THREE.Color().setHSL(Math.random(), 0.55, 0.45), roughness: 0.9 }));
+        box.position.set(sx - 0.7 + b * 0.7, 1.16, sz + (Math.random() - 0.5) * 0.4);
+        scene.add(box);
+      }
+      // vendor behind, shopper in front
+      const vendor = makeCivilian();
+      vendor.group.position.set(sx, 0, sz - 1.4);
+      scene.add(vendor.group);
+      venueIdlers.push({ rig: vendor, phase: Math.random() * 6 });
+      if (Math.random() < 0.8) {
+        const shopper = makeCivilian();
+        shopper.group.position.set(sx + (Math.random() - 0.5), 0, sz + 1.5);
+        shopper.group.rotation.y = Math.PI;
+        scene.add(shopper.group);
+        venueIdlers.push({ rig: shopper, phase: Math.random() * 6 });
+      }
+    }
+    venues.push({ name: 'SOUQ', x: px, z: pz, color: '#ffd23f' });
+  }
+
+  // --- PARK with fountain (plaza) ---
+  {
+    const { x: px, z: pz } = PLAZAS[2];
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.6, 0.55, 18),
+      new THREE.MeshStandardMaterial({ color: 0x8a8d92, roughness: 0.8 }));
+    base.position.set(px, 0.27, pz);
+    scene.add(base);
+    addCollider(new THREE.Box3().setFromCenterAndSize(
+      new THREE.Vector3(px, 0.5, pz), new THREE.Vector3(5, 1, 5)));
+    const water = new THREE.Mesh(new THREE.CylinderGeometry(2.1, 2.1, 0.1, 18),
+      new THREE.MeshStandardMaterial({ color: 0x3a6c8c, roughness: 0.1, metalness: 0.3 }));
+    water.position.set(px, 0.56, pz);
+    scene.add(water);
+    const column = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.28, 2.0, 10),
+      new THREE.MeshBasicMaterial({ color: 0xbfe0ff, transparent: true, opacity: 0.35,
+        blending: THREE.AdditiveBlending, depthWrite: false }));
+    column.position.set(px, 1.55, pz);
+    scene.add(column);
+    const drops = [];
+    for (let i = 0; i < 12; i++) {
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: glowTexShared, color: 0x9fd0ff, transparent: true, opacity: 0.4,
+        blending: THREE.AdditiveBlending, depthWrite: false }));
+      s.scale.setScalar(0.35);
+      scene.add(s);
+      drops.push({ s, phase: i / 12, ang: (i / 12) * Math.PI * 2 });
+    }
+    const mBench = new THREE.MeshStandardMaterial({ color: 0x6b4f33, roughness: 0.9 });
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2 + 0.4;
+      const bx = px + Math.cos(a) * 6, bz = pz + Math.sin(a) * 6;
+      const seat = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.1, 0.55), mBench);
+      seat.position.set(bx, 0.48, bz);
+      seat.rotation.y = -a + Math.PI / 2;
+      seat.castShadow = true;
+      scene.add(seat);
+      const back = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.5, 0.08), mBench);
+      back.position.set(bx - Math.cos(a) * 0.26, 0.78, bz - Math.sin(a) * 0.26);
+      back.rotation.y = -a + Math.PI / 2;
+      scene.add(back);
+      if (i % 2 === 0) {
+        const sitter = makeCivilian();
+        sitter.group.position.set(bx + Math.cos(a) * 0.1, 0, bz + Math.sin(a) * 0.1);
+        sitter.group.rotation.y = -a - Math.PI / 2;
+        sitPose(sitter);
+        scene.add(sitter.group);
+      }
+    }
+    venues.push({ name: 'PARK', x: px, z: pz, color: '#7dc8ff', update(dt) {
+      for (const d of drops) {
+        d.phase = (d.phase + dt * 0.55) % 1;
+        const t = d.phase;
+        const r = 0.3 + t * 1.5;
+        d.s.position.set(px + Math.cos(d.ang) * r, 2.45 + 2.6 * t * (1 - t) - t * 1.8, pz + Math.sin(d.ang) * r);
+        d.s.material.opacity = 0.45 * (1 - t);
+      }
+    } });
+  }
+
+  // --- CAFÉ TERRACE (west Central Ave) ---
+  {
+    const x = -11.5, z = 15;
+    marquee('CAFE NOIR', '#ffd479', x + 0.3, z, Math.PI / 2, 6);
+    for (let i = 0; i < 3; i++) {
+      const tx = x + 2.2, tz = z - 4 + i * 4;
+      const top = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.05, 12),
+        new THREE.MeshStandardMaterial({ color: 0xd8d4c8, roughness: 0.6 }));
+      top.position.set(tx, 0.75, tz);
+      scene.add(top);
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 0.75, 8),
+        new THREE.MeshStandardMaterial({ color: 0x3a3d42, roughness: 0.5, metalness: 0.6 }));
+      pole.position.set(tx, 0.38, tz);
+      scene.add(pole);
+      const upole = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 2.1, 6),
+        new THREE.MeshStandardMaterial({ color: 0x8a8d92, roughness: 0.5 }));
+      upole.position.set(tx, 1.85, tz);
+      scene.add(upole);
+      const umb = new THREE.Mesh(new THREE.ConeGeometry(1.2, 0.5, 8),
+        new THREE.MeshStandardMaterial({ color: i % 2 ? 0xc23b3b : 0xd8d4c8, roughness: 0.85 }));
+      umb.position.set(tx, 2.8, tz);
+      umb.castShadow = true;
+      scene.add(umb);
+      addCollider(new THREE.Box3().setFromCenterAndSize(
+        new THREE.Vector3(tx, 0.6, tz), new THREE.Vector3(1.2, 1.2, 1.2)));
+      if (i !== 1) {
+        const guest = makeCivilian();
+        guest.group.position.set(tx + 0.9, 0, tz);
+        guest.group.rotation.y = -Math.PI / 2;
+        sitPose(guest);
+        scene.add(guest.group);
+      }
+    }
+    venues.push({ name: 'CAFE', x, z, color: '#ffd479' });
+  }
+
+  // --- ARCADE (east Central Ave) ---
+  {
+    const x = 11.5, z = -15;
+    marquee('ARCADE', '#41d8ff', x - 0.3, z, -Math.PI / 2, 6);
+    const winMats = [];
+    for (const dz of [-1.6, 1.6]) {
+      const win = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 1.4),
+        new THREE.MeshBasicMaterial({ color: 0x41d8ff }));
+      win.position.set(x - 0.35, 1.8, z + dz);
+      win.rotation.y = -Math.PI / 2;
+      scene.add(win);
+      winMats.push(win.material);
+    }
+    for (let i = 0; i < 2; i++) {
+      const kid = makeCivilian();
+      kid.group.position.set(x - 1.6, 0, z - 1 + i * 2);
+      kid.group.rotation.y = Math.PI / 2;
+      scene.add(kid.group);
+      venueIdlers.push({ rig: kid, phase: Math.random() * 6 });
+    }
+    venues.push({ name: 'ARC', x, z, color: '#41d8ff', update() {
+      winMats[0].color.setHSL((game.time * 0.5) % 1, 0.8, 0.6);
+      winMats[1].color.setHSL((game.time * 0.5 + 0.5) % 1, 0.8, 0.6);
+    } });
+  }
+
+  // register the gym (built separately) for the map
+  venues.push({ name: 'GYM', x: clubPos.x, z: clubPos.z, color: '#ffb02a' });
+  musicZones.push(clubPos);
+}
+function updateVenues(dt) {
+  for (const v of venues) if (v.update) v.update(dt);
+  for (const p of venueIdlers) {
+    p.phase += dt;
+    p.rig.group.rotation.z = Math.sin(p.phase * 0.8) * 0.03;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Red Bull energy boost — pick up cans around the city, press Q to drink,
 // move fast for a few seconds ("gives you wings")
 // ---------------------------------------------------------------------------
@@ -3023,11 +3368,13 @@ function drawMinimap() {
   mmCtx.fillStyle = 'rgba(200,200,200,.55)';
   for (const c of traffic)
     mmCtx.fillRect(M(c.group.position.x) - 1, M(c.group.position.z) - 1, 2, 2);
-  // gym marker + label
-  mmCtx.fillStyle = '#ffb02a';
-  mmCtx.fillRect(M(clubPos.x) - 2, M(clubPos.z) - 2, 4, 4);
+  // venue markers + labels
   mmCtx.font = '7px Arial';
-  mmCtx.fillText('GYM', M(clubPos.x) + 4, M(clubPos.z) + 3);
+  for (const v of venues) {
+    mmCtx.fillStyle = v.color;
+    mmCtx.fillRect(M(v.x) - 2, M(v.z) - 2, 4, 4);
+    mmCtx.fillText(v.name, M(v.x) + 4, M(v.z) + 3);
+  }
   if (mode === 'delivery' && order.active) {
     const tx = order.stage === 'pickup' ? order.fx : order.tx;
     const tz = order.stage === 'pickup' ? order.fz : order.tz;
@@ -3458,6 +3805,7 @@ function tick() {
   updatePeds(dt);
   updateEnergy(dt);
   updateClub(dt);
+  updateVenues(dt);
   updateMusic();
   updateNavArrow();
   trackDistance();
