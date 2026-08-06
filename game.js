@@ -6,6 +6,9 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { CITIES } from './sponsors.js?v=16';
 
 // ---------------------------------------------------------------------------
@@ -1143,6 +1146,70 @@ function buildBicycleMesh() {
 }
 
 // ---------------------------------------------------------------------------
+// Real 3D assets (models/*.glb): hero cars + real characters
+// ---------------------------------------------------------------------------
+VEH_STATS.merc = { label: 'E50 AMG', maxF: 40, maxR: -9, accel: 18, turn: 1.55, camH: 1.3,
+  size: [2.0, 4.8], engine: true, freq: 58, radius: 1.5, kill: 2.4 };
+const gltfLoader = new GLTFLoader();
+gltfLoader.setMeshoptDecoder(MeshoptDecoder);
+const MERC_ORIENT = 0; // model-forward correction, tuned visually
+function normalizeModel(root, kind, target) {
+  const box = new THREE.Box3().setFromObject(root);
+  const dim = box.getSize(new THREE.Vector3());
+  const s = kind === 'car' ? target / Math.max(dim.x, dim.z) : target / dim.y;
+  root.scale.setScalar(s);
+  root.updateMatrixWorld(true);
+  const box2 = new THREE.Box3().setFromObject(root);
+  const c = box2.getCenter(new THREE.Vector3());
+  root.position.x -= c.x;
+  root.position.z -= c.z;
+  root.position.y -= box2.min.y;
+  root.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  return root;
+}
+let mercTemplate = null;
+const personTemplates = [];
+function loadRealAssets() {
+  gltfLoader.load('models/car_mercedes.glb', g => {
+    mercTemplate = normalizeModel(g.scene, 'car', 4.8);
+    spawnMercFleet();
+  }, undefined, () => {});
+  for (const url of ['models/person_cool.glb', 'models/person_suit.glb'])
+    gltfLoader.load(url, g => {
+      personTemplates.push(normalizeModel(g.scene, 'person', 1.78));
+      placeRealPeople();
+    }, undefined, () => {});
+}
+let mercSpawned = false;
+function spawnMercFleet() {
+  if (mercSpawned || !mercTemplate || !CITY) return;
+  mercSpawned = true;
+  const spots = [[5.1, 12, 0], [-5.1, -12, Math.PI], [65.1, 22, 0], [-54.9, 58, Math.PI], [5.1, -58, 0]];
+  for (const [x, z, ry] of spots) {
+    const wrap = new THREE.Group();
+    const m = SkeletonUtils.clone(mercTemplate);
+    m.rotation.y = MERC_ORIENT;
+    wrap.add(m);
+    registerVehicle(wrap, x, z, ry, 'merc');
+  }
+  addFeed('🏎 E50 AMG fleet spotted around the city');
+}
+let realPeoplePlaced = false;
+function placeRealPeople() {
+  if (realPeoplePlaced || personTemplates.length < 1 || !CITY) return;
+  realPeoplePlaced = true;
+  // doormen and regulars at the venues
+  const posts = [[-10.2, -41, Math.PI / 2], [-9.8, 17.5, Math.PI / 2], [10.2, -13, -Math.PI / 2], [9.9, 47, -Math.PI / 2]];
+  posts.forEach(([x, z, ry], i) => {
+    const t = personTemplates[i % personTemplates.length];
+    const p = SkeletonUtils.clone(t);
+    p.position.set(x, 0, z);
+    p.rotation.y = ry;
+    scene.add(p);
+  });
+}
+
+// ---------------------------------------------------------------------------
 // AI traffic — cars cruising the lanes, braking for the player
 // ---------------------------------------------------------------------------
 const traffic = [];
@@ -1765,6 +1832,9 @@ function buildCity(city) {
   spawnTraffic();
   spawnPeds();
   for (let i = 0; i < 10; i++) spawnCanPickup();
+  loadRealAssets();
+  spawnMercFleet();   // in case the model finished loading before the city
+  placeRealPeople();
 
   // capture the finished city as the environment map (deferred so the page
   // stays responsive; skipped on software renderers where it would stall)
