@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=28';
+import { CITIES } from './sponsors.js?v=29';
 
 // ---------------------------------------------------------------------------
 // Renderer / scene / camera
@@ -1723,12 +1723,8 @@ function loadHeroCars() {
             o.material.roughness = 0.35;
           }
         });
-      // freeze any built-in animation (doors etc.) at its start pose
-      if (g.animations && g.animations.length) {
-        const mx = new THREE.AnimationMixer(root);
-        mx.clipAction(g.animations[0]).play();
-        mx.update(0);
-      }
+      // never play built-in clips (door-opening animations etc.) — the
+      // authored rest pose has everything closed
       if (hc.rotY) root.rotation.y = hc.rotY;
       const tpl = normalizeModel(root, 'car', hc.len);
       for (const [x, z, ry] of hc.spots) {
@@ -1875,6 +1871,8 @@ function placeTrafficCar(c) {
 }
 function updateTraffic(dt) {
   for (const c of traffic) {
+    // rear-ended: stopped dead for a moment
+    if (c.stunT > 0) { c.stunT -= dt; continue; }
     // brake for the player (walking or driving) and for cars ahead in lane
     const px = c.alongX ? player.pos.x : player.pos.z;
     const cx = c.v;
@@ -4065,6 +4063,20 @@ function updateDriving(dt) {
       spawnImpact(nose);
       spawnSmoke(nose);
       shake = Math.min(shake + 0.15 + impact * 0.015, 0.9);
+      // crash damage transfers to whichever parked car you hit
+      for (const v2 of vehicles) {
+        if (v2 === v) continue;
+        if (Math.hypot(v2.group.position.x - nose.x, v2.group.position.z - nose.z) < 3.4) {
+          const wasAlive = v2.health > 0;
+          v2.health = Math.max(0, v2.health - (impact - 4) * 2.5);
+          addFeed(v2.health <= 0 && wasAlive
+            ? `💥 Wrecked a parked ${v2.stats.label}!`
+            : `💥 Damaged a parked ${v2.stats.label}`);
+          if (v2.type === 'police') addHeat(2, 'Smashed a police car');
+          else if (impact > 12) addHeat(1, 'Smashed a parked car');
+          break;
+        }
+      }
       if (v.health <= 0 && !v.wrecked) {
         v.wrecked = true;
         engineStop();
@@ -4074,6 +4086,36 @@ function updateDriving(dt) {
     } else if (impact > 2) playClick(260, 0.2);
     v.speed *= -0.25;
   }
+  // moving traffic: real collisions instead of ghosting through
+  for (const c of traffic) {
+    const dx = c.group.position.x - v.group.position.x;
+    const dz = c.group.position.z - v.group.position.z;
+    if (Math.hypot(dx, dz) < 3.0) {
+      const impact = Math.abs(v.speed);
+      if (impact > 3) {
+        v.health = Math.max(0, v.health - (impact - 3) * 2.2);
+        playCrash(Math.min(1, impact / 28));
+        const mid = v.group.position.clone().lerp(c.group.position, 0.5);
+        mid.y = 0.8;
+        spawnImpact(mid);
+        spawnSmoke(mid);
+        shake = Math.min(shake + 0.12 + impact * 0.012, 0.9);
+        c.stunT = 3.5; // the other driver slams the brakes
+        c.v += Math.sign(c.alongX ? dx : dz) * 2.5;
+        placeTrafficCar(c);
+        v.speed *= -0.25;
+        if (impact > 10) addHeat(1, 'Crashed into traffic');
+        if (v.health <= 0 && !v.wrecked) {
+          v.wrecked = true;
+          engineStop();
+          addFeed('🚗 Vehicle wrecked — press E and find another ride');
+          showBanner('VEHICLE WRECKED');
+        }
+      }
+      break;
+    }
+  }
+
   // damaged engine smokes
   if (v.health < 45) {
     v.smokeT -= dt;
@@ -6053,6 +6095,17 @@ function tick() {
   updateTutorial(dt);
   updateHeat(dt);
   updateAmbient(dt);
+  // parked cars you damaged keep smoking where they stand
+  for (const v2 of vehicles) {
+    if (v2 === driving || v2.health >= 45) continue;
+    v2.smokeT -= dt;
+    if (v2.smokeT <= 0) {
+      v2.smokeT = v2.health <= 0 ? 0.15 : 0.3;
+      const sp = v2.group.position.clone();
+      sp.y = 1.0;
+      spawnSmoke(sp);
+    }
+  }
   updateMusic();
   updateNavArrow();
   trackDistance();
