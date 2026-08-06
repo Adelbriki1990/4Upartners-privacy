@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=25';
+import { CITIES } from './sponsors.js?v=26';
 
 // ---------------------------------------------------------------------------
 // Renderer / scene / camera
@@ -2142,6 +2142,16 @@ function spawnPeds() {
 }
 function updatePeds(dt) {
   for (const p of peds) {
+    // knocked down: lie there a moment, then get up and run
+    if (p.downT > 0) {
+      p.downT -= dt;
+      if (p.downT <= 0) {
+        p.rig.group.rotation.z = 0;
+        p.rig.group.position.y = 0;
+        p.fleeT = 5;
+      }
+      continue;
+    }
     // panic when shots land nearby
     const gp = p.rig.group.position;
     if (game.time - lastShot.t < 0.3 && Math.hypot(gp.x - lastShot.x, gp.z - lastShot.z) < 25) {
@@ -3895,6 +3905,7 @@ function updateDriving(dt) {
       // crash: damage, sparks, crunch, shake
       v.health = Math.max(0, v.health - (impact - 5) * 3.2);
       playCrash(Math.min(1, impact / 30));
+      if (impact > 15) addHeat(1, 'Reckless crash');
       const nose = v.group.position.clone().addScaledVector(fwd, Math.sign(preSpeed) * st.size[1] / 2);
       nose.y = 0.7;
       spawnImpact(nose);
@@ -3928,6 +3939,21 @@ function updateDriving(dt) {
         showHitmarker(true);
         v.speed *= 0.85;
         shake = Math.min(shake + 0.25, 0.6);
+      }
+    }
+  // knocking pedestrians down is a crime — the police notice
+  if (Math.abs(v.speed) > 8)
+    for (const pd of peds) {
+      if (pd.downT > 0) continue;
+      const gp2 = pd.rig.group.position;
+      if (Math.hypot(gp2.x - v.group.position.x, gp2.z - v.group.position.z) < st.kill) {
+        pd.downT = 6;
+        pd.rig.group.rotation.z = Math.PI / 2;
+        pd.rig.group.position.y = 0.35;
+        v.speed *= 0.9;
+        shake = Math.min(shake + 0.2, 0.6);
+        playClick(180, 0.3);
+        addHeat(1, 'Hit a pedestrian');
       }
     }
 
@@ -4151,6 +4177,159 @@ function toggleCafe() {
 document.getElementById('cafeclose').addEventListener('click', () => { if (cafeOpen) toggleCafe(); });
 cafehintEl.addEventListener('click', () => { if (!cafeOpen && nearRest) toggleCafe(); });
 cafehintEl.addEventListener('touchstart', e => { e.preventDefault(); if (!cafeOpen && nearRest) toggleCafe(); }, { passive: false });
+
+// ---------------------------------------------------------------------------
+// WANTED system — drive recklessly and the police interceptors come for
+// you: sirens, stars, chases, fines. Escape by outrunning them.
+// ---------------------------------------------------------------------------
+const heat = { level: 0, escapeT: 0, bustT: 0, crimeCd: 0 };
+const pursuers = [];
+let sirenNodes = null;
+const starsEl = document.getElementById('stars');
+function addHeat(n, why) {
+  if (mode !== 'delivery' || player.dead) return;
+  if (heat.crimeCd > 0) return;
+  heat.crimeCd = 1.5;
+  const was = heat.level;
+  heat.level = Math.min(3, heat.level + n);
+  heat.escapeT = 0;
+  if (heat.level > was) {
+    showBanner('★'.repeat(heat.level) + ' WANTED');
+    addFeed(`🚓 ${why} — police alerted!`);
+    playClick(500, 0.3);
+  }
+}
+function spawnPursuer() {
+  const wrap = new THREE.Group();
+  if (policeTemplate) {
+    const m = SkeletonUtils.clone(policeTemplate);
+    wrap.add(m);
+    wrap.userData.wheelNodes = collectWheelNodes(m);
+  } else {
+    wrap.add(buildCarMesh(0xf0f2f4, 'sports'));
+  }
+  const red = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.09, 0.22),
+    new THREE.MeshBasicMaterial({ color: 0xff2222 }));
+  red.position.set(-0.22, 1.18, -0.3);
+  const blue = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.09, 0.22),
+    new THREE.MeshBasicMaterial({ color: 0x2266ff }));
+  blue.position.set(0.22, 1.18, -0.3);
+  wrap.add(red); wrap.add(blue);
+  policeLights.push({ red, blue, phase: Math.random() });
+  const sx = STREETS.reduce((a, b) => Math.abs(b - player.pos.x) < Math.abs(a - player.pos.x) ? b : a);
+  const sz = STREETS.reduce((a, b) => Math.abs(b - player.pos.z) < Math.abs(a - player.pos.z) ? b : a);
+  if (Math.abs(player.pos.x - sx) < Math.abs(player.pos.z - sz))
+    wrap.position.set(sx + 3.5, 0,
+      Math.max(-126, Math.min(126, player.pos.z + (Math.random() < 0.5 ? -70 : 70))));
+  else
+    wrap.position.set(
+      Math.max(-126, Math.min(126, player.pos.x + (Math.random() < 0.5 ? -70 : 70))), 0, sz + 3.5);
+  scene.add(wrap);
+  pursuers.push({ group: wrap,
+    yaw: Math.atan2(player.pos.x - wrap.position.x, player.pos.z - wrap.position.z),
+    speed: 12, red, blue });
+}
+function clearPursuit(escaped) {
+  for (const p of pursuers) {
+    scene.remove(p.group);
+    const li = policeLights.findIndex(l => l.red === p.red);
+    if (li >= 0) policeLights.splice(li, 1);
+  }
+  pursuers.length = 0;
+  heat.level = 0; heat.escapeT = 0; heat.bustT = 0;
+  stopSiren();
+  if (starsEl) starsEl.style.display = 'none';
+  if (escaped) {
+    showBanner('YOU LOST THE POLICE');
+    addFeed('✅ Escaped — heat cleared');
+  }
+}
+function startSiren() {
+  if (sirenNodes || !AC) return;
+  const osc = AC.createOscillator();
+  const g = AC.createGain();
+  g.gain.value = 0;
+  osc.type = 'triangle';
+  osc.frequency.value = 700;
+  osc.connect(g).connect(MASTER);
+  osc.start();
+  sirenNodes = { osc, g };
+}
+function stopSiren() {
+  if (!sirenNodes) return;
+  try { sirenNodes.osc.stop(); } catch {}
+  sirenNodes = null;
+}
+function updateHeat(dt) {
+  if (heat.crimeCd > 0) heat.crimeCd -= dt;
+  if (heat.level === 0) return;
+  if (player.dead || mode !== 'delivery') { clearPursuit(false); return; }
+  while (pursuers.length < Math.min(2, heat.level)) spawnPursuer();
+  startSiren();
+  let nearest = 1e9;
+  for (const p of pursuers) {
+    const dx = player.pos.x - p.group.position.x;
+    const dz = player.pos.z - p.group.position.z;
+    const d = Math.hypot(dx, dz);
+    nearest = Math.min(nearest, d);
+    const targetYaw = Math.atan2(dx, dz);
+    let dy = targetYaw - p.yaw;
+    while (dy > Math.PI) dy -= Math.PI * 2;
+    while (dy < -Math.PI) dy += Math.PI * 2;
+    p.yaw += Math.max(-2.2 * dt, Math.min(2.2 * dt, dy));
+    const want = d > 6 ? 44 : 2; // corner hard, then creep in for the arrest
+    p.speed += (want - p.speed) * Math.min(1, dt * 1.6);
+    p.group.position.x += Math.sin(p.yaw) * p.speed * dt;
+    p.group.position.z += Math.cos(p.yaw) * p.speed * dt;
+    p.group.rotation.y = p.yaw;
+    spinWheels(p.group, p.speed * dt);
+    if (resolveCollisions(p.group.position, 1.5, 1.4)) p.speed *= 0.4;
+    p.group.position.x = Math.max(-BOUND, Math.min(BOUND, p.group.position.x));
+    p.group.position.z = Math.max(-BOUND, Math.min(BOUND, p.group.position.z));
+    // wedged against a building: radio ahead and cut the player off instead
+    p.stuckT = (p.speed < 6 && d > 15) ? (p.stuckT || 0) + dt : 0;
+    if (p.stuckT > 2.5) {
+      p.stuckT = 0;
+      const sx = STREETS.reduce((a, b) => Math.abs(b - player.pos.x) < Math.abs(a - player.pos.x) ? b : a);
+      const sz = STREETS.reduce((a, b) => Math.abs(b - player.pos.z) < Math.abs(a - player.pos.z) ? b : a);
+      if (Math.abs(player.pos.x - sx) < Math.abs(player.pos.z - sz))
+        p.group.position.set(sx + 3.5, 0,
+          Math.max(-126, Math.min(126, player.pos.z + (Math.random() < 0.5 ? -45 : 45))));
+      else
+        p.group.position.set(
+          Math.max(-126, Math.min(126, player.pos.x + (Math.random() < 0.5 ? -45 : 45))), 0, sz + 3.5);
+      p.speed = 20;
+    }
+  }
+  if (sirenNodes) {
+    sirenNodes.osc.frequency.value = 640 + (Math.sin(game.time * 9) > 0 ? 320 : 0);
+    sirenNodes.g.gain.value = 0.12 * Math.max(0.15, 1 - nearest / 120);
+  }
+  const mySpeed = driving ? Math.abs(driving.speed) : Math.hypot(player.vel.x, player.vel.z);
+  if (nearest < 6 && mySpeed < 4) {
+    heat.bustT += dt;
+    if (heat.bustT > 1.3) {
+      const fine = Math.min(150, Math.floor((game.money + prog.bank) * 0.25));
+      const fromWallet = Math.min(game.money, fine);
+      game.money -= fromWallet;
+      prog.bank -= fine - fromWallet;
+      saveProg();
+      showBanner(`BUSTED — FINED $${fine}`);
+      addFeed(`🚓 Busted! Paid a $${fine} fine`);
+      playCrash(0.5);
+      clearPursuit(false);
+      return;
+    }
+  } else heat.bustT = 0;
+  if (nearest > 75) {
+    heat.escapeT += dt;
+    if (heat.escapeT > 8) { clearPursuit(true); return; }
+  } else heat.escapeT = 0;
+  if (starsEl) {
+    starsEl.textContent = '★'.repeat(heat.level) + '☆'.repeat(3 - heat.level);
+    starsEl.style.display = 'block';
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Leaderboard — named top-10 by best shift (local; LB_REMOTE enables sync
@@ -5717,6 +5896,7 @@ function tick() {
   updateClub(dt);
   updateVenues(dt);
   updateTutorial(dt);
+  updateHeat(dt);
   updateMusic();
   updateNavArrow();
   trackDistance();
@@ -5764,6 +5944,7 @@ tick();
 window.__so = {
   get cineT() { return cine.t; },
   tp(x, z, yaw = 0) { player.pos.set(x, 0, z); player.yaw = yaw; player.pitch = 0; },
+  wanted(n = 1) { heat.crimeCd = 0; addHeat(n, 'Debug'); },
   get state() {
     return {
       cine: cine.active, driving: !!driving, firing, locked, started, mode,
@@ -5775,6 +5956,9 @@ window.__so = {
       camels: camels.length, realCamels: camels.filter(c => !c.rig.legs).length,
       weather: weather.state, rain: weather.amount | 0, vehicles: vehicles.length,
       tut: tut.step, tutDisp: tutbarEl.style.display,
+      heat: heat.level, pursuers: pursuers.length,
+      pnear: pursuers.length ? Math.min(...pursuers.map(p =>
+        Math.hypot(p.group.position.x - player.pos.x, p.group.position.z - player.pos.z))) | 0 : -1,
     };
   },
 };
