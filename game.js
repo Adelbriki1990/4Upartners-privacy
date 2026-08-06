@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=26';
+import { CITIES } from './sponsors.js?v=27';
 
 // ---------------------------------------------------------------------------
 // Renderer / scene / camera
@@ -331,7 +331,114 @@ function audioInit() {
   lfo.connect(lfoGain).connect(g.gain);
   src.connect(lp).connect(g).connect(MASTER);
   src.start(); lfo.start();
+  initAmbient();
   renderMusic(); // async: loops fade in once rendered
+}
+// ---------------------------------------------------------------------------
+// Ambient city sound — horns in the distance, birds by day, crickets at
+// night, crowd murmur near venues, waves at the shore, rain patter.
+// All generated, nothing downloaded.
+// ---------------------------------------------------------------------------
+let AMB = null;
+function initAmbient() {
+  if (AMB || !AC) return;
+  AMB = { hornT: 5 + Math.random() * 8, birdT: 2 + Math.random() * 5 };
+  const bed = (dur, type, freq, q) => {
+    const src = AC.createBufferSource();
+    src.buffer = noiseBuffer(dur);
+    src.loop = true;
+    const f = AC.createBiquadFilter();
+    f.type = type; f.frequency.value = freq;
+    if (q) f.Q.value = q;
+    const gn = AC.createGain();
+    gn.gain.value = 0;
+    src.connect(f).connect(gn).connect(MASTER);
+    src.start();
+    return gn;
+  };
+  AMB.crowdG = bed(3, 'bandpass', 420, 0.8); // murmur of people
+  AMB.waveG = bed(4, 'lowpass', 520);        // surf at the shore
+  AMB.rainG = bed(2, 'highpass', 2600);      // rain patter
+  // crickets: a pulsing high chirp bed for desert and park nights
+  const cr = AC.createOscillator();
+  cr.type = 'sine'; cr.frequency.value = 4300;
+  const crG = AC.createGain(); crG.gain.value = 0;
+  const lfo2 = AC.createOscillator(); lfo2.frequency.value = 26;
+  const lfoG2 = AC.createGain(); lfoG2.gain.value = 0;
+  lfo2.connect(lfoG2).connect(crG.gain);
+  cr.connect(crG).connect(MASTER);
+  cr.start(); lfo2.start();
+  AMB.cricketG = crG; AMB.cricketLfoG = lfoG2;
+}
+function playHorn() {
+  // a distant double-beep from somewhere in traffic
+  const pan = AC.createStereoPanner ? AC.createStereoPanner() : null;
+  const g = AC.createGain();
+  const f0 = 340 + Math.random() * 180;
+  const t0 = AC.currentTime;
+  const dur = 0.14 + Math.random() * 0.2;
+  const twice = Math.random() < 0.5;
+  g.gain.setValueAtTime(0, t0);
+  g.gain.linearRampToValueAtTime(0.05 + Math.random() * 0.04, t0 + 0.02);
+  g.gain.setValueAtTime(twice ? 0 : 0.05, t0 + dur);
+  if (twice) {
+    g.gain.linearRampToValueAtTime(0.06, t0 + dur + 0.09);
+    g.gain.linearRampToValueAtTime(0, t0 + dur * 2 + 0.09);
+  } else g.gain.linearRampToValueAtTime(0, t0 + dur + 0.05);
+  for (const mult of [1, 1.26]) {
+    const o = AC.createOscillator();
+    o.type = 'square';
+    o.frequency.value = f0 * mult;
+    o.connect(g);
+    o.start(t0); o.stop(t0 + dur * 2 + 0.3);
+  }
+  if (pan) { pan.pan.value = Math.random() * 1.6 - 0.8; g.connect(pan).connect(MASTER); }
+  else g.connect(MASTER);
+}
+function playChirp() {
+  // a little run of birdsong
+  const n = 1 + Math.floor(Math.random() * 3);
+  let t = AC.currentTime;
+  for (let i = 0; i < n; i++) {
+    const o = AC.createOscillator();
+    const g = AC.createGain();
+    const f0 = 3200 + Math.random() * 1200;
+    o.frequency.setValueAtTime(f0, t);
+    o.frequency.exponentialRampToValueAtTime(f0 * 0.72, t + 0.09);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.035, t + 0.015);
+    g.gain.linearRampToValueAtTime(0, t + 0.1);
+    o.connect(g).connect(MASTER);
+    o.start(t); o.stop(t + 0.14);
+    t += 0.13 + Math.random() * 0.1;
+  }
+}
+function updateAmbient(dt) {
+  if (!AMB) return;
+  AMB.hornT -= dt;
+  if (AMB.hornT <= 0) { AMB.hornT = 7 + Math.random() * 16; playHorn(); }
+  if (NF < 0.4) {
+    AMB.birdT -= dt;
+    if (AMB.birdT <= 0) { AMB.birdT = 2.5 + Math.random() * 7; playChirp(); }
+  }
+  // crowd murmur swells near any venue
+  let prox = 0;
+  for (const v of venues)
+    prox = Math.max(prox, 1 - Math.hypot(v.x - player.pos.x, v.z - player.pos.z) / 45);
+  AMB.crowdG.gain.value = 0.05 * Math.max(0, prox) * (0.75 + 0.25 * Math.sin(game.time * 0.6));
+  // surf grows as you approach the shore
+  let waveAmt = 0;
+  if (THEME && (THEME.waterfront || THEME.docks)) {
+    const shoreX = THEME.waterfront ? 134 : -134;
+    waveAmt = Math.max(0, 1 - Math.abs(player.pos.x - shoreX) / 60);
+  }
+  AMB.waveG.gain.value = 0.06 * waveAmt * (0.6 + 0.4 * Math.sin(game.time * 0.55));
+  // rain patter follows the live weather
+  AMB.rainG.gain.value = 0.05 * Math.min(1, weather.amount / 900);
+  // crickets after dark
+  const cricket = NF > 0.6 ? 0.011 : 0;
+  AMB.cricketG.gain.value = cricket;
+  AMB.cricketLfoG.gain.value = cricket;
 }
 function noiseBuffer(dur) {
   const buf = AC.createBuffer(1, AC.sampleRate * dur, AC.sampleRate);
@@ -5897,6 +6004,7 @@ function tick() {
   updateVenues(dt);
   updateTutorial(dt);
   updateHeat(dt);
+  updateAmbient(dt);
   updateMusic();
   updateNavArrow();
   trackDistance();
