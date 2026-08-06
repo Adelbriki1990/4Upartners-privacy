@@ -1298,6 +1298,16 @@ function loadRealAssets() {
 }
 const modelMixers = [];   // animation players for real character models
 const modelBobbers = [];  // fallback idle for models without animations
+const modelWanderers = []; // characters walking a patrol with their walk clip
+const gestureCyclers = []; // characters cycling through gesture clips
+function pickClips(clips) {
+  const usable = clips.filter(c => !/pose|bind|t-?pose/i.test(c.name));
+  return {
+    walk: usable.find(c => /walk|run/i.test(c.name)) || null,
+    gestures: usable.filter(c => !/walk|run|sit/i.test(c.name)),
+    any: usable[0] || clips[0] || null,
+  };
+}
 function spinWheels(group, dist) {
   const ws = group.userData.wheels;
   if (ws) for (const w of ws) w.grp.rotation.x += dist / w.r;
@@ -1372,13 +1382,27 @@ function placeRealPeople() {
     p.position.set(x, 0, z);
     p.rotation.y = ry;
     scene.add(p);
-    if (t.clips.length) {
-      // play the model's own animation (idle/walk/dance — whatever it shipped with)
+    const picks = pickClips(t.clips);
+    if (picks.walk && i % 2 === 0) {
+      // walk a patrol loop around the post using the model's own walk cycle
       const mixer = new THREE.AnimationMixer(p);
-      mixer.clipAction(t.clips[0]).play();
+      mixer.clipAction(picks.walk).play();
+      modelMixers.push(mixer);
+      modelWanderers.push({ obj: p, cx: x + 2, cz: z, ang: Math.random() * 6, r: 2.5 + Math.random() * 1.5, speed: 0.55 });
+    } else if (picks.gestures.length) {
+      // stand at the post cycling through its gesture animations
+      const mixer = new THREE.AnimationMixer(p);
+      const actions = picks.gestures.map(c => mixer.clipAction(c));
+      actions[0].play();
+      modelMixers.push(mixer);
+      gestureCyclers.push({ actions, cur: 0, t: 4 + Math.random() * 4 });
+    } else if (picks.any) {
+      const mixer = new THREE.AnimationMixer(p);
+      mixer.clipAction(picks.any).play();
       modelMixers.push(mixer);
     } else {
-      modelBobbers.push({ obj: p, phase: Math.random() * 6, baseY: 0 });
+      // no animation data at all: visible natural idle (sway, breathe, look around)
+      modelBobbers.push({ obj: p, phase: Math.random() * 6, baseY: 0, baseRot: ry });
     }
   });
 }
@@ -3579,10 +3603,27 @@ function updateVenues(dt) {
   }
   // real character models: play their own animations, or idle-sway fallback
   for (const m of modelMixers) m.update(dt);
+  for (const w of modelWanderers) {
+    w.ang += dt * w.speed / w.r;
+    w.obj.position.set(w.cx + Math.cos(w.ang) * w.r, 0, w.cz + Math.sin(w.ang) * w.r);
+    w.obj.rotation.y = Math.atan2(-Math.sin(w.ang), Math.cos(w.ang));
+  }
+  for (const gc of gestureCyclers) {
+    gc.t -= dt;
+    if (gc.t <= 0) {
+      const prev = gc.actions[gc.cur];
+      gc.cur = (gc.cur + 1) % gc.actions.length;
+      prev.fadeOut(0.4);
+      gc.actions[gc.cur].reset().fadeIn(0.4).play();
+      gc.t = 5 + Math.random() * 4;
+    }
+  }
   for (const b of modelBobbers) {
     b.phase += dt;
-    b.obj.rotation.y += Math.sin(b.phase * 0.5) * 0.0015;
-    b.obj.position.y = b.baseY + Math.abs(Math.sin(b.phase * 1.1)) * 0.015;
+    // clearly visible: weight shifts, breathing bob, slow look-around
+    b.obj.rotation.y = b.baseRot + Math.sin(b.phase * 0.35) * 0.5;
+    b.obj.rotation.z = Math.sin(b.phase * 0.9) * 0.02;
+    b.obj.position.y = b.baseY + Math.abs(Math.sin(b.phase * 1.4)) * 0.025;
   }
 }
 
