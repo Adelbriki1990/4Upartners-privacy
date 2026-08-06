@@ -3430,7 +3430,13 @@ function startCinematic() {
   cine.t = 0;
   cine.start = performance.now();
   gun.visible = false;
-  document.getElementById('cine-city').textContent = CITY.name + ' — 02:47 AM';
+  const hh = Math.floor(localHour()), mm = Math.floor((localHour() % 1) * 60);
+  document.getElementById('cine-city').textContent =
+    `${CITY.name} — ${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+  const sub = document.querySelector('#cine-title span:last-child');
+  if (sub) sub.textContent = mode === 'delivery'
+    ? `DRIVER ${playerName()} — SHIFT STARTING`
+    : `${playerName()} — HOLD THE BLOCK UNTIL EXTRACTION`;
   cineEl.style.display = 'block';
   requestAnimationFrame(() => cineEl.classList.add('on'));
 }
@@ -3577,9 +3583,26 @@ function selectedCity() { return CITIES.find(c => c.id === selectedId) || CITIES
       for (const el of wrap.children) el.classList.remove('sel');
       card.classList.add('sel');
       refreshPreview(); // uniform matches the selected city's app brand
+      refreshMenuText();
     });
     wrap.appendChild(card);
   }
+  // menu text follows the player: greeting, city, mode
+  function refreshMenuText() {
+    const city = selectedCity();
+    const greet = document.getElementById('greet');
+    if (greet) greet.textContent = profile.name.trim()
+      ? `WELCOME, ${profile.name.trim().toUpperCase()}` : 'DRIVER PROFILE';
+    const dl = document.getElementById('deployline');
+    if (dl) {
+      dl.textContent = mode === 'delivery'
+        ? `CLICK TO START ${profile.name.trim() ? profile.name.trim().toUpperCase() + "'S" : 'YOUR'} SHIFT IN ${city.name}`
+        : `CLICK TO DEPLOY INTO ${city.name}`;
+      dl.style.color = city.accent;
+    }
+  }
+  window.__refreshMenuText = refreshMenuText;
+
   const pl = document.getElementById('progressline');
   if (pl) {
     const nu = nextUnlock();
@@ -3595,8 +3618,10 @@ function selectedCity() { return CITIES.find(c => c.id === selectedId) || CITIES
       mode = btn.dataset.mode;
       localStorage.setItem('streetops.mode', mode);
       document.querySelectorAll('.modebtn').forEach(b => b.classList.toggle('sel', b === btn));
+      refreshMenuText();
     });
   });
+  refreshMenuText();
 
   // driver profile: username + avatar
   const profileBox = document.getElementById('profile');
@@ -3607,6 +3632,7 @@ function selectedCity() { return CITIES.find(c => c.id === selectedId) || CITIES
     nameInput.addEventListener('input', () => {
       profile.name = nameInput.value.slice(0, 14);
       saveProfile();
+      if (window.__refreshMenuText) window.__refreshMenuText();
     });
     document.querySelectorAll('.charbtn[data-g]').forEach(btn => {
       btn.classList.toggle('sel', btn.dataset.g === profile.gender);
