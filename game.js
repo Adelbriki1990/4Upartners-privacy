@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=23';
+import { CITIES } from './sponsors.js?v=24';
 
 // ---------------------------------------------------------------------------
 // Renderer / scene / camera
@@ -103,8 +103,8 @@ const THEMES = {
     styles: { curtain: 0.85, brick: 0 },
     tree: { color: 0x2f5c33, every: 22, chance: 0.55, palm: true },
     waterfront: 'east',
-    landmark: { x: -90, z: 30, kind: 'needle' }, // supertall needle tower
-    sail: { x: 152, z: -55 },                    // sail hotel on the shore
+    landmark: { x: -90, z: 30, kind: 'burj' }, // the real Burj Khalifa model
+    sail: { x: 152, z: -55 },                  // sail hotel on the shore
     luxCars: true,
   },
   doha: {
@@ -1362,6 +1362,7 @@ let camelTemplate = null;
 let arabicTemplate = null;
 let policeTemplate = null;
 let dobermanTemplate = null;
+let skylineTemplate = null;
 const personTemplates = [];
 function loadRealAssets() {
   gltfLoader.load('models/car_mercedes.glb', g => {
@@ -1376,6 +1377,25 @@ function loadRealAssets() {
     dobermanTemplate = normalizeModel(g.scene, 'person', 0.85);
     placeGuardDogs();
   }, undefined, () => {});
+  // real textured skyline panoramas ring the modern cities
+  if (!THEME.camels)
+    gltfLoader.load('models/city_buildings.glb', g => {
+      skylineTemplate = normalizeModel(g.scene, 'car', 165);
+      placeSkyline();
+    }, undefined, () => {});
+  // the real Burj Khalifa rises over Dubai (needle tower as fallback)
+  if (THEME.landmark && THEME.landmark.kind === 'burj')
+    gltfLoader.load('models/burj_khalifa.glb', g => {
+      stripBaseDiscs(g.scene);
+      const root = normalizeModel(g.scene, 'person', 135);
+      root.position.x += THEME.landmark.x;
+      root.position.z += THEME.landmark.z;
+      scene.add(root);
+      const { x, z } = THEME.landmark;
+      addCollider(new THREE.Box3(
+        new THREE.Vector3(x - 9, 0, z - 9), new THREE.Vector3(x + 9, 135, z + 9)));
+      addFeed('🏙 The tallest tower in the world pierces the sky');
+    }, undefined, () => addNeedleTower(THEME.landmark.x, THEME.landmark.z));
   for (const url of ['models/person_cool.glb', 'models/person_suit.glb'])
     gltfLoader.load(url, g => {
       stripBaseDiscs(g.scene);
@@ -1593,6 +1613,23 @@ function spawnPolice() {
     registerVehicle(wrap, x, z, ry, 'police');
   }
   addFeed('🚓 Police interceptors on patrol');
+}
+// Distant downtown skylines built from the real building pack, one along
+// each open edge of the map — the city no longer ends at the perimeter
+let skylinePlaced = false;
+function placeSkyline() {
+  if (skylinePlaced || !skylineTemplate || !CITY) return;
+  skylinePlaced = true;
+  const spots = [[0, -235, 0], [0, 235, Math.PI]];
+  if (THEME.waterfront !== 'east') spots.push([235, 0, -Math.PI / 2]);
+  if (THEME.docks !== 'west') spots.push([-235, 0, Math.PI / 2]);
+  for (const [x, z, ry] of spots) {
+    const wrap = new THREE.Group();
+    wrap.add(SkeletonUtils.clone(skylineTemplate));
+    wrap.position.set(x, 0, z);
+    wrap.rotation.y = ry;
+    scene.add(wrap);
+  }
 }
 // Doberman guard dogs watching the doors of the busiest venues
 let dogsPlaced = false;
@@ -2746,6 +2783,7 @@ function addLandmarks() {
     else if (kind === 'deco') addDecoTower(x, z);
     else if (kind === 'needle') addNeedleTower(x, z);
     else if (kind === 'museum') addMuseum(x, z);
+    else if (kind === 'burj') { /* real model loads async in loadRealAssets */ }
     else addHoloSpire(x, z);
   }
   if (THEME.sail) addSailHotel(THEME.sail.x, THEME.sail.z);
