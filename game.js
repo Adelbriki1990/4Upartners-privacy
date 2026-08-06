@@ -1221,8 +1221,25 @@ function spinWheels(group, dist) {
   if (nodes) for (const n of nodes) n.rotation.x += dist / 0.33;
 }
 function collectWheelNodes(root) {
+  // GLB wheel meshes often pivot at the car origin — spinning them there
+  // makes wheels orbit the body. Re-pivot each wheel at its own center.
   const nodes = [];
-  root.traverse(o => { if (/wheel|tyre|tire|rim/i.test(o.name)) nodes.push(o); });
+  root.updateMatrixWorld(true);
+  const candidates = [];
+  root.traverse(o => { if (o.isMesh && /wheel|tyre|tire|rim/i.test(o.name)) candidates.push(o); });
+  for (const mesh of candidates) {
+    const box = new THREE.Box3().setFromObject(mesh);
+    const size = box.getSize(new THREE.Vector3());
+    if (Math.max(size.x, size.y, size.z) > 1.4 || Math.max(size.x, size.y, size.z) < 0.05) continue;
+    const center = box.getCenter(new THREE.Vector3());
+    const parent = mesh.parent;
+    const pivot = new THREE.Group();
+    parent.add(pivot);
+    pivot.position.copy(parent.worldToLocal(center.clone()));
+    pivot.updateMatrixWorld(true);
+    pivot.attach(mesh); // keeps the wheel exactly where it was
+    nodes.push(pivot);
+  }
   return nodes;
 }
 
