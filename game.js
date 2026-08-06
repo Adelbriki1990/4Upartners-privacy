@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=17';
+import { CITIES } from './sponsors.js?v=18';
 
 // ---------------------------------------------------------------------------
 // Renderer / scene / camera
@@ -1300,7 +1300,26 @@ function loadRealAssets() {
   // desert-city assets load only where the theme wants them
   if (THEME.camels)
     gltfLoader.load('models/camel.glb', g => {
-      camelTemplate = { root: normalizeModel(g.scene, 'person', 2.2), clips: g.animations || [] };
+      const root = g.scene;
+      // The raw bounding box of this model is thrown far off by bind-pose
+      // offsets (it floated in mid-air). Measure the posed skeleton instead:
+      // its foot IK bones sit exactly at ground level.
+      const clips = g.animations || [];
+      const walk = clips.find(a => /walk/i.test(a.name)) || clips[0];
+      if (walk) {
+        const mx = new THREE.AnimationMixer(root);
+        mx.clipAction(walk).play();
+        mx.update(0);
+      }
+      root.rotation.y = Math.PI; // model faces -Z; game forward is +Z
+      const box = boneBounds(root);
+      const dim = box.getSize(new THREE.Vector3());
+      const s = 1.85 / dim.y; // bone height; the hump tops out around 2m
+      root.scale.setScalar(s);
+      const c = box.getCenter(new THREE.Vector3());
+      root.position.set(-c.x * s, -box.min.y * s, -c.z * s);
+      root.traverse(o => { if (o.isMesh) o.castShadow = true; });
+      camelTemplate = { root, clips };
       upgradeCamels();
     }, undefined, () => {});
   if (THEME.dress === 'arabic')
@@ -1309,9 +1328,15 @@ function loadRealAssets() {
       placeArabicMen();
     }, undefined, () => {});
 }
+function boneBounds(root) {
+  const box = new THREE.Box3();
+  const v = new THREE.Vector3();
+  root.updateMatrixWorld(true);
+  root.traverse(o => { if (o.isBone) box.expandByPoint(o.getWorldPosition(v)); });
+  return box;
+}
 // Swap the procedural camels for the real scanned model once it arrives,
 // keeping each caravan's route and pacing.
-const CAMEL_ORIENT = 0;
 function upgradeCamels() {
   if (!camelTemplate) return;
   const picks = pickClips(camelTemplate.clips);
@@ -1319,7 +1344,6 @@ function upgradeCamels() {
     scene.remove(c.rig.group);
     const wrap = new THREE.Group();
     const m = SkeletonUtils.clone(camelTemplate.root);
-    m.rotation.y = CAMEL_ORIENT;
     wrap.add(m);
     scene.add(wrap);
     c.rig = { group: wrap, legs: null };
