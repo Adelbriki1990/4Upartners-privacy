@@ -2001,6 +2001,11 @@ const weapon = { cooldown: 0, reloading: 0, recoil: 0 }; // transient state
 const wnameEl = document.getElementById('wname');
 function switchWeapon(i) {
   if (i === curW || i >= WEAPONS.length || player.dead || driving) return;
+  if (prog.level < WEAPON_UNLOCK[i]) {
+    addFeed(`🔒 ${WEAPONS[i].name} unlocks at level ${WEAPON_UNLOCK[i]}`);
+    playClick(320, 0.15);
+    return;
+  }
   curW = i;
   weapon.reloading = 0;
   weapon.cooldown = 0.35;
@@ -2194,6 +2199,7 @@ function damageEnemy(en, dmg) {
     game.kills++;
     addFeed('Hostile down');
     addXP(8);
+    progressMission('kill', 1);
     if (enemies.every(e => e.dead)) {
       slowmo = 1.1;
       if (mode === 'waves') addXP(20);
@@ -2312,6 +2318,16 @@ function toggleDrive() {
   } else {
     const v = nearestVehicle(3.8);
     if (!v) return;
+    const need = VEH_UNLOCK[v.type];
+    if (need && prog.level < need) {
+      addFeed(`🔒 ${v.stats.label} unlocks at level ${need} — keep delivering!`);
+      playClick(320, 0.15);
+      return;
+    }
+    if (v.health <= 0) {
+      addFeed('🚗 That vehicle is wrecked');
+      return;
+    }
     driving = v;
     gun.visible = false;
     firing = false; aiming = false;
@@ -2455,12 +2471,22 @@ function playerDie() {
   firing = false;
   slowmo = 1.6;
   shake = 0.9;
+  game.streak = 0;
+  // personal records
+  prog.best = prog.best || {};
+  let newRec = false;
+  for (const [k, v] of [['deliveries', game.deliveries], ['cash', game.money], ['wave', game.wave], ['kills', game.kills]]) {
+    if (v > (prog.best[k] || 0)) { prog.best[k] = v; newRec = true; }
+  }
+  saveProg();
+  if (newRec) setTimeout(() => showBanner('🏆 NEW PERSONAL RECORD'), 300);
   if (driving) { engineStop(); speedoEl.style.display = 'none'; driving = null; gun.visible = true; }
   canvas.style.filter = 'grayscale(0.85) brightness(0.75)';
   document.querySelector('#gameover .stats').innerHTML = `<b>${playerName()}</b><br>` + (mode === 'delivery'
     ? `Deliveries completed: <b>${game.deliveries}</b><br>Cash earned: <b>$${game.money}</b><br>Eliminations: <b>${game.kills}</b>`
     : `Waves survived: <b>${game.wave}</b><br>Eliminations: <b>${game.kills}</b>`)
-    + `<br>Driver level: <b>${prog.level} / 100</b>`;
+    + `<br>Driver level: <b>${prog.level} / 100</b>`
+    + `<br><span style="font-size:14px;color:#9fb2c4">Records — deliveries ${prog.best.deliveries || 0} · cash $${prog.best.cash || 0} · wave ${prog.best.wave || 0}</span>`;
   saveProg();
   document.exitPointerLock();
   pausedEl.style.display = 'none';
@@ -2470,7 +2496,7 @@ function playerDie() {
 // ---------------------------------------------------------------------------
 // Waves + HUD
 // ---------------------------------------------------------------------------
-const game = { wave: 0, kills: 0, money: 0, deliveries: 0, time: 0, intermission: 0 };
+const game = { wave: 0, kills: 0, money: 0, deliveries: 0, streak: 0, time: 0, intermission: 0 };
 
 // ---------------------------------------------------------------------------
 // Driver progression — 100 levels, persistent across sessions
@@ -2489,9 +2515,96 @@ function addXP(n) {
     prog.level++;
     showBanner(`LEVEL ${prog.level}`);
     addFeed(`⭐ Level up — ${prog.level} / 100`);
+    const unlock = UNLOCK_LADDER.find(u => u.level === prog.level);
+    if (unlock) {
+      showBanner(`UNLOCKED: ${unlock.what}`);
+      addFeed(`🔓 ${unlock.what} unlocked!`);
+    }
     playClick(2600, 0.3);
   }
   saveProg();
+}
+
+// ---------------------------------------------------------------------------
+// Retention loop: unlock ladder, daily missions, streaks, VIP orders, records
+// ---------------------------------------------------------------------------
+const WEAPON_UNLOCK = [1, 3, 6];
+const VEH_UNLOCK = { sports: 8, phantom: 10, hyper: 12 };
+const UNLOCK_LADDER = [
+  { level: 3, what: 'P9 SIDEARM' },
+  { level: 6, what: 'VIPER SMG' },
+  { level: 8, what: 'ROSSO GT' },
+  { level: 10, what: 'PHANTOM LIMO' },
+  { level: 12, what: 'TORO HYPER' },
+];
+function nextUnlock() {
+  return UNLOCK_LADDER.find(u => u.level > prog.level);
+}
+
+const MISSION_DEFS = [
+  { id: 'del5', txt: 'Complete 5 deliveries', n: 5, ev: 'delivery', reward: 60 },
+  { id: 'earn150', txt: 'Earn $150 in fares', n: 150, ev: 'cash', reward: 50 },
+  { id: 'rob6', txt: 'Stop 6 robbers', n: 6, ev: 'kill', reward: 55 },
+  { id: 'dist2k', txt: 'Travel 2,000 m', n: 2000, ev: 'dist', reward: 40 },
+  { id: 'boost3', txt: 'Drink 3 Red Bulls', n: 3, ev: 'drink', reward: 35 },
+  { id: 'vip2', txt: 'Complete 2 VIP orders', n: 2, ev: 'vip', reward: 70 },
+];
+const missions = (() => {
+  const day = new Date().toISOString().slice(0, 10);
+  let m = null;
+  try { m = JSON.parse(localStorage.getItem('streetops.missions')); } catch {}
+  if (!m || m.day !== day) {
+    // deterministic daily rotation of 3 missions
+    let h = 0;
+    for (const ch of day) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    const picks = [];
+    while (picks.length < 3) {
+      const id = MISSION_DEFS[(h = (h * 1103515245 + 12345) >>> 0) % MISSION_DEFS.length].id;
+      if (!picks.includes(id)) picks.push(id);
+    }
+    m = { day, picks, prog: {}, done: {} };
+  }
+  return m;
+})();
+function saveMissions() { localStorage.setItem('streetops.missions', JSON.stringify(missions)); }
+function progressMission(ev, amt) {
+  for (const id of missions.picks) {
+    const def = MISSION_DEFS.find(d => d.id === id);
+    if (!def || def.ev !== ev || missions.done[id]) continue;
+    missions.prog[id] = (missions.prog[id] || 0) + amt;
+    if (missions.prog[id] >= def.n) {
+      missions.done[id] = true;
+      game.money += def.reward;
+      prog.bank += def.reward;
+      addXP(def.reward * 0.6);
+      showBanner(`MISSION COMPLETE +$${def.reward}`);
+      addFeed(`✅ ${def.txt} — +$${def.reward}`);
+      playClick(2200, 0.3);
+    }
+  }
+  saveMissions();
+  renderMissions();
+}
+function renderMissions() {
+  const el = document.getElementById('missions');
+  if (!el) return;
+  let html = '<div class="mtitle">DAILY MISSIONS</div>';
+  for (const id of missions.picks) {
+    const def = MISSION_DEFS.find(d => d.id === id);
+    if (!def) continue;
+    const p = Math.min(missions.prog[id] || 0, def.n);
+    html += `<div class="mrow${missions.done[id] ? ' done' : ''}">` +
+      `${missions.done[id] ? '✅' : '☐'} ${def.txt} <b>${missions.done[id] ? `+$${def.reward}` : Math.floor(p) + '/' + def.n}</b></div>`;
+  }
+  el.innerHTML = html;
+}
+let distAcc = 0, lastDistPos = null;
+function trackDistance() {
+  if (!lastDistPos) lastDistPos = player.pos.clone();
+  const d = Math.hypot(player.pos.x - lastDistPos.x, player.pos.z - lastDistPos.z);
+  if (d > 0.05 && d < 30) distAcc += d;
+  lastDistPos.copy(player.pos);
+  if (distAcc > 25) { progressMission('dist', distAcc); distAcc = 0; }
 }
 const waveEl = document.getElementById('wave');
 const aliveEl = document.getElementById('alive');
@@ -2602,6 +2715,7 @@ function drinkEnergy() {
   energy.drinkT = 0.9;
   playGulp();
   addFeed('⚡ RED BULL — speed boost!');
+  progressMission('drink', 1);
 }
 function playGulp() {
   if (!AC) return;
@@ -2709,9 +2823,13 @@ function newOrder() {
   order.fx = from.x; order.fz = from.z;
   order.tx = to.x; order.tz = to.z;
   order.reward = Math.round((12 + Math.hypot(to.x - from.x, to.z - from.z) * 0.15) * (1 + prog.level * 0.02));
-  setBeacon(from.x, from.z, 0x41d8ff);
-  showBanner('New order');
-  addFeed(`Order from ${order.name}`);
+  // every third order is a VIP rush: 2.5x pay, deadline after pickup
+  order.vip = game.deliveries > 0 && game.deliveries % 3 === 2;
+  order.timeLeft = 0;
+  if (order.vip) order.reward = Math.round(order.reward * 2.5);
+  setBeacon(from.x, from.z, order.vip ? 0xffd23f : 0x41d8ff);
+  showBanner(order.vip ? '⭐ VIP RUSH ORDER' : 'New order');
+  addFeed(order.vip ? `⭐ VIP order from ${order.name} — 2.5× pay!` : `Order from ${order.name}`);
   playClick(1700, 0.2);
 }
 function updateDelivery(dt) {
@@ -2723,11 +2841,23 @@ function updateDelivery(dt) {
   const tx = order.stage === 'pickup' ? order.fx : order.tx;
   const tz = order.stage === 'pickup' ? order.fz : order.tz;
   const d = Math.hypot(player.pos.x - tx, player.pos.z - tz);
-  orderTaskEl.textContent = order.stage === 'pickup'
+  orderTaskEl.textContent = (order.vip ? '⭐ VIP — ' : '') + (order.stage === 'pickup'
     ? `Pick up: ${order.name} — ${locationName(order.fx, order.fz)}`
-    : `Deliver to customer — ${locationName(order.tx, order.tz)}`;
-  orderDistEl.textContent = Math.round(d) + ' m';
-  orderPayEl.textContent = `Payout: $${order.reward}`;
+    : `Deliver to customer — ${locationName(order.tx, order.tz)}`);
+  if (order.vip && order.stage === 'dropoff' && order.timeLeft > 0) {
+    order.timeLeft -= dt;
+    if (order.timeLeft <= 0) {
+      order.vip = false;
+      order.reward = Math.round(order.reward / 2.5);
+      addFeed('⏱ VIP deadline missed — normal pay');
+      setBeacon(order.tx, order.tz, 0x7dff8a);
+    }
+  }
+  const mult = 1 + Math.min(game.streak * 0.1, 1);
+  orderDistEl.textContent = Math.round(d) + ' m' +
+    (order.vip && order.stage === 'dropoff' ? ` · ⏱ ${Math.max(0, Math.ceil(order.timeLeft))}s` : '');
+  orderPayEl.textContent = `Payout: $${Math.round(order.reward * mult)}` +
+    (game.streak > 0 ? ` (streak ×${mult.toFixed(1)})` : '');
   if (beacon) {
     beacon.ring.rotation.z += dt * 2;
     beacon.cyl.material.opacity = 0.16 + Math.sin(game.time * 3) * 0.06;
@@ -2735,8 +2865,10 @@ function updateDelivery(dt) {
   if (d < 4.5) {
     if (order.stage === 'pickup') {
       order.stage = 'dropoff';
-      setBeacon(order.tx, order.tz, 0x7dff8a);
-      showBanner('Picked up — go deliver!');
+      if (order.vip)
+        order.timeLeft = 14 + Math.hypot(order.tx - player.pos.x, order.tz - player.pos.z) * 0.55;
+      setBeacon(order.tx, order.tz, order.vip ? 0xffd23f : 0x7dff8a);
+      showBanner(order.vip ? `Picked up — ⏱ beat the clock!` : 'Picked up — go deliver!');
       playClick(1900, 0.25);
       if (Math.random() < Math.min(0.35 + prog.level * 0.008, 0.85)) {
         const n = 2 + Math.floor(Math.random() * 2) + Math.min(Math.floor(prog.level / 12), 3);
@@ -2750,17 +2882,23 @@ function updateDelivery(dt) {
     } else {
       order.active = false;
       order.cooldown = 3;
-      game.money += order.reward;
+      const mult2 = 1 + Math.min(game.streak * 0.1, 1);
+      const pay = Math.round(order.reward * mult2);
+      game.money += pay;
       game.deliveries++;
-      prog.bank += order.reward;
-      addXP(16 + order.reward / 2);
+      game.streak++;
+      prog.bank += pay;
+      addXP(16 + pay / 2);
       if (energy.cans < 3) energy.cans++;
       for (const w2 of WEAPONS) w2.reserve = Math.max(w2.reserve, w2.magSize * 4);
       player.health = Math.min(100, player.health + 25);
       if (beacon) beacon.group.visible = false;
-      showBanner(`Delivered! +$${order.reward}`);
-      addFeed(`${playerName()} +$${order.reward} — total $${game.money}`);
+      showBanner(`Delivered! +$${pay}${game.streak > 1 ? ` · STREAK ×${mult2.toFixed(1)}` : ''}`);
+      addFeed(`${playerName()} +$${pay} — total $${game.money}`);
       playClick(2400, 0.3);
+      progressMission('delivery', 1);
+      progressMission('cash', pay);
+      if (order.vip) progressMission('vip', 1);
     }
   }
 }
@@ -2850,6 +2988,8 @@ function finishCinematic() {
   document.getElementById('tb-del').style.display = del ? 'block' : 'none';
   document.getElementById('orderpanel').style.display = del ? 'block' : 'none';
   if (del) orderAppEl.textContent = CITY.sponsors[0].name + ' DRIVER';
+  document.getElementById('missions').style.display = del ? 'block' : 'none';
+  renderMissions();
 }
 const _cineA = new THREE.Vector3(-44, 90, -100);
 const _cineB = new THREE.Vector3(30, 26, -32);
@@ -2977,8 +3117,12 @@ function selectedCity() { return CITIES.find(c => c.id === selectedId) || CITIES
     wrap.appendChild(card);
   }
   const pl = document.getElementById('progressline');
-  if (pl) pl.textContent = `DRIVER LEVEL ${prog.level} / 100` +
-    (prog.bank > 0 ? ` · LIFETIME EARNINGS $${prog.bank}` : '');
+  if (pl) {
+    const nu = nextUnlock();
+    pl.textContent = `DRIVER LEVEL ${prog.level} / 100` +
+      (prog.bank > 0 ? ` · LIFETIME EARNINGS $${prog.bank}` : '') +
+      (nu ? ` · NEXT UNLOCK: ${nu.what} (LVL ${nu.level})` : '');
+  }
   // game mode buttons
   document.querySelectorAll('.modebtn').forEach(btn => {
     btn.classList.toggle('sel', btn.dataset.mode === mode);
@@ -3204,6 +3348,7 @@ function tick() {
   updateClub(dt);
   updateMusic();
   updateNavArrow();
+  trackDistance();
   updateEffects(dt);
 
   // ---- HUD ----
