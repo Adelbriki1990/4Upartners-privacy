@@ -1,5 +1,6 @@
 // Street Ops — 3D urban combat in the browser (Three.js, no server, no assets).
 import * as THREE from './lib/three.module.min.js';
+import { SPONSORS } from './sponsors.js';
 
 // ---------------------------------------------------------------------------
 // Renderer / scene / camera
@@ -96,6 +97,49 @@ function makeWindowTexture(hue) {
   return tex;
 }
 
+// --- sponsor billboards -----------------------------------------------------
+function makeBillboardTexture(sponsor) {
+  const cv = document.createElement('canvas');
+  cv.width = 512; cv.height = 256;
+  const g = cv.getContext('2d');
+  const grad = g.createLinearGradient(0, 0, 0, 256);
+  grad.addColorStop(0, sponsor.colorA);
+  grad.addColorStop(1, sponsor.colorB);
+  g.fillStyle = grad; g.fillRect(0, 0, 512, 256);
+  g.strokeStyle = '#ffffff'; g.lineWidth = 10;
+  g.strokeRect(8, 8, 496, 240);
+  g.textAlign = 'center';
+  g.fillStyle = '#ffffff';
+  g.shadowColor = 'rgba(0,0,0,.6)'; g.shadowBlur = 12;
+  g.font = '800 58px Arial';
+  g.fillText(sponsor.name, 256, sponsor.logo ? 200 : 130, 470);
+  g.font = '400 30px Arial';
+  g.fillStyle = 'rgba(255,255,255,.85)';
+  g.fillText(sponsor.tagline, 256, sponsor.logo ? 238 : 180, 470);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  if (sponsor.logo) {
+    const img = new Image();
+    img.onload = () => {
+      const s = Math.min(300 / img.width, 130 / img.height);
+      g.drawImage(img, 256 - img.width * s / 2, 20, img.width * s, img.height * s);
+      tex.needsUpdate = true;
+    };
+    img.src = sponsor.logo;
+  }
+  return tex;
+}
+let sponsorIdx = Math.floor(Math.random() * SPONSORS.length);
+function addBillboard(x, y, z, rotY, width) {
+  const sponsor = SPONSORS[sponsorIdx++ % SPONSORS.length];
+  const mesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(width, width * 0.5),
+    new THREE.MeshBasicMaterial({ map: makeBillboardTexture(sponsor) }));
+  mesh.position.set(x, y, z);
+  mesh.rotation.y = rotY;
+  scene.add(mesh);
+}
+
 function addBuilding(x, z, w, d, h) {
   const tex = makeWindowTexture(Math.random() < 0.7 ? 45 : 200);
   tex.repeat.set(Math.max(1, Math.round(w / 8)), Math.max(1, Math.round(h / 8)));
@@ -109,6 +153,12 @@ function addBuilding(x, z, w, d, h) {
   mesh.castShadow = mesh.receiveShadow = true;
   scene.add(mesh);
   addCollider(new THREE.Box3().setFromCenterAndSize(new THREE.Vector3(x, h / 2, z), new THREE.Vector3(w, h, d)));
+
+  // sponsor billboard on the street-facing wall of taller towers
+  if (Math.abs(x) > 5 && h > 20 && Math.random() < 0.75) {
+    const sx = Math.sign(x);
+    addBillboard(x - sx * (w / 2 + 0.12), h * 0.6, z, sx > 0 ? -Math.PI / 2 : Math.PI / 2, Math.min(d * 0.7, 9));
+  }
 }
 
 // Two rows of buildings flanking the street, with alley gaps for spawns
@@ -180,6 +230,21 @@ for (const [x, z, r] of [[-8.3, -40, 0.06], [8.3, -12, -0.05], [-8.4, 12, 0], [8
     c.castShadow = c.receiveShadow = true;
     scene.add(c);
     addCollider(new THREE.Box3().setFromCenterAndSize(new THREE.Vector3(x, s / 2, z), new THREE.Vector3(s + 0.2, s, s + 0.2)));
+  }
+}
+
+// Street-level sponsor ad stands (bus-stop style)
+{
+  const mStand = new THREE.MeshStandardMaterial({ color: 0x22262b, roughness: 0.5, metalness: 0.6 });
+  for (const z of [-35, 8, 42]) {
+    const side = z > 0 ? 1 : -1;
+    addBillboard(side * 9.7, 1.7, z, side > 0 ? -Math.PI / 2 : Math.PI / 2, 3.2);
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.1, 0.4), mStand);
+    post.position.set(side * 9.7, 0.55, z);
+    post.castShadow = true;
+    scene.add(post);
+    addCollider(new THREE.Box3().setFromCenterAndSize(
+      new THREE.Vector3(side * 9.7, 1.4, z), new THREE.Vector3(0.4, 2.8, 3.2)));
   }
 }
 
