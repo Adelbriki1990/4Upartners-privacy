@@ -188,6 +188,7 @@ function audioInit() {
   lfo.connect(lfoGain).connect(g.gain);
   src.connect(lp).connect(g).connect(AC.destination);
   src.start(); lfo.start();
+  renderMusic(); // async: loops fade in once rendered
 }
 function noiseBuffer(dur) {
   const buf = AC.createBuffer(1, AC.sampleRate * dur, AC.sampleRate);
@@ -259,6 +260,103 @@ function playThunder() {
   src.connect(lp).connect(g).connect(AC.destination);
   src.start(t);
 }
+// ---------------------------------------------------------------------------
+// Music — procedurally rendered loops (city synthwave + club four-on-floor),
+// mixed live by distance to the nightclub
+// ---------------------------------------------------------------------------
+let musicNodes = null, musicOn = true;
+const clubPos = new THREE.Vector3(11.5, 0, 45);
+async function renderMusic() {
+  const mk = async (kind) => {
+    const bpm = kind === 'club' ? 126 : 96;
+    const spb = 60 / bpm, bars = 4, dur = bars * 4 * spb;
+    const oc = new OfflineAudioContext(1, Math.ceil(44100 * dur), 44100);
+    const master = oc.createGain();
+    master.gain.value = 0.9;
+    master.connect(oc.destination);
+    const nb = oc.createBuffer(1, 44100, 44100);
+    { const d = nb.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
+    const tone = (type, freq, t, len, vol, lpf) => {
+      const o = oc.createOscillator();
+      o.type = type; o.frequency.value = freq;
+      const g = oc.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.linearRampToValueAtTime(vol, t + 0.015);
+      g.gain.exponentialRampToValueAtTime(0.001, t + len);
+      const f = oc.createBiquadFilter();
+      f.type = 'lowpass'; f.frequency.value = lpf || 4000;
+      o.connect(g).connect(f).connect(master);
+      o.start(t); o.stop(t + len + 0.02);
+    };
+    const hat = (t, vol) => {
+      const s = oc.createBufferSource();
+      s.buffer = nb;
+      const f = oc.createBiquadFilter();
+      f.type = 'highpass'; f.frequency.value = 8000;
+      const g = oc.createGain();
+      g.gain.setValueAtTime(vol, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.045);
+      s.connect(f).connect(g).connect(master);
+      s.start(t); s.stop(t + 0.06);
+    };
+    const kick = (t) => {
+      const o = oc.createOscillator();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(140, t);
+      o.frequency.exponentialRampToValueAtTime(42, t + 0.11);
+      const g = oc.createGain();
+      g.gain.setValueAtTime(0.85, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+      o.connect(g).connect(master);
+      o.start(t); o.stop(t + 0.25);
+    };
+    const roots = [110, 87.31, 130.81, 98]; // Am F C G
+    for (let bar = 0; bar < bars; bar++) {
+      const r = roots[bar], t0 = bar * 4 * spb;
+      if (kind === 'club') {
+        for (let b = 0; b < 4; b++) {
+          kick(t0 + b * spb);
+          hat(t0 + b * spb + spb / 2, 0.14);
+        }
+        for (let s16 = 0; s16 < 16; s16++)
+          if (s16 % 2 === 0)
+            tone('sawtooth', r / 2, t0 + s16 * spb / 4, spb / 4 * 0.8, 0.15, 420 + (s16 % 8) * 200);
+        if (bar % 2 === 0)
+          for (const f of [r * 2, r * 2.38, r * 3]) tone('square', f, t0, spb * 0.55, 0.045, 2200);
+      } else {
+        for (const f of [r, r * 1.19, r * 1.5, r * 2]) tone('sawtooth', f, t0 + 0.02, 4 * spb * 0.95, 0.045, 750);
+        for (let e = 0; e < 8; e++)
+          tone('triangle', r / 2, t0 + e * spb / 2, spb / 2 * 0.7, e % 2 ? 0.055 : 0.095, 420);
+        hat(t0 + spb * 1.5, 0.05);
+        hat(t0 + spb * 3.5, 0.05);
+      }
+    }
+    return oc.startRendering();
+  };
+  const [cityBuf, clubBuf] = await Promise.all([mk('city'), mk('club')]);
+  const mkNode = (buf) => {
+    const src = AC.createBufferSource();
+    src.buffer = buf;
+    src.loop = true;
+    const filt = AC.createBiquadFilter();
+    filt.type = 'lowpass'; filt.frequency.value = 18000;
+    const g = AC.createGain();
+    g.gain.value = 0;
+    src.connect(filt).connect(g).connect(AC.destination);
+    src.start();
+    return { src, g, filt };
+  };
+  musicNodes = { city: mkNode(cityBuf), club: mkNode(clubBuf) };
+}
+function updateMusic() {
+  if (!musicNodes) return;
+  const d = Math.hypot(player.pos.x - clubPos.x, player.pos.z - clubPos.z);
+  const prox = Math.max(0, 1 - d / 52);
+  musicNodes.club.g.gain.value = musicOn ? 0.5 * Math.pow(prox, 1.6) : 0;
+  musicNodes.club.filt.frequency.value = 320 + Math.pow(prox, 2) * 11000;
+  musicNodes.city.g.gain.value = musicOn ? 0.05 * (1 - prox * 0.85) : 0;
+}
+
 let engineNodes = null;
 function engineStart() {
   if (!AC || engineNodes) return;
@@ -1527,9 +1625,77 @@ function buildCity(city) {
   for (const e of EMI_MATS) e.mat.emissiveIntensity = e.base * glow;
   for (const l of lampLights) l.intensity = 20 * NF;
 
+  buildClub();
   spawnTraffic();
   spawnPeds();
   for (let i = 0; i < 10; i++) spawnCanPickup();
+}
+
+// ---------------------------------------------------------------------------
+// The nightclub — glowing marquee, sweeping light beams, a dancing queue,
+// and dance music that swells as you approach (see updateMusic)
+// ---------------------------------------------------------------------------
+const clubBeams = [];
+const clubbers = [];
+let clubLight = null;
+function buildClub() {
+  const z = clubPos.z;
+  // marquee sign facing the street
+  const cv = document.createElement('canvas');
+  cv.width = 1024; cv.height = 192;
+  const g2 = cv.getContext('2d');
+  g2.fillStyle = '#0a0c12'; g2.fillRect(0, 0, 1024, 192);
+  g2.strokeStyle = '#ff4fd8'; g2.lineWidth = 8; g2.strokeRect(10, 10, 1004, 172);
+  g2.font = '900 100px Arial'; g2.textAlign = 'center';
+  g2.shadowColor = '#ff4fd8'; g2.shadowBlur = 34;
+  g2.fillStyle = '#ff8ae8';
+  g2.fillText('★ CLUB VOLT ★', 512, 130);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(8, 1.5),
+    new THREE.MeshBasicMaterial({ map: tex }));
+  sign.position.set(11.2, 5.2, z);
+  sign.rotation.y = -Math.PI / 2;
+  scene.add(sign);
+
+  // sweeping beams
+  for (const [dz, col] of [[-2.2, 0xff4fd8], [2.2, 0x41d8ff]]) {
+    const beam = new THREE.Mesh(
+      new THREE.ConeGeometry(1.1, 9, 12, 1, true),
+      new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.13,
+        blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    beam.position.set(10.6, 4.5, z + dz);
+    scene.add(beam);
+    clubBeams.push({ mesh: beam, phase: dz });
+  }
+  clubLight = new THREE.PointLight(0xff4fd8, 8, 22, 2);
+  clubLight.position.set(9.8, 3.5, z);
+  scene.add(clubLight);
+
+  // dancing queue outside the door
+  for (let i = 0; i < 5; i++) {
+    const c = makeCivilian();
+    c.group.position.set(9.6 + Math.random() * 1.2, 0, z - 4.5 + i * 2.1 + Math.random());
+    c.group.rotation.y = Math.PI / 2 + (Math.random() - 0.5) * 0.8;
+    scene.add(c.group);
+    clubbers.push({ rig: c, phase: Math.random() * 6 });
+  }
+}
+function updateClub(dt) {
+  if (!clubLight) return;
+  const beat = game.time * (126 / 60) * Math.PI * 2;
+  clubLight.color.setHSL((game.time * 0.22) % 1, 0.85, 0.55);
+  clubLight.intensity = (5 + 4 * Math.max(0, Math.sin(beat))) * (0.3 + 0.7 * NF);
+  for (const b of clubBeams) {
+    b.mesh.rotation.z = Math.sin(game.time * 1.4 + b.phase) * 0.45;
+    b.mesh.rotation.x = Math.cos(game.time * 1.1 + b.phase) * 0.25;
+  }
+  for (const c of clubbers) {
+    const bounce = Math.abs(Math.sin(beat / 2 + c.phase));
+    c.rig.group.position.y = bounce * 0.09;
+    c.rig.arms[0].rotation.x = -0.6 - bounce * 0.9;
+    c.rig.arms[1].rotation.x = -0.6 - Math.abs(Math.cos(beat / 2 + c.phase)) * 0.9;
+  }
 }
 
 // random point on some road
@@ -1632,6 +1798,11 @@ document.addEventListener('keydown', e => {
   if (e.code === 'Digit2') switchWeapon(1);
   if (e.code === 'Digit3') switchWeapon(2);
   if (e.code === 'KeyQ' && locked) drinkEnergy();
+  if (e.code === 'KeyC' && driving) camMode = camMode === 'chase' ? 'hood' : 'chase';
+  if (e.code === 'KeyM' && locked) {
+    musicOn = !musicOn;
+    addFeed(musicOn ? '♪ Music on' : '♪ Music off');
+  }
 });
 document.addEventListener('keyup', e => { keys[e.code] = false; });
 
@@ -2049,6 +2220,7 @@ function updateEnemy(en, dt) {
 // Driving
 // ---------------------------------------------------------------------------
 let driving = null;
+let camMode = 'chase'; // 'chase' | 'hood' while driving (C to toggle)
 const drivehintEl = document.getElementById('drivehint');
 const speedoEl = document.getElementById('speedo');
 
@@ -2090,10 +2262,11 @@ function toggleDrive() {
       v.group.add(v.light);
       v.group.add(v.light.target);
     }
-    if (v.type !== 'car') {
+    if (VEH_STATS[v.type] === undefined || v.type === 'scooter' || v.type === 'bicycle') {
       v.rider = makeRider();
       v.group.add(v.rider.group);
     }
+    player.yaw = v.yaw;          // chase cam starts behind the vehicle
     if (v.stats.engine) engineStart();
     speedoEl.style.display = 'block';
     playClick(700, 0.2);
@@ -2131,15 +2304,34 @@ function updateDriving(dt) {
     }
 
   player.pos.set(v.group.position.x, 0, v.group.position.z);
-  camera.position.set(
-    v.group.position.x + fwd.x * 0.1,
-    st.camH,
-    v.group.position.z + fwd.z * 0.1);
-  camera.rotation.order = 'YXZ';
-  camera.rotation.set(
-    player.pitch + (Math.random() - 0.5) * shake * 0.05,
-    player.yaw,
-    (Math.random() - 0.5) * shake * 0.05);
+  if (camMode === 'hood') {
+    camera.position.set(
+      v.group.position.x + fwd.x * 0.1,
+      st.camH,
+      v.group.position.z + fwd.z * 0.1);
+    camera.rotation.order = 'YXZ';
+    camera.rotation.set(
+      player.pitch + (Math.random() - 0.5) * shake * 0.05,
+      player.yaw,
+      (Math.random() - 0.5) * shake * 0.05);
+  } else {
+    // third-person chase camera: behind the car, mouse orbits, walls pull it in
+    const dist = 6.2 + st.size[1] * 0.4;
+    const orbit = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw));
+    const from = v.group.position.clone().setY(1.5);
+    const want = from.clone().addScaledVector(orbit, -dist);
+    want.y = Math.min(6, Math.max(1.6, 2.8 - player.pitch * 4));
+    const toCam = want.clone().sub(from);
+    const L = toCam.length();
+    toCam.normalize();
+    const hd = worldHitDistance(from, toCam, L);
+    if (hd < L) want.copy(from).addScaledVector(toCam, Math.max(hd - 0.5, 1.6));
+    camera.position.lerp(want, Math.min(1, dt * 7));
+    camera.rotation.order = 'YXZ';
+    camera.lookAt(v.group.position.x, v.group.position.y + 1.2, v.group.position.z);
+    camera.rotation.x += (Math.random() - 0.5) * shake * 0.04;
+    camera.rotation.z += (Math.random() - 0.5) * shake * 0.04;
+  }
   if (st.engine) {
     if (engineNodes) engineNodes.osc.frequency.value = st.freq + Math.abs(v.speed) * 5.5;
   }
@@ -2468,6 +2660,9 @@ function drawMinimap() {
   mmCtx.fillStyle = 'rgba(200,200,200,.55)';
   for (const c of traffic)
     mmCtx.fillRect(M(c.group.position.x) - 1, M(c.group.position.z) - 1, 2, 2);
+  // nightclub marker
+  mmCtx.fillStyle = '#ff4fd8';
+  mmCtx.fillRect(M(clubPos.x) - 2, M(clubPos.z) - 2, 4, 4);
   if (mode === 'delivery' && order.active) {
     const tx = order.stage === 'pickup' ? order.fx : order.tx;
     const tz = order.stage === 'pickup' ? order.fz : order.tz;
@@ -2717,8 +2912,11 @@ function tick() {
   if (!locked && !player.dead) { renderer.render(scene, camera); return; }
 
   if (cine.active) {
+    game.time += dtReal;
     updateCinematic();
     updateAtmosphere(dtReal);
+    updateClub(dtReal);
+    updateMusic();
     updateEffects(dtReal);
     renderer.render(scene, camera);
     return;
@@ -2840,6 +3038,8 @@ function tick() {
   updateTraffic(dt);
   updatePeds(dt);
   updateEnergy(dt);
+  updateClub(dt);
+  updateMusic();
   updateEffects(dt);
 
   // ---- HUD ----
