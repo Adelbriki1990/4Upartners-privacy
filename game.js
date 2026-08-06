@@ -671,11 +671,17 @@ function addBuilding(x, z, w, d, h, face) {
 // ---------------------------------------------------------------------------
 const vehicles = [];
 const CAR_COLORS = [0x7a2f2f, 0x2f4a7a, 0x565b60, 0x6d6437, 0x3b4b41, 0x802a48, 0x1d5c66];
-function carBox(pos, yaw) {
+// per-type handling: top speed, acceleration, turn rate, camera seat height…
+const VEH_STATS = {
+  car:     { label: 'CAR',     maxF: 31, maxR: -9, accel: 15, turn: 1.5, camH: 1.34, size: [2.0, 4.4], engine: true,  freq: 55, radius: 1.45, kill: 2.3 },
+  scooter: { label: 'SCOOTER', maxF: 24, maxR: -5, accel: 21, turn: 2.3, camH: 1.52, size: [0.8, 2.2], engine: true,  freq: 95, radius: 0.7,  kill: 1.4 },
+  bicycle: { label: 'BICYCLE', maxF: 13, maxR: -3, accel: 9,  turn: 2.6, camH: 1.55, size: [0.7, 2.0], engine: false, freq: 0,  radius: 0.6,  kill: 1.2 },
+};
+function carBox(pos, yaw, size = [2.0, 4.4]) {
   const along = Math.abs(Math.sin(yaw)) > 0.5;
   return new THREE.Box3().setFromCenterAndSize(
     new THREE.Vector3(pos.x, 0.8, pos.z),
-    new THREE.Vector3(along ? 4.4 : 2.0, 1.6, along ? 2.0 : 4.4));
+    new THREE.Vector3(along ? size[1] : size[0], 1.6, along ? size[0] : size[1]));
 }
 function buildCarMesh(bodyColor) {
   const g = new THREE.Group();
@@ -703,14 +709,71 @@ function buildCarMesh(bodyColor) {
   g.traverse(o => { if (o.isMesh) { o.castShadow = true; } });
   return g;
 }
-function addCar(x, z, rotY, bodyColor) {
-  const g = buildCarMesh(bodyColor);
+function registerVehicle(g, x, z, rotY, type) {
   g.position.set(x, 0, z);
   g.rotation.y = rotY;
   scene.add(g);
-  const veh = { group: g, yaw: rotY, speed: 0, box: addCollider(carBox(g.position, rotY)) };
+  const stats = VEH_STATS[type];
+  const veh = { group: g, yaw: rotY, speed: 0, type, stats,
+    box: addCollider(carBox(g.position, rotY, stats.size)) };
   vehicles.push(veh);
   return veh;
+}
+function addCar(x, z, rotY, bodyColor) {
+  return registerVehicle(buildCarMesh(bodyColor), x, z, rotY, 'car');
+}
+
+// Delivery scooter with a sponsor-branded box on the back
+function buildScooterMesh(boxColor) {
+  const g = new THREE.Group();
+  const mDark = new THREE.MeshStandardMaterial({ color: 0x14171b, roughness: 0.6 });
+  const mBody = new THREE.MeshStandardMaterial({ color: 0xc8cdd4, roughness: 0.4, metalness: 0.5 });
+  for (const wz of [0.72, -0.72]) {
+    const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.26, 0.12, 12), mDark);
+    wheel.rotation.z = Math.PI / 2;
+    wheel.position.set(0, 0.26, wz);
+    g.add(wheel);
+  }
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.1, 1.15), mBody);
+  deck.position.set(0, 0.38, -0.05); g.add(deck);
+  const col = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.78, 0.08), mBody);
+  col.position.set(0, 0.75, 0.62); col.rotation.x = -0.25; g.add(col);
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.06, 0.06), mDark);
+  bar.position.set(0, 1.12, 0.53); g.add(bar);
+  const seat = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.1, 0.42), mDark);
+  seat.position.set(0, 0.78, -0.3); g.add(seat);
+  const crate = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.52, 0.5),
+    new THREE.MeshStandardMaterial({ color: boxColor, roughness: 0.5 }));
+  crate.position.set(0, 1.0, -0.78); g.add(crate);
+  const hl = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.1, 0.05), new THREE.MeshBasicMaterial({ color: 0xfff2cc }));
+  hl.position.set(0, 0.95, 0.78); g.add(hl);
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  return g;
+}
+
+function buildBicycleMesh() {
+  const g = new THREE.Group();
+  const mDark = new THREE.MeshStandardMaterial({ color: 0x1a1d22, roughness: 0.6 });
+  const mFrame = new THREE.MeshStandardMaterial({
+    color: new THREE.Color().setHSL(Math.random(), 0.5, 0.4), roughness: 0.4, metalness: 0.4 });
+  for (const wz of [0.62, -0.62]) {
+    const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.33, 0.03, 6, 16), mDark);
+    wheel.rotation.y = Math.PI / 2;
+    wheel.position.set(0, 0.33, wz);
+    g.add(wheel);
+  }
+  const tube1 = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 1.0), mFrame);
+  tube1.position.set(0, 0.62, 0); tube1.rotation.x = 0.12; g.add(tube1);
+  const tube2 = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.55, 0.05), mFrame);
+  tube2.position.set(0, 0.62, 0.5); tube2.rotation.x = -0.3; g.add(tube2);
+  const tube3 = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.5, 0.05), mFrame);
+  tube3.position.set(0, 0.6, -0.35); g.add(tube3);
+  const seat = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.05, 0.26), mDark);
+  seat.position.set(0, 0.92, -0.35); g.add(seat);
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.05, 0.05), mDark);
+  bar.position.set(0, 0.95, 0.58); g.add(bar);
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  return g;
 }
 
 // ---------------------------------------------------------------------------
@@ -1051,6 +1114,27 @@ function buildCity(city) {
       if (Math.random() < 0.4)
         addCar(v + Math.random() * 6, s + (Math.random() < 0.5 ? ROAD_HALF - 1.9 : -(ROAD_HALF - 1.9)), Math.PI / 2, color());
     }
+
+  // ---- delivery scooters + bicycles parked on the sidewalks ----
+  {
+    let nScooter = 0, nBike = 0;
+    const boxCol = new THREE.Color(CITY.sponsors[0].colorA);
+    for (const s of STREETS)
+      for (let v = -116; v <= 116; v += 18) {
+        if (STREETS.some(t => Math.abs(v - t) < 11)) continue;
+        const side = Math.random() < 0.5 ? 1 : -1;
+        const r = Math.random();
+        if (r < 0.17 && nScooter < 18) {
+          nScooter++;
+          registerVehicle(buildScooterMesh(boxCol),
+            s + side * (ROAD_HALF + 1.0), v + Math.random() * 5, Math.random() * 6.28, 'scooter');
+        } else if (r < 0.3 && nBike < 12) {
+          nBike++;
+          registerVehicle(buildBicycleMesh(),
+            v + Math.random() * 5, s + side * (ROAD_HALF + 1.0), Math.random() * 6.28, 'bicycle');
+        }
+      }
+  }
 
   // ---- cover props + sponsor ad stands near the spawn area ----
   {
@@ -1597,7 +1681,7 @@ function spawnEnemy(x, z) {
   enemies.push({
     rig,
     pos: rig.group.position,
-    health: 100,
+    health: 100 + Math.min(prog.level * 2, 120),
     dead: false,
     deathT: 0,
     fireCooldown: 1 + Math.random() * 1.5,
@@ -1618,7 +1702,11 @@ function damageEnemy(en, dmg) {
     en.deathT = 0;
     game.kills++;
     addFeed('Hostile down');
-    if (enemies.every(e => e.dead)) slowmo = 1.1;
+    addXP(8);
+    if (enemies.every(e => e.dead)) {
+      slowmo = 1.1;
+      if (mode === 'waves') addXP(20);
+    }
   }
 }
 
@@ -1724,7 +1812,7 @@ function toggleDrive() {
     player.pos.copy(v.group.position).addScaledVector(right, 2.4);
     player.pos.y = 0;
     resolveCollisions(player.pos, 1.75);
-    v.box = addCollider(carBox(v.group.position, v.yaw));
+    v.box = addCollider(carBox(v.group.position, v.yaw, v.stats.size));
     if (v.light) { v.group.remove(v.light); v.group.remove(v.light.target); v.light = null; }
     engineStop();
     speedoEl.style.display = 'none';
@@ -1736,28 +1824,33 @@ function toggleDrive() {
     firing = false; aiming = false;
     const i = colliders.indexOf(v.box);
     if (i >= 0) colliders.splice(i, 1);
-    v.light = new THREE.SpotLight(0xffedc0, 80, 60, 0.5, 0.45, 1.2);
-    v.light.position.set(0, 1.2, 1.8);
-    v.light.target.position.set(0, 0.2, 14);
-    v.group.add(v.light);
-    v.group.add(v.light.target);
-    engineStart();
+    if (v.type !== 'bicycle' && NF > 0.15) {
+      v.light = new THREE.SpotLight(0xffedc0, 80, 60, 0.5, 0.45, 1.2);
+      v.light.position.set(0, 1.2, 1.8);
+      v.light.target.position.set(0, 0.2, 14);
+      v.group.add(v.light);
+      v.group.add(v.light.target);
+    }
+    if (v.stats.engine) engineStart();
     speedoEl.style.display = 'block';
     playClick(700, 0.2);
   }
 }
 function updateDriving(dt) {
   const v = driving;
+  const st = v.stats;
   const fwd = new THREE.Vector3(Math.sin(v.yaw), 0, Math.cos(v.yaw));
-  const accel = keys['KeyW'] ? 15 : keys['KeyS'] ? -10 : 0;
+  const accel = keys['KeyW'] ? st.accel : keys['KeyS'] ? -st.accel * 0.65 : 0;
   v.speed += accel * dt;
   v.speed -= v.speed * 0.55 * dt;
-  v.speed = Math.max(-9, Math.min(31, v.speed));
+  v.speed = Math.max(st.maxR, Math.min(st.maxF, v.speed));
   const steer = (keys['KeyA'] ? 1 : 0) - (keys['KeyD'] ? 1 : 0);
-  v.yaw += steer * Math.min(Math.abs(v.speed) / 6, 1) * 1.5 * dt * Math.sign(v.speed || 1);
+  v.yaw += steer * Math.min(Math.abs(v.speed) / 6, 1) * st.turn * dt * Math.sign(v.speed || 1);
   v.group.rotation.y = v.yaw;
+  // scooters and bikes lean into turns
+  if (v.type !== 'car') v.group.rotation.z = -steer * Math.min(Math.abs(v.speed) / st.maxF, 1) * 0.25;
   v.group.position.addScaledVector(fwd, v.speed * dt);
-  if (resolveCollisions(v.group.position, 1.5, 1.45)) {
+  if (resolveCollisions(v.group.position, 1.5, st.radius)) {
     if (Math.abs(v.speed) > 6) { shake = Math.min(shake + 0.3, 0.6); playClick(260, 0.3); }
     v.speed *= -0.25;
   }
@@ -1765,7 +1858,7 @@ function updateDriving(dt) {
   if (Math.abs(v.speed) > 4)
     for (const en of enemies) {
       if (en.dead) continue;
-      if (Math.hypot(en.pos.x - v.group.position.x, en.pos.z - v.group.position.z) < 2.3) {
+      if (Math.hypot(en.pos.x - v.group.position.x, en.pos.z - v.group.position.z) < st.kill) {
         damageEnemy(en, 999);
         showHitmarker(true);
         v.speed *= 0.85;
@@ -1776,15 +1869,17 @@ function updateDriving(dt) {
   player.pos.set(v.group.position.x, 0, v.group.position.z);
   camera.position.set(
     v.group.position.x + fwd.x * 0.1,
-    1.34,
+    st.camH,
     v.group.position.z + fwd.z * 0.1);
   camera.rotation.order = 'YXZ';
   camera.rotation.set(
     player.pitch + (Math.random() - 0.5) * shake * 0.05,
     player.yaw,
     (Math.random() - 0.5) * shake * 0.05);
-  engineUpdate(v.speed);
-  speedoEl.textContent = Math.round(Math.abs(v.speed) * 3.6) + ' KM/H';
+  if (st.engine) {
+    if (engineNodes) engineNodes.osc.frequency.value = st.freq + Math.abs(v.speed) * 5.5;
+  }
+  speedoEl.textContent = st.label + ' · ' + Math.round(Math.abs(v.speed) * 3.6) + ' KM/H';
 
   const targetFov = BASE_FOV + Math.min(Math.abs(v.speed) * 0.5, 14);
   camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 6);
@@ -1813,9 +1908,11 @@ function playerDie() {
   shake = 0.9;
   if (driving) { engineStop(); speedoEl.style.display = 'none'; driving = null; gun.visible = true; }
   canvas.style.filter = 'grayscale(0.85) brightness(0.75)';
-  document.querySelector('#gameover .stats').innerHTML = mode === 'delivery'
+  document.querySelector('#gameover .stats').innerHTML = (mode === 'delivery'
     ? `Deliveries completed: <b>${game.deliveries}</b><br>Cash earned: <b>$${game.money}</b><br>Eliminations: <b>${game.kills}</b>`
-    : `Waves survived: <b>${game.wave}</b><br>Eliminations: <b>${game.kills}</b>`;
+    : `Waves survived: <b>${game.wave}</b><br>Eliminations: <b>${game.kills}</b>`)
+    + `<br>Driver level: <b>${prog.level} / 100</b>`;
+  saveProg();
   document.exitPointerLock();
   pausedEl.style.display = 'none';
   setTimeout(() => { gameoverEl.style.display = 'flex'; }, 1400);
@@ -1825,6 +1922,28 @@ function playerDie() {
 // Waves + HUD
 // ---------------------------------------------------------------------------
 const game = { wave: 0, kills: 0, money: 0, deliveries: 0, time: 0, intermission: 0 };
+
+// ---------------------------------------------------------------------------
+// Driver progression — 100 levels, persistent across sessions
+// ---------------------------------------------------------------------------
+const prog = (() => {
+  try { return Object.assign({ level: 1, xp: 0, bank: 0 }, JSON.parse(localStorage.getItem('streetops.prog'))); }
+  catch { return { level: 1, xp: 0, bank: 0 }; }
+})();
+function xpNeed(l) { return 40 + l * 12; }
+function saveProg() { localStorage.setItem('streetops.prog', JSON.stringify(prog)); }
+function addXP(n) {
+  if (prog.level >= 100) { saveProg(); return; }
+  prog.xp += Math.round(n);
+  while (prog.level < 100 && prog.xp >= xpNeed(prog.level)) {
+    prog.xp -= xpNeed(prog.level);
+    prog.level++;
+    showBanner(`LEVEL ${prog.level}`);
+    addFeed(`⭐ Level up — ${prog.level} / 100`);
+    playClick(2600, 0.3);
+  }
+  saveProg();
+}
 const waveEl = document.getElementById('wave');
 const aliveEl = document.getElementById('alive');
 const killsEl = document.getElementById('kills');
@@ -1852,7 +1971,7 @@ function showBanner(text) {
 function startWave() {
   game.wave++;
   for (const w of WEAPONS) w.reserve = Math.max(w.reserve, w.magSize * 4);
-  const count = Math.min(3 + game.wave * 2, 14);
+  const count = Math.min(3 + game.wave * 2 + Math.floor(prog.level / 10), 16);
   for (let i = 0; i < count; i++) {
     const p = streetPointNear(player.pos, 30, 85);
     spawnEnemy(p.x + (Math.random() - 0.5) * 3, p.z + (Math.random() - 0.5) * 3);
@@ -1904,7 +2023,7 @@ function newOrder() {
   order.name = names[Math.floor(Math.random() * names.length)];
   order.fx = from.x; order.fz = from.z;
   order.tx = to.x; order.tz = to.z;
-  order.reward = Math.round(12 + Math.hypot(to.x - from.x, to.z - from.z) * 0.15);
+  order.reward = Math.round((12 + Math.hypot(to.x - from.x, to.z - from.z) * 0.15) * (1 + prog.level * 0.02));
   setBeacon(from.x, from.z, 0x41d8ff);
   showBanner('New order');
   addFeed(`Order from ${order.name}`);
@@ -1933,8 +2052,8 @@ function updateDelivery(dt) {
       setBeacon(order.tx, order.tz, 0x7dff8a);
       showBanner('Picked up — go deliver!');
       playClick(1900, 0.25);
-      if (Math.random() < 0.5) {
-        const n = 2 + Math.floor(Math.random() * 2);
+      if (Math.random() < Math.min(0.35 + prog.level * 0.008, 0.85)) {
+        const n = 2 + Math.floor(Math.random() * 2) + Math.min(Math.floor(prog.level / 12), 3);
         for (let i = 0; i < n; i++) {
           const p = streetPointNear(player.pos, 25, 45);
           spawnEnemy(p.x, p.z);
@@ -1947,6 +2066,8 @@ function updateDelivery(dt) {
       order.cooldown = 3;
       game.money += order.reward;
       game.deliveries++;
+      prog.bank += order.reward;
+      addXP(16 + order.reward / 2);
       for (const w2 of WEAPONS) w2.reserve = Math.max(w2.reserve, w2.magSize * 4);
       player.health = Math.min(100, player.health + 25);
       if (beacon) beacon.group.visible = false;
@@ -2093,6 +2214,9 @@ function selectedCity() { return CITIES.find(c => c.id === selectedId) || CITIES
     });
     wrap.appendChild(card);
   }
+  const pl = document.getElementById('progressline');
+  if (pl) pl.textContent = `DRIVER LEVEL ${prog.level} / 100` +
+    (prog.bank > 0 ? ` · LIFETIME EARNINGS $${prog.bank}` : '');
   // game mode buttons
   document.querySelectorAll('.modebtn').forEach(btn => {
     btn.classList.toggle('sel', btn.dataset.mode === mode);
@@ -2248,6 +2372,9 @@ function tick() {
   killsEl.textContent = game.kills;
   document.getElementById('cash').textContent = '$' + game.money;
   document.getElementById('deliveries').textContent = game.deliveries;
+  document.getElementById('lvl').textContent = 'LVL ' + prog.level;
+  document.getElementById('xpfill').style.width =
+    (prog.level >= 100 ? 100 : Math.min(100, prog.xp / xpNeed(prog.level) * 100)) + '%';
   magEl.textContent = W().mag;
   reserveEl.textContent = W().reserve;
   healthfillEl.style.width = player.health + '%';
