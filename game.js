@@ -673,9 +673,18 @@ const vehicles = [];
 const CAR_COLORS = [0x7a2f2f, 0x2f4a7a, 0x565b60, 0x6d6437, 0x3b4b41, 0x802a48, 0x1d5c66];
 // per-type handling: top speed, acceleration, turn rate, camera seat height…
 const VEH_STATS = {
-  car:     { label: 'CAR',     maxF: 31, maxR: -9, accel: 15, turn: 1.5, camH: 1.34, size: [2.0, 4.4], engine: true,  freq: 55, radius: 1.45, kill: 2.3 },
-  scooter: { label: 'SCOOTER', maxF: 24, maxR: -5, accel: 21, turn: 2.3, camH: 1.52, size: [0.8, 2.2], engine: true,  freq: 95, radius: 0.7,  kill: 1.4 },
-  bicycle: { label: 'BICYCLE', maxF: 13, maxR: -3, accel: 9,  turn: 2.6, camH: 1.55, size: [0.7, 2.0], engine: false, freq: 0,  radius: 0.6,  kill: 1.2 },
+  car:     { label: 'SEDAN',       maxF: 31, maxR: -9,  accel: 15, turn: 1.5, camH: 1.34, size: [2.0, 4.4], engine: true,  freq: 55, radius: 1.45, kill: 2.3 },
+  suv:     { label: 'CRUISER 4X4', maxF: 28, maxR: -9,  accel: 13, turn: 1.35, camH: 1.62, size: [2.1, 4.6], engine: true, freq: 45, radius: 1.55, kill: 2.6 },
+  sports:  { label: 'ROSSO GT',    maxF: 45, maxR: -10, accel: 24, turn: 1.7, camH: 1.12, size: [2.0, 4.3], engine: true,  freq: 75, radius: 1.4,  kill: 2.2 },
+  luxury:  { label: 'LUX SEDAN',   maxF: 36, maxR: -9,  accel: 17, turn: 1.5, camH: 1.34, size: [2.0, 4.9], engine: true,  freq: 50, radius: 1.5,  kill: 2.4 },
+  scooter: { label: 'SCOOTER',     maxF: 24, maxR: -5,  accel: 21, turn: 2.3, camH: 1.52, size: [0.8, 2.2], engine: true,  freq: 95, radius: 0.7,  kill: 1.4 },
+  bicycle: { label: 'BICYCLE',     maxF: 13, maxR: -3,  accel: 9,  turn: 2.6, camH: 1.55, size: [0.7, 2.0], engine: false, freq: 0,  radius: 0.6,  kill: 1.2 },
+};
+const CAR_STYLE_COLORS = {
+  car:    [0x7a2f2f, 0x2f4a7a, 0x565b60, 0x6d6437, 0x3b4b41, 0x802a48, 0x1d5c66],
+  suv:    [0x8a7a5c, 0x4a4a42, 0x2e3438, 0x5c5348, 0x3d4a3a, 0xd8d4c8],
+  sports: [0xc41e1e, 0xe0b41e, 0xd84a10, 0x14161a, 0xd8d8d8],
+  luxury: [0x0e1013, 0xe8e8ea, 0xb8bcc2, 0x1c2436, 0x2e2226],
 };
 function carBox(pos, yaw, size = [2.0, 4.4]) {
   const along = Math.abs(Math.sin(yaw)) > 0.5;
@@ -683,31 +692,98 @@ function carBox(pos, yaw, size = [2.0, 4.4]) {
     new THREE.Vector3(pos.x, 0.8, pos.z),
     new THREE.Vector3(along ? size[1] : size[0], 1.6, along ? size[0] : size[1]));
 }
-function buildCarMesh(bodyColor) {
+// Four distinct real-world silhouettes: sedan, big 4x4 SUV,
+// low sports GT, and a long luxury sedan.
+function buildCarMesh(bodyColor, style = 'car') {
   const g = new THREE.Group();
-  const mBody = new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.35, metalness: 0.55 });
+  const mBody = new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.3, metalness: 0.6 });
   const mDark = new THREE.MeshStandardMaterial({ color: 0x11151a, roughness: 0.6 });
-  const body = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.62, 4.4), mBody);
-  body.position.y = 0.55; g.add(body);
-  const cab = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.55, 2.2), mDark);
-  cab.position.set(0, 1.1, -0.2); g.add(cab);
-  for (const [wx, wz] of [[-0.95, 1.45], [0.95, 1.45], [-0.95, -1.45], [0.95, -1.45]]) {
-    const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.25, 12), mDark);
-    wheel.rotation.z = Math.PI / 2;
-    wheel.position.set(wx, 0.34, wz); g.add(wheel);
-  }
-  const mGlow = new THREE.MeshBasicMaterial({ color: 0xfff2cc });
-  for (const hx of [-0.6, 0.6]) {
-    const hl = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.12, 0.06), mGlow);
-    hl.position.set(hx, 0.62, 2.21); g.add(hl);
-  }
-  const mTail = new THREE.MeshBasicMaterial({ color: 0xff3b30 });
-  for (const hx of [-0.6, 0.6]) {
-    const tl = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.1, 0.06), mTail);
-    tl.position.set(hx, 0.62, -2.21); g.add(tl);
+  const mChrome = new THREE.MeshStandardMaterial({ color: 0xc8ccd2, roughness: 0.15, metalness: 0.9 });
+
+  const wheel = (wx, wz, r) => {
+    const w = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 0.26, 12), mDark);
+    w.rotation.z = Math.PI / 2;
+    w.position.set(wx, r, wz);
+    g.add(w);
+  };
+  const lights = (frontZ, rearZ, y) => {
+    const mGlow = new THREE.MeshBasicMaterial({ color: 0xfff2cc });
+    const mTail = new THREE.MeshBasicMaterial({ color: 0xff3b30 });
+    for (const hx of [-0.6, 0.6]) {
+      const hl = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.1, 0.06), mGlow);
+      hl.position.set(hx, y, frontZ); g.add(hl);
+      const tl = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.09, 0.06), mTail);
+      tl.position.set(hx, y, rearZ); g.add(tl);
+    }
+  };
+
+  if (style === 'suv') {
+    // tall boxy 4x4: high stance, roof rails, rear-mounted spare wheel
+    const body = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.9, 4.6), mBody);
+    body.position.y = 0.85; g.add(body);
+    const cab = new THREE.Mesh(new THREE.BoxGeometry(1.85, 0.62, 2.7), mDark);
+    cab.position.set(0, 1.6, -0.15); g.add(cab);
+    for (const rx of [-0.7, 0.7]) {
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 2.6), mChrome);
+      rail.position.set(rx, 1.96, -0.15); g.add(rail);
+    }
+    const spare = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.24, 12), mDark);
+    spare.rotation.x = Math.PI / 2;
+    spare.position.set(0.5, 1.0, -2.42); g.add(spare);
+    const bumper = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.24, 0.2), mChrome);
+    bumper.position.set(0, 0.5, 2.35); g.add(bumper);
+    wheel(-1.0, 1.5, 0.44); wheel(1.0, 1.5, 0.44); wheel(-1.0, -1.5, 0.44); wheel(1.0, -1.5, 0.44);
+    lights(2.31, -2.31, 0.95);
+  } else if (style === 'sports') {
+    // low wide GT: wedge nose, sleek cabin, rear wing
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.95, 0.42, 4.2), mBody);
+    body.position.y = 0.42; g.add(body);
+    const nose = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.26, 1.1), mBody);
+    nose.position.set(0, 0.36, 2.05);
+    nose.rotation.x = 0.1; g.add(nose);
+    const cab = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.36, 1.7), mDark);
+    cab.position.set(0, 0.78, -0.35); g.add(cab);
+    const intake = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.1, 0.5), mDark);
+    intake.position.set(0, 0.25, 2.0); g.add(intake);
+    const wingPosts = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.16, 0.06), mDark);
+    wingPosts.position.set(0, 0.7, -2.0); g.add(wingPosts);
+    const wing = new THREE.Mesh(new THREE.BoxGeometry(1.75, 0.06, 0.34), mBody);
+    wing.position.set(0, 0.82, -2.05); g.add(wing);
+    wheel(-0.95, 1.35, 0.33); wheel(0.95, 1.35, 0.33); wheel(-0.95, -1.4, 0.33); wheel(0.95, -1.4, 0.33);
+    lights(2.15, -2.12, 0.45);
+  } else if (style === 'luxury') {
+    // long executive sedan: stretched body, chrome side trim, wide grille bar
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.95, 0.6, 4.9), mBody);
+    body.position.y = 0.56; g.add(body);
+    const cab = new THREE.Mesh(new THREE.BoxGeometry(1.72, 0.5, 2.5), mDark);
+    cab.position.set(0, 1.08, -0.3); g.add(cab);
+    for (const sx of [-0.99, 0.99]) {
+      const trim = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.05, 4.4), mChrome);
+      trim.position.set(sx, 0.62, 0); g.add(trim);
+    }
+    const grille = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.3, 0.08), mChrome);
+    grille.position.set(0, 0.55, 2.46); g.add(grille);
+    wheel(-0.95, 1.6, 0.35); wheel(0.95, 1.6, 0.35); wheel(-0.95, -1.6, 0.35); wheel(0.95, -1.6, 0.35);
+    lights(2.46, -2.46, 0.62);
+  } else {
+    // standard sedan
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.62, 4.4), mBody);
+    body.position.y = 0.55; g.add(body);
+    const cab = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.55, 2.2), mDark);
+    cab.position.set(0, 1.1, -0.2); g.add(cab);
+    wheel(-0.95, 1.45, 0.34); wheel(0.95, 1.45, 0.34); wheel(-0.95, -1.45, 0.34); wheel(0.95, -1.45, 0.34);
+    lights(2.21, -2.21, 0.62);
   }
   g.traverse(o => { if (o.isMesh) { o.castShadow = true; } });
   return g;
+}
+function randomCarStyle() {
+  const r = Math.random();
+  return r < 0.4 ? 'car' : r < 0.65 ? 'suv' : r < 0.85 ? 'luxury' : 'sports';
+}
+function carColorFor(style) {
+  const pal = CAR_STYLE_COLORS[style] || CAR_STYLE_COLORS.car;
+  return pal[Math.floor(Math.random() * pal.length)];
 }
 function registerVehicle(g, x, z, rotY, type) {
   g.position.set(x, 0, z);
@@ -719,8 +795,8 @@ function registerVehicle(g, x, z, rotY, type) {
   vehicles.push(veh);
   return veh;
 }
-function addCar(x, z, rotY, bodyColor) {
-  return registerVehicle(buildCarMesh(bodyColor), x, z, rotY, 'car');
+function addCar(x, z, rotY, style = 'car') {
+  return registerVehicle(buildCarMesh(carColorFor(style), style), x, z, rotY, style);
 }
 
 // Delivery scooter with a sponsor-branded box on the back
@@ -787,7 +863,8 @@ function spawnTraffic() {
     const dir = Math.random() < 0.5 ? 1 : -1;
     const lane = 3.5 * dir; // right-hand side of travel direction
     const v = -120 + Math.random() * 240;
-    const g = buildCarMesh(CAR_COLORS[Math.floor(Math.random() * CAR_COLORS.length)]);
+    const style = randomCarStyle();
+    const g = buildCarMesh(carColorFor(style), style);
     scene.add(g);
     const car = { group: g, s, alongX, dir, lane, v, speed: 8 + Math.random() * 3 };
     placeTrafficCar(car);
@@ -1152,15 +1229,14 @@ function buildCity(city) {
       }
   }
 
-  // ---- parked cars along curbs (all drivable) ----
+  // ---- parked cars along curbs (all drivable, mixed real-world designs) ----
   for (const s of STREETS)
     for (let v = -110; v <= 110; v += 24) {
       if (STREETS.some(t => Math.abs(v - t) < 13)) continue;
-      const color = () => CAR_COLORS[Math.floor(Math.random() * CAR_COLORS.length)];
       if (Math.random() < 0.4)
-        addCar(s + (Math.random() < 0.5 ? ROAD_HALF - 1.9 : -(ROAD_HALF - 1.9)), v + Math.random() * 6, Math.random() < 0.1 ? 0.06 : 0, color());
+        addCar(s + (Math.random() < 0.5 ? ROAD_HALF - 1.9 : -(ROAD_HALF - 1.9)), v + Math.random() * 6, Math.random() < 0.1 ? 0.06 : 0, randomCarStyle());
       if (Math.random() < 0.4)
-        addCar(v + Math.random() * 6, s + (Math.random() < 0.5 ? ROAD_HALF - 1.9 : -(ROAD_HALF - 1.9)), Math.PI / 2, color());
+        addCar(v + Math.random() * 6, s + (Math.random() < 0.5 ? ROAD_HALF - 1.9 : -(ROAD_HALF - 1.9)), Math.PI / 2, randomCarStyle());
     }
 
   // ---- delivery scooters + bicycles parked on the sidewalks ----
