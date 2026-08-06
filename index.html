@@ -60,6 +60,10 @@
 
   #healthwrap { position: absolute; left: 34px; bottom: 32px; width: 240px; }
   #healthwrap .label { color: #9fb2c4; font-size: 12px; letter-spacing: 2px; margin-bottom: 5px; text-shadow: 0 1px 3px #000; }
+  #levelrow { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  #lvl { color: #ffd479; font-size: 14px; font-weight: 800; letter-spacing: 2px; text-shadow: 0 1px 3px #000; }
+  #xpbar { flex: 1; height: 6px; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.2); border-radius: 3px; overflow: hidden; }
+  #xpfill { height: 100%; width: 0%; background: linear-gradient(90deg,#ffd479,#ffedb8); }
   #healthbar { height: 12px; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.25); border-radius: 3px; overflow: hidden; }
   #healthfill { height: 100%; width: 100%; background: linear-gradient(90deg,#3ddc7a,#8bf0b0); transition: width .15s; }
 
@@ -145,6 +149,7 @@
   <div id="wavebanner"></div>
   <div id="feed"></div>
   <div id="healthwrap">
+    <div id="levelrow"><span id="lvl">LVL 1</span><div id="xpbar"><div id="xpfill"></div></div></div>
     <div class="label">ARMOR / HEALTH</div>
     <div id="healthbar"><div id="healthfill"></div></div>
   </div>
@@ -171,6 +176,7 @@
     <div class="modebtn" data-mode="delivery">🛵 DELIVERY SHIFT</div>
     <div class="modebtn" data-mode="waves">🔫 COMBAT WAVES</div>
   </div>
+  <div id="progressline" style="margin-top:14px;color:#ffd479;font-size:13px;letter-spacing:2px;"></div>
   <div class="keys">
     <div><b>W A S D</b></div><div>Move</div>
     <div><b>MOUSE</b></div><div>Look / Aim</div>
