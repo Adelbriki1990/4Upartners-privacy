@@ -688,11 +688,11 @@ function makeBillboardTexture(sponsor) {
   g.strokeStyle = '#ffffff'; g.lineWidth = 10;
   g.strokeRect(8, 8, 496, 240);
   g.textAlign = 'center';
-  g.fillStyle = '#ffffff';
-  g.shadowColor = 'rgba(0,0,0,.6)'; g.shadowBlur = 12;
-  g.font = '800 58px Arial';
-  g.fillText(sponsor.name, 256, sponsor.logo ? 226 : 130, 470);
   if (!sponsor.logo) {
+    g.fillStyle = '#ffffff';
+    g.shadowColor = 'rgba(0,0,0,.6)'; g.shadowBlur = 12;
+    g.font = '800 58px Arial';
+    g.fillText(sponsor.name, 256, 130, 470);
     g.font = '400 30px Arial';
     g.fillStyle = 'rgba(255,255,255,.85)';
     g.fillText(sponsor.tagline, 256, 180, 470);
@@ -702,9 +702,9 @@ function makeBillboardTexture(sponsor) {
   if (sponsor.logo) {
     const img = new Image();
     img.onload = () => {
-      // big hero logo filling most of the board
-      const s = Math.min(400 / img.width, 160 / img.height);
-      g.drawImage(img, 256 - img.width * s / 2, 100 - img.height * s / 2, img.width * s, img.height * s);
+      // the logo IS the billboard — no duplicate text, near full-bleed
+      const s = Math.min(480 / img.width, 220 / img.height);
+      g.drawImage(img, 256 - img.width * s / 2, 128 - img.height * s / 2, img.width * s, img.height * s);
       tex.needsUpdate = true;
     };
     img.src = sponsor.logo;
@@ -1176,10 +1176,12 @@ function loadRealAssets() {
   }, undefined, () => {});
   for (const url of ['models/person_cool.glb', 'models/person_suit.glb'])
     gltfLoader.load(url, g => {
-      personTemplates.push(normalizeModel(g.scene, 'person', 1.78));
+      personTemplates.push({ root: normalizeModel(g.scene, 'person', 1.78), clips: g.animations || [] });
       placeRealPeople();
     }, undefined, () => {});
 }
+const modelMixers = [];   // animation players for real character models
+const modelBobbers = [];  // fallback idle for models without animations
 let mercSpawned = false;
 function spawnMercFleet() {
   if (mercSpawned || !mercTemplate || !CITY) return;
@@ -1192,6 +1194,23 @@ function spawnMercFleet() {
     wrap.add(m);
     registerVehicle(wrap, x, z, ry, 'merc');
   }
+  // and put a few E50s into moving traffic
+  let converted = 0;
+  for (const c of traffic) {
+    if (converted >= 3) break;
+    if (Math.random() < 0.45) {
+      const g2 = new THREE.Group();
+      const m2 = SkeletonUtils.clone(mercTemplate);
+      m2.rotation.y = MERC_ORIENT;
+      g2.add(m2);
+      g2.position.copy(c.group.position);
+      g2.rotation.y = c.group.rotation.y;
+      scene.remove(c.group);
+      c.group = g2;
+      scene.add(g2);
+      converted++;
+    }
+  }
   addFeed('🏎 E50 AMG fleet spotted around the city');
 }
 let realPeoplePlaced = false;
@@ -1202,10 +1221,18 @@ function placeRealPeople() {
   const posts = [[-10.2, -41, Math.PI / 2], [-9.8, 17.5, Math.PI / 2], [10.2, -13, -Math.PI / 2], [9.9, 47, -Math.PI / 2]];
   posts.forEach(([x, z, ry], i) => {
     const t = personTemplates[i % personTemplates.length];
-    const p = SkeletonUtils.clone(t);
+    const p = SkeletonUtils.clone(t.root);
     p.position.set(x, 0, z);
     p.rotation.y = ry;
     scene.add(p);
+    if (t.clips.length) {
+      // play the model's own animation (idle/walk/dance — whatever it shipped with)
+      const mixer = new THREE.AnimationMixer(p);
+      mixer.clipAction(t.clips[0]).play();
+      modelMixers.push(mixer);
+    } else {
+      modelBobbers.push({ obj: p, phase: Math.random() * 6, baseY: 0 });
+    }
   });
 }
 
@@ -3272,6 +3299,13 @@ function updateVenues(dt) {
   for (const p of venueIdlers) {
     p.phase += dt;
     p.rig.group.rotation.z = Math.sin(p.phase * 0.8) * 0.03;
+  }
+  // real character models: play their own animations, or idle-sway fallback
+  for (const m of modelMixers) m.update(dt);
+  for (const b of modelBobbers) {
+    b.phase += dt;
+    b.obj.rotation.y += Math.sin(b.phase * 0.5) * 0.0015;
+    b.obj.position.y = b.baseY + Math.abs(Math.sin(b.phase * 1.1)) * 0.015;
   }
 }
 
