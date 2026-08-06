@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=21';
+import { CITIES } from './sponsors.js?v=22';
 
 // ---------------------------------------------------------------------------
 // Renderer / scene / camera
@@ -1351,6 +1351,7 @@ function loadRealAssets() {
   for (const url of ['models/person_cool.glb', 'models/person_suit.glb'])
     gltfLoader.load(url, g => {
       stripBaseDiscs(g.scene);
+      lockWalkRoot(g.animations || []);
       personTemplates.push({ root: normalizeModel(g.scene, 'person', 1.78), clips: g.animations || [] });
       placeRealPeople();
     }, undefined, () => {});
@@ -1391,6 +1392,17 @@ function boneBounds(root) {
   root.updateMatrixWorld(true);
   root.traverse(o => { if (o.isBone) box.expandByPoint(o.getWorldPosition(v)); });
   return box;
+}
+// Mixamo-style walk clips move the hips forward then snap back at the loop
+// point, which reads as the character "cutting" his walk. Lock the hips to
+// their starting x/z (keeping the vertical bob) so patrol movement is smooth.
+function lockWalkRoot(clips) {
+  for (const c of clips)
+    for (const t of c.tracks)
+      if (/hips/i.test(t.name) && /\.position$/.test(t.name)) {
+        const v = t.values;
+        for (let i = 3; i < v.length; i += 3) { v[i] = v[0]; v[i + 2] = v[2]; }
+      }
 }
 // Some character exports ship with a flat pedestal disc under the feet —
 // looks like a black puddle on the sidewalk. Detect and drop those meshes.
@@ -1680,11 +1692,22 @@ function makeCharacter(cfg, opts = {}) {
     const head = new THREE.Mesh(new THREE.SphereGeometry(0.135, 12, 10), mSkinC);
     head.scale.set(0.95, 1.12, 0.98);
     head.position.y = 1.63; g.add(head);
-    // face: eyes
+    // face: eyes, brows, nose and mouth so people read as people up close
     for (const ex of [-0.05, 0.05]) {
-      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.016, 6, 6), mDarkC);
-      eye.position.set(ex, 1.65, 0.12); g.add(eye);
+      const white = new THREE.Mesh(new THREE.SphereGeometry(0.02, 6, 6),
+        new THREE.MeshStandardMaterial({ color: 0xf2f0ec, roughness: 0.35 }));
+      white.position.set(ex, 1.65, 0.115); g.add(white);
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.011, 6, 6), mDarkC);
+      eye.position.set(ex, 1.65, 0.132); g.add(eye);
+      const brow = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.012, 0.02), hairM);
+      brow.position.set(ex, 1.695, 0.125); g.add(brow);
     }
+    const nose = new THREE.Mesh(new THREE.SphereGeometry(0.02, 6, 6), mSkinC);
+    nose.scale.set(0.8, 1, 1.1);
+    nose.position.set(0, 1.625, 0.135); g.add(nose);
+    const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.011, 0.015),
+      new THREE.MeshStandardMaterial({ color: 0x8a4a42, roughness: 0.7 }));
+    mouth.position.set(0, 1.575, 0.126); g.add(mouth);
     // hair: rounded cap hugging the skull (+ long back for long hair)
     const hair = new THREE.Mesh(new THREE.SphereGeometry(0.142, 12, 8), hairM);
     hair.scale.set(0.97, 0.85, 1.0);
@@ -1879,6 +1902,97 @@ function updateCamels(dt) {
       c.rig.legs[2].rotation.x = -sw;
       c.rig.group.position.y = Math.abs(Math.sin(c.phase)) * 0.04;
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Street animals — dogs trotting the sidewalks, cats slinking along walls
+// ---------------------------------------------------------------------------
+const animals = [];
+function makeAnimal(kind) {
+  const g = new THREE.Group();
+  const dog = kind === 'dog';
+  const cols = dog ? [0x8a6a3e, 0x3a2f24, 0xd8cfc0, 0x6a5a48] : [0x2a2a2e, 0xc9c3b8, 0xb8823e, 0x7a7a80];
+  const mFur = new THREE.MeshStandardMaterial({ color: cols[Math.floor(Math.random() * cols.length)], roughness: 0.95 });
+  const s = dog ? 1 : 0.62; // cats are small
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.11 * s, 0.3 * s, 4, 8), mFur);
+  body.rotation.x = Math.PI / 2;
+  body.position.y = 0.3 * s;
+  g.add(body);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.09 * s, 8, 6), mFur);
+  head.position.set(0, 0.4 * s, 0.26 * s);
+  g.add(head);
+  const snout = new THREE.Mesh(new THREE.BoxGeometry(0.05 * s, 0.045 * s, 0.08 * s), mFur);
+  snout.position.set(0, 0.37 * s, 0.34 * s);
+  g.add(snout);
+  for (const ex of [-1, 1]) { // pointy ears
+    const ear = new THREE.Mesh(new THREE.ConeGeometry(0.03 * s, 0.06 * s, 4), mFur);
+    ear.position.set(ex * 0.055 * s, 0.49 * s, 0.24 * s);
+    g.add(ear);
+  }
+  const legs = [];
+  for (const [lx, lz] of [[-0.07, 0.12], [0.07, 0.12], [-0.07, -0.12], [0.07, -0.12]]) {
+    const pivot = new THREE.Group();
+    pivot.position.set(lx * s, 0.24 * s, lz * s);
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.022 * s, 0.02 * s, 0.24 * s, 6), mFur);
+    leg.position.y = -0.12 * s;
+    pivot.add(leg);
+    g.add(pivot);
+    legs.push(pivot);
+  }
+  const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.02 * s, 0.008 * s, 0.26 * s, 6), mFur);
+  tail.position.set(0, 0.38 * s, -0.26 * s);
+  tail.rotation.x = dog ? 0.8 : 0.35;
+  g.add(tail);
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  return { group: g, legs, tail, s };
+}
+function spawnAnimals() {
+  const nDogs = 5, nCats = 4;
+  for (let i = 0; i < nDogs + nCats; i++) {
+    const kind = i < nDogs ? 'dog' : 'cat';
+    const rig = makeAnimal(kind);
+    scene.add(rig.group);
+    const s = STREETS[Math.floor(Math.random() * STREETS.length)];
+    animals.push({
+      rig, kind,
+      s, alongX: Math.random() < 0.5, dir: Math.random() < 0.5 ? 1 : -1,
+      v: -100 + Math.random() * 200,
+      side: (Math.random() < 0.5 ? 1 : -1) * (ROAD_HALF + 1.2 + Math.random() * 2),
+      speed: kind === 'dog' ? 1.6 + Math.random() * 0.7 : 1.1 + Math.random() * 0.5,
+      phase: Math.random() * 6, restT: 0, fleeT: 0,
+    });
+  }
+}
+function updateAnimals(dt) {
+  for (const a of animals) {
+    const gp = a.rig.group.position;
+    if (game.time - lastShot.t < 0.3 && Math.hypot(gp.x - lastShot.x, gp.z - lastShot.z) < 25) a.fleeT = 4;
+    const fleeing = a.fleeT > 0;
+    if (fleeing) a.fleeT -= dt;
+    if (a.restT > 0 && !fleeing) { // sitting, tail slowly swishing
+      a.restT -= dt;
+      a.rig.tail.rotation.z = Math.sin(game.time * 2) * 0.25;
+      continue;
+    }
+    if (!fleeing && Math.random() < dt * 0.02) { a.restT = 3 + Math.random() * 4; continue; }
+    const sp = a.speed * (fleeing ? 2.6 : 1);
+    a.v += sp * a.dir * dt;
+    if (a.v > 126 || a.v < -126) a.dir *= -1;
+    if (a.alongX) {
+      gp.set(a.v, 0, a.s + a.side);
+      a.rig.group.rotation.y = a.dir > 0 ? Math.PI / 2 : -Math.PI / 2;
+    } else {
+      gp.set(a.s + a.side, 0, a.v);
+      a.rig.group.rotation.y = a.dir > 0 ? 0 : Math.PI;
+    }
+    a.phase += dt * sp * 5.5;
+    const sw = Math.sin(a.phase) * 0.55;
+    a.rig.legs[0].rotation.x = sw;
+    a.rig.legs[3].rotation.x = sw;
+    a.rig.legs[1].rotation.x = -sw;
+    a.rig.legs[2].rotation.x = -sw;
+    a.rig.tail.rotation.z = Math.sin(a.phase * 0.7) * (a.kind === 'dog' ? 0.5 : 0.2);
   }
 }
 
@@ -2379,6 +2493,7 @@ function buildCity(city) {
   spawnTraffic();
   spawnPeds();
   spawnCamels();
+  spawnAnimals();
   for (let i = 0; i < 10; i++) spawnCanPickup();
   loadRealAssets();
   spawnMercFleet();   // in case the model finished loading before the city
@@ -2999,6 +3114,7 @@ document.addEventListener('keydown', e => {
   if (e.code === 'KeyQ' && locked) drinkEnergy();
   if (e.code === 'KeyC' && driving) camMode = camMode === 'chase' ? 'hood' : 'chase';
   if (e.code === 'KeyB' && (locked || shopOpen)) toggleShop();
+  if (e.code === 'KeyF' && (locked || cafeOpen)) toggleCafe();
   if (e.code === 'KeyM' && locked) {
     musicOn = !musicOn;
     addFeed(musicOn ? '♪ Music on' : '♪ Music off');
@@ -3142,7 +3258,7 @@ document.addEventListener('pointerlockchange', () => {
     if (!started) { started = true; startCinematic(); }
     else if (!cine.active) hudEl.style.display = 'block';
     if (AC && AC.state === 'suspended') AC.resume();
-  } else if (started && !player.dead && !shopOpen) {
+  } else if (started && !player.dead && !shopOpen && !cafeOpen) {
     pausedEl.style.display = 'flex';
     firing = false; aiming = false;
     for (const k in keys) keys[k] = false;
@@ -3823,6 +3939,70 @@ function toggleShop() {
     if (!isTouch) requestLock();
   }
 }
+// ---------------------------------------------------------------------------
+// Restaurants you can walk into: spend your cash on real food and drinks
+// ---------------------------------------------------------------------------
+let cafeOpen = false, nearRest = null;
+const cafehintEl = document.getElementById('cafehint');
+const CAFE_MENU = [
+  { ic: '🍕', nm: 'PIZZA',     fx: 'Restores 40 health',            price: 8,  heal: 40 },
+  { ic: '🍔', nm: 'BURGER',    fx: 'Restores 30 health',            price: 6,  heal: 30 },
+  { ic: '🌯', nm: 'SHAWARMA',  fx: 'Restores 25 health',            price: 5,  heal: 25 },
+  { ic: '☕', nm: 'COFFEE',    fx: 'Small speed boost + 5 health',  price: 3,  heal: 5, boost: 5 },
+  { ic: '🫖', nm: 'KARAK TEA', fx: 'Restores 12 health',            price: 2,  heal: 12 },
+  { ic: '🍰', nm: 'CAKE',      fx: 'Restores 18 health',            price: 4,  heal: 18 },
+];
+function renderCafe() {
+  document.getElementById('cafename').textContent = nearRest ? nearRest.name : 'CAFE';
+  document.getElementById('cafewallet').textContent = `WALLET $${Math.floor(game.money + prog.bank)}`;
+  const box = document.getElementById('cafeitems');
+  box.innerHTML = '';
+  for (const item of CAFE_MENU) {
+    const row = document.createElement('div');
+    row.className = 'cafeitem';
+    row.innerHTML = `<div class="ic">${item.ic}</div>
+      <div class="info"><div class="nm">${item.nm}</div><div class="fx">${item.fx}</div></div>
+      <div class="pr">$${item.price}</div>`;
+    row.addEventListener('click', () => buyFood(item));
+    box.appendChild(row);
+  }
+}
+function buyFood(item) {
+  if (game.money + prog.bank < item.price) {
+    addFeed('💸 Not enough cash — deliver more orders!');
+    playClick(300, 0.15);
+    return;
+  }
+  // spend wallet first, then savings
+  const fromWallet = Math.min(game.money, item.price);
+  game.money -= fromWallet;
+  prog.bank -= item.price - fromWallet;
+  saveProg();
+  player.health = Math.min(maxHealth(), player.health + item.heal);
+  if (item.boost) energy.boostT = Math.max(energy.boostT, item.boost);
+  addFeed(`${item.ic} ${item.nm} at ${nearRest ? nearRest.name : 'the cafe'} — +${item.heal} HP`);
+  playClick(1800, 0.25);
+  renderCafe();
+}
+function toggleCafe() {
+  if (!started || player.dead || cine.active || driving) return;
+  if (!cafeOpen && !nearRest) return;
+  cafeOpen = !cafeOpen;
+  const el = document.getElementById('cafe');
+  if (cafeOpen) {
+    renderCafe();
+    el.style.display = 'flex';
+    cafehintEl.style.display = 'none';
+    if (!isTouch) document.exitPointerLock();
+  } else {
+    el.style.display = 'none';
+    if (!isTouch) requestLock();
+  }
+}
+document.getElementById('cafeclose').addEventListener('click', () => { if (cafeOpen) toggleCafe(); });
+cafehintEl.addEventListener('click', () => { if (!cafeOpen && nearRest) toggleCafe(); });
+cafehintEl.addEventListener('touchstart', e => { e.preventDefault(); if (!cafeOpen && nearRest) toggleCafe(); }, { passive: false });
+
 function xpNeed(l) { return 40 + l * 12; }
 function saveProg() { localStorage.setItem('streetops.prog', JSON.stringify(prog)); }
 function addXP(n) {
@@ -4296,6 +4476,66 @@ function buildVenues() {
   // register the gym (built separately) for the map
   venues.push({ name: 'GYM', x: clubPos.x, z: clubPos.z, color: '#ffb02a' });
   musicZones.push(clubPos);
+
+  // --- street performers: a singer and dancers draw a small crowd ---
+  {
+    const bx = -30, bz = 70.5; // sidewalk by the park
+    // small stage mat
+    const mat = new THREE.Mesh(new THREE.CircleGeometry(2.6, 20),
+      new THREE.MeshStandardMaterial({ color: 0x25201c, roughness: 0.95 }));
+    mat.rotation.x = -Math.PI / 2;
+    mat.position.set(bx, 0.02, bz);
+    scene.add(mat);
+    // the singer, mic in raised hand
+    const singer = makeCivilian();
+    singer.group.position.set(bx, 0, bz);
+    singer.group.rotation.y = Math.PI;
+    singer.arms[1].rotation.x = -1.9; // mic arm up
+    const mic = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 6),
+      new THREE.MeshStandardMaterial({ color: 0x22242a, roughness: 0.4, metalness: 0.5 }));
+    mic.position.set(0.24, 1.62, 0.34);
+    singer.group.add(mic);
+    scene.add(singer.group);
+    // two dancers beside the singer
+    const dancers = [];
+    for (const dx of [-1.5, 1.5]) {
+      const d = makeCivilian();
+      d.group.position.set(bx + dx, 0, bz + 0.4);
+      d.group.rotation.y = Math.PI;
+      scene.add(d.group);
+      dancers.push({ rig: d, phase: Math.random() * 6 });
+    }
+    // a small crowd watching and clapping
+    const crowd = [];
+    for (let i = 0; i < 4; i++) {
+      const c = makeCivilian();
+      c.group.position.set(bx - 2.2 + i * 1.5, 0, bz + 3.1);
+      c.group.rotation.y = Math.PI;
+      scene.add(c.group);
+      crowd.push({ rig: c, phase: Math.random() * 6 });
+    }
+    musicZones.push(new THREE.Vector3(bx, 0, bz));
+    venues.push({ name: 'LIVE', x: bx, z: bz, color: '#8affa0', update(dt) {
+      const beat = game.time * (110 / 60) * Math.PI * 2;
+      // singer sways, mic arm held high
+      singer.group.rotation.z = Math.sin(game.time * 1.8) * 0.06;
+      singer.arms[1].rotation.x = -1.9 + Math.sin(beat / 2) * 0.15;
+      singer.arms[0].rotation.x = -0.4 + Math.sin(game.time * 1.3) * 0.4;
+      for (const d of dancers) {
+        const b = Math.abs(Math.sin(beat / 2 + d.phase));
+        d.rig.group.position.y = b * 0.12;
+        d.rig.group.rotation.y = Math.PI + Math.sin(game.time * 1.1 + d.phase) * 0.5;
+        d.rig.arms[0].rotation.x = -0.8 - b * 1.3;
+        d.rig.arms[1].rotation.x = -0.8 - Math.abs(Math.cos(beat / 2 + d.phase)) * 1.3;
+      }
+      for (const c of crowd) { // clapping in time
+        const clap = Math.abs(Math.sin(beat + c.phase));
+        c.rig.arms[0].rotation.x = -1.1 - clap * 0.35;
+        c.rig.arms[1].rotation.x = -1.1 - clap * 0.35;
+        c.rig.group.position.y = Math.abs(Math.sin(beat / 4 + c.phase)) * 0.04;
+      }
+    } });
+  }
 
   // --- named restaurants: real pickup points with visible signs ---
   {
@@ -5030,6 +5270,7 @@ function tick() {
   if (!player.dead && driving) {
     updateDriving(dt);
     drivehintEl.style.display = 'none';
+    cafehintEl.style.display = 'none';
   } else if (!player.dead) {
     const sprinting = (((keys['ShiftLeft'] || keys['ShiftRight']) && keys['KeyW']) || touchMove.hard) && !aiming;
     const boost = energy.boostT > 0 ? 1.45 : 1;
@@ -5112,6 +5353,12 @@ function tick() {
     }
 
     drivehintEl.style.display = nearestVehicle(3.8) ? 'block' : 'none';
+    nearRest = null;
+    for (const r of RESTAURANTS)
+      if (Math.hypot(r.x - player.pos.x, r.z - player.pos.z) < 4.5) { nearRest = r; break; }
+    cafehintEl.style.display = nearRest && !cafeOpen ? 'block' : 'none';
+    if (nearRest) cafehintEl.textContent = isTouch
+      ? `🍕 TAP HERE TO EAT AT ${nearRest.name}` : `🍕 PRESS F TO EAT AT ${nearRest.name}`;
   } else {
     deathT += dt;
     const k = Math.min(deathT / 1.3, 1);
@@ -5147,6 +5394,7 @@ function tick() {
   updateTraffic(dt);
   updatePeds(dt);
   updateCamels(dt);
+  updateAnimals(dt);
   updateEnergy(dt);
   updateClub(dt);
   updateVenues(dt);
