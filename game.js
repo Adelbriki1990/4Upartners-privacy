@@ -44,6 +44,35 @@ moon.shadow.camera.top = 90;   moon.shadow.camera.bottom = -90;
 moon.shadow.camera.far = 220;
 moon.shadow.bias = -0.0004;
 scene.add(moon);
+const MOON_BASE = 1.6;
+
+// Stars + moon disc for a real night sky
+{
+  const starGeo = new THREE.BufferGeometry();
+  const pos = new Float32Array(500 * 3);
+  for (let i = 0; i < 500; i++) {
+    pos[i * 3] = (Math.random() - 0.5) * 500;
+    pos[i * 3 + 1] = 50 + Math.random() * 200;
+    pos[i * 3 + 2] = (Math.random() - 0.5) * 500;
+  }
+  starGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({
+    color: 0xaabbdd, size: 0.5, transparent: true, opacity: 0.8, fog: false })));
+
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 128;
+  const g = cv.getContext('2d');
+  const grad = g.createRadialGradient(64, 64, 8, 64, 64, 64);
+  grad.addColorStop(0, 'rgba(235,240,255,1)');
+  grad.addColorStop(0.25, 'rgba(190,205,235,.85)');
+  grad.addColorStop(1, 'rgba(150,170,220,0)');
+  g.fillStyle = grad; g.fillRect(0, 0, 128, 128);
+  const moonSprite = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: new THREE.CanvasTexture(cv), transparent: true, fog: false, depthWrite: false }));
+  moonSprite.scale.setScalar(34);
+  moonSprite.position.set(-90, 110, -160);
+  scene.add(moonSprite);
+}
 
 // ---------------------------------------------------------------------------
 // World geometry + colliders
@@ -58,7 +87,7 @@ const STREET_LEN = 170;            // z in [-85, 85]
 {
   const asphalt = new THREE.Mesh(
     new THREE.PlaneGeometry(17, STREET_LEN),
-    new THREE.MeshStandardMaterial({ color: 0x23262b, roughness: 0.95 }));
+    new THREE.MeshStandardMaterial({ color: 0x23262b, roughness: 0.35, metalness: 0.15 })); // rain-slick
   asphalt.rotation.x = -Math.PI / 2;
   asphalt.receiveShadow = true;
   scene.add(asphalt);
@@ -270,8 +299,61 @@ for (const [x, z, r] of [[-8.3, -40, 0.06], [8.3, -12, -0.05], [-8.4, 12, 0], [8
       const light = new THREE.PointLight(0xffc37a, 22, 26, 2);
       light.position.set(sx * 8.35, 5.3, z);
       scene.add(light);
+      // volumetric-style light cone
+      const cone = new THREE.Mesh(
+        new THREE.ConeGeometry(2.1, 5.2, 16, 1, true),
+        new THREE.MeshBasicMaterial({ color: 0xffc37a, transparent: true, opacity: 0.05,
+          blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+      cone.position.set(sx * 8.35, 2.75, z);
+      scene.add(cone);
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Rain + thunder
+// ---------------------------------------------------------------------------
+const RAIN_N = 1400;
+let rainPts, rainSpeeds;
+{
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(RAIN_N * 3);
+  rainSpeeds = new Float32Array(RAIN_N);
+  for (let i = 0; i < RAIN_N; i++) {
+    pos[i * 3] = (Math.random() - 0.5) * 60;
+    pos[i * 3 + 1] = Math.random() * 42;
+    pos[i * 3 + 2] = (Math.random() - 0.5) * 180;
+    rainSpeeds[i] = 34 + Math.random() * 22;
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  rainPts = new THREE.Points(geo, new THREE.PointsMaterial({
+    color: 0x9aa8c0, size: 0.07, transparent: true, opacity: 0.5 }));
+  scene.add(rainPts);
+}
+let thunderIn = 9 + Math.random() * 12, thunderT = 0;
+function updateAtmosphere(dt) {
+  const p = rainPts.geometry.attributes.position.array;
+  for (let i = 0; i < RAIN_N; i++) {
+    p[i * 3 + 1] -= rainSpeeds[i] * dt;
+    p[i * 3] += 3.5 * dt; // wind drift
+    if (p[i * 3 + 1] < 0) {
+      p[i * 3 + 1] = 42;
+      p[i * 3] = camera.position.x + (Math.random() - 0.5) * 60;
+      p[i * 3 + 2] = camera.position.z + (Math.random() - 0.5) * 120;
+    }
+  }
+  rainPts.geometry.attributes.position.needsUpdate = true;
+
+  thunderIn -= dt;
+  if (thunderIn <= 0) {
+    thunderIn = 16 + Math.random() * 22;
+    thunderT = 0.55;
+    playThunder();
+  }
+  if (thunderT > 0) {
+    thunderT -= dt;
+    moon.intensity = MOON_BASE + (Math.random() < 0.5 ? 5.5 : 1.5) * thunderT;
+  } else moon.intensity = MOON_BASE;
 }
 
 // ---------------------------------------------------------------------------
@@ -302,7 +384,41 @@ function hasLineOfSight(from, to) {
 // Audio — procedural WebAudio, no files
 // ---------------------------------------------------------------------------
 let AC = null;
-function audioInit() { if (!AC) AC = new (window.AudioContext || window.webkitAudioContext)(); }
+function audioInit() {
+  if (AC) return;
+  AC = new (window.AudioContext || window.webkitAudioContext)();
+  // ambient wind + rain bed
+  const src = AC.createBufferSource();
+  src.buffer = noiseBuffer(2);
+  src.loop = true;
+  const lp = AC.createBiquadFilter();
+  lp.type = 'lowpass'; lp.frequency.value = 420;
+  const g = AC.createGain();
+  g.gain.value = 0.05;
+  const lfo = AC.createOscillator();
+  lfo.frequency.value = 0.13;
+  const lfoGain = AC.createGain();
+  lfoGain.gain.value = 0.02;
+  lfo.connect(lfoGain).connect(g.gain);
+  src.connect(lp).connect(g).connect(AC.destination);
+  src.start(); lfo.start();
+}
+function playThunder() {
+  if (!AC) return;
+  const t = AC.currentTime + 0.7; // light first, sound later
+  const src = AC.createBufferSource();
+  src.buffer = noiseBuffer(2.2);
+  const lp = AC.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.setValueAtTime(140, t);
+  lp.frequency.exponentialRampToValueAtTime(45, t + 2);
+  const g = AC.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.3, t + 0.15);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 2.1);
+  src.connect(lp).connect(g).connect(AC.destination);
+  src.start(t);
+}
 function noiseBuffer(dur) {
   const buf = AC.createBuffer(1, AC.sampleRate * dur, AC.sampleRate);
   const d = buf.getChannelData(0);
@@ -380,6 +496,7 @@ document.addEventListener('keyup', e => { keys[e.code] = false; });
 let firing = false, aiming = false;
 document.addEventListener('mousedown', e => {
   if (!locked) return;
+  if (cine.active) { if (cine.t > 1) finishCinematic(); return; }
   if (e.button === 0) firing = true;
   if (e.button === 2) aiming = true;
 });
@@ -412,10 +529,10 @@ gameoverEl.addEventListener('click', () => location.reload());
 document.addEventListener('pointerlockchange', () => {
   locked = document.pointerLockElement === canvas;
   if (locked) {
-    started = true;
     menuEl.style.display = 'none';
     pausedEl.style.display = 'none';
-    hudEl.style.display = 'block';
+    if (!started) { started = true; startCinematic(); }
+    else if (!cine.active) hudEl.style.display = 'block';
     if (AC && AC.state === 'suspended') AC.resume();
   } else if (started && !player.dead) {
     pausedEl.style.display = 'flex';
@@ -423,6 +540,65 @@ document.addEventListener('pointerlockchange', () => {
     for (const k in keys) keys[k] = false;
   }
 });
+
+// ---------------------------------------------------------------------------
+// Intro cinematic — flyover down the street, letterboxed
+// ---------------------------------------------------------------------------
+const cine = { active: false, t: 0, dur: 7.5 };
+const cineEl = document.getElementById('cine');
+const grainEl = document.getElementById('grain');
+function startCinematic() {
+  cine.active = true;
+  cine.t = 0;
+  gun.visible = false;
+  cineEl.style.display = 'block';
+  requestAnimationFrame(() => cineEl.classList.add('on'));
+}
+function finishCinematic() {
+  cine.active = false;
+  gun.visible = true;
+  cineEl.classList.remove('on');
+  cineEl.style.display = 'none';
+  hudEl.style.display = 'block';
+  grainEl.style.display = 'block';
+  player.yaw = 0;
+  player.pitch = 0;
+}
+const _cineA = new THREE.Vector3(-9, 36, -14);
+const _cineB = new THREE.Vector3(9, 13, 38);
+const _cineC = new THREE.Vector3(0, EYE, 72);
+const _cinePos = new THREE.Vector3();
+const _cineLook = new THREE.Vector3();
+function updateCinematic(dt) {
+  cine.t += dt;
+  const t = Math.min(cine.t / cine.dur, 1);
+  const s = t * t * (3 - 2 * t); // smoothstep ease
+  // quadratic bezier flight path
+  const u = 1 - s;
+  _cinePos.set(0, 0, 0)
+    .addScaledVector(_cineA, u * u)
+    .addScaledVector(_cineB, 2 * u * s)
+    .addScaledVector(_cineC, s * s);
+  camera.position.copy(_cinePos);
+  _cineLook.lerpVectors(new THREE.Vector3(0, 4, -50), new THREE.Vector3(0, EYE, 60), s);
+  camera.lookAt(_cineLook);
+  if (t >= 1) finishCinematic();
+}
+
+// Film grain jitter + noise texture
+{
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 128;
+  const g = cv.getContext('2d');
+  const img = g.createImageData(128, 128);
+  for (let i = 0; i < img.data.length; i += 4) {
+    const v = Math.random() * 255;
+    img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
+    img.data[i + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+  grainEl.style.backgroundImage = `url(${cv.toDataURL()})`;
+}
 
 // Cylinder-ish collision: push the player horizontally out of every collider
 function resolveCollisions(pos, height) {
@@ -518,6 +694,28 @@ function spawnTracer(from, to) {
   scene.add(line);
   effects.push({ obj: line, life: 0.07, fade: m => m.obj.material.opacity = 0.9 * (m.life / 0.07) });
 }
+const smokeTex = (() => {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 64;
+  const g = cv.getContext('2d');
+  const grad = g.createRadialGradient(32, 32, 4, 32, 32, 32);
+  grad.addColorStop(0, 'rgba(190,190,200,.7)');
+  grad.addColorStop(1, 'rgba(190,190,200,0)');
+  g.fillStyle = grad; g.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(cv);
+})();
+function spawnSmoke(at) {
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: smokeTex, transparent: true, opacity: 0.28, depthWrite: false }));
+  s.position.copy(at);
+  s.scale.setScalar(0.14);
+  scene.add(s);
+  effects.push({ obj: s, life: 0.55, fade: (m, dt) => {
+    m.obj.material.opacity = 0.28 * (m.life / 0.55);
+    m.obj.scale.addScalar(dt * 0.9);
+    m.obj.position.y += dt * 0.35;
+  } });
+}
 const impactMat = new THREE.MeshBasicMaterial({ color: 0xffcf7e, transparent: true, opacity: 1, blending: THREE.AdditiveBlending, depthWrite: false });
 function spawnImpact(at) {
   const s = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 6), impactMat.clone());
@@ -531,10 +729,10 @@ function updateEffects(dt) {
     e.life -= dt;
     if (e.life <= 0) {
       scene.remove(e.obj);
-      e.obj.geometry?.dispose?.();
+      if (!e.obj.isSprite) e.obj.geometry?.dispose?.(); // sprites share one global geometry
       e.obj.material?.dispose?.();
       effects.splice(i, 1);
-    } else e.fade(e);
+    } else e.fade(e, dt);
   }
 }
 
@@ -586,6 +784,8 @@ function fireBullet() {
   const muzzleWorld = muzzleFlash.getWorldPosition(new THREE.Vector3());
   spawnTracer(muzzleWorld, end);
   spawnImpact(end);
+  if (Math.random() < 0.4) spawnSmoke(muzzleWorld);
+  shake = Math.min(shake + 0.05, 0.22);
 
   if (hitEnemy) {
     const dmg = headshot ? weapon.damage * 2 : weapon.damage;
@@ -663,6 +863,8 @@ function damageEnemy(en, dmg) {
     en.deathT = 0;
     game.kills++;
     addFeed('Hostile down');
+    // cinematic slow-mo when the wave's last hostile drops
+    if (enemies.every(e => e.dead)) slowmo = 1.1;
   }
 }
 
@@ -755,6 +957,7 @@ function hurtPlayer(dmg) {
   if (player.dead) return;
   player.health -= dmg;
   player.lastHurt = game.time;
+  shake = Math.min(shake + 0.45, 0.8);
   playHurt();
   if (player.health <= 0) {
     player.health = 0;
@@ -764,11 +967,14 @@ function hurtPlayer(dmg) {
 function playerDie() {
   player.dead = true;
   firing = false;
+  slowmo = 1.6;
+  shake = 0.9;
+  canvas.style.filter = 'grayscale(0.85) brightness(0.75)';
   document.getElementById('go-wave').textContent = game.wave;
   document.getElementById('go-kills').textContent = game.kills;
   document.exitPointerLock();
   pausedEl.style.display = 'none';
-  gameoverEl.style.display = 'flex';
+  setTimeout(() => { gameoverEl.style.display = 'flex'; }, 1400);
 }
 
 // ---------------------------------------------------------------------------
@@ -816,14 +1022,30 @@ function startWave() {
 // Main loop
 // ---------------------------------------------------------------------------
 const clock = new THREE.Clock();
-let bobPhase = 0;
+let bobPhase = 0, shake = 0, slowmo = 0, deathT = 0, frameNo = 0;
 
 function tick() {
   requestAnimationFrame(tick);
-  const dt = Math.min(clock.getDelta(), 0.05);
+  const dtReal = Math.min(clock.getDelta(), 0.05);
   if (!started) { renderer.render(scene, camera); return; }
   if (!locked && !player.dead) { renderer.render(scene, camera); return; }
+
+  if (slowmo > 0) slowmo -= dtReal;
+  const dt = dtReal * (slowmo > 0 ? 0.35 : 1);
   game.time += dt;
+  updateAtmosphere(dt);
+  shake = Math.max(0, shake - dt * 2.2);
+
+  // film grain flicker
+  if (grainEl.style.display === 'block' && ++frameNo % 3 === 0)
+    grainEl.style.transform = `translate(${(Math.random() * 64) | 0}px, ${(Math.random() * 64) | 0}px)`;
+
+  if (cine.active) {
+    updateCinematic(dt);
+    updateEffects(dt);
+    renderer.render(scene, camera);
+    return;
+  }
 
   // ---- player movement ----
   if (!player.dead) {
@@ -854,7 +1076,13 @@ function tick() {
 
     camera.position.set(player.pos.x, player.pos.y + EYE + bob, player.pos.z);
     camera.rotation.order = 'YXZ';
-    camera.rotation.set(player.pitch + weapon.recoil * 0.012, player.yaw, 0);
+    // cinematic strafe roll + subtle sway + impact shake
+    const strafeRoll = ((keys['KeyA'] ? 1 : 0) - (keys['KeyD'] ? 1 : 0)) * 0.014;
+    const sway = Math.cos(bobPhase * 0.5) * 0.0022 * Math.min(planarSpeed / 5, 1);
+    camera.rotation.set(
+      player.pitch + weapon.recoil * 0.012 + (Math.random() - 0.5) * shake * 0.05,
+      player.yaw,
+      strafeRoll + sway + (Math.random() - 0.5) * shake * 0.05);
 
     // health regen after 4s without damage
     if (player.health < 100 && game.time - player.lastHurt > 4) {
@@ -885,11 +1113,19 @@ function tick() {
     gun.position.y += bob * 0.5;
     gun.position.z += weapon.recoil * 0.006;
     gun.rotation.x = weapon.recoil * 0.02;
-    const targetFov = aiming ? ADS_FOV : BASE_FOV;
+    const targetFov = aiming ? ADS_FOV : sprinting ? BASE_FOV + 7 : BASE_FOV;
     if (Math.abs(camera.fov - targetFov) > 0.1) {
       camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 14);
       camera.updateProjectionMatrix();
     }
+  } else {
+    // death cam: sink to the ground, tilt, world drained of color (CSS filter)
+    deathT += dt;
+    const k = Math.min(deathT / 1.3, 1);
+    const e = k * k * (3 - 2 * k);
+    camera.position.set(player.pos.x, player.pos.y + EYE - e * (EYE - 0.35), player.pos.z);
+    camera.rotation.order = 'YXZ';
+    camera.rotation.set(player.pitch * (1 - e) - e * 0.15, player.yaw, e * 0.55);
   }
   muzzleFlash.material.opacity = Math.max(0, muzzleFlash.material.opacity - dt * 18);
   muzzleLight.intensity = Math.max(0, muzzleLight.intensity - dt * 160);
