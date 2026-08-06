@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=22';
+import { CITIES } from './sponsors.js?v=23';
 
 // ---------------------------------------------------------------------------
 // Renderer / scene / camera
@@ -1322,6 +1322,8 @@ function buildBicycleMesh() {
 // ---------------------------------------------------------------------------
 VEH_STATS.merc = { label: 'E50 AMG', maxF: 40, maxR: -9, accel: 18, turn: 1.55, camH: 1.3,
   size: [2.0, 4.8], engine: true, freq: 58, radius: 1.5, kill: 2.4 };
+VEH_STATS.police = { label: 'POLICE INTERCEPTOR', maxF: 52, maxR: -10, accel: 28, turn: 1.8, camH: 1.05,
+  size: [2.0, 4.6], engine: true, freq: 92, radius: 1.4, kill: 2.2 };
 const gltfLoader = new GLTFLoader();
 gltfLoader.setMeshoptDecoder(MeshoptDecoder);
 const MERC_ORIENT = 0; // model-forward correction, tuned visually
@@ -1342,11 +1344,21 @@ function normalizeModel(root, kind, target) {
 let mercTemplate = null;
 let camelTemplate = null;
 let arabicTemplate = null;
+let policeTemplate = null;
+let dobermanTemplate = null;
 const personTemplates = [];
 function loadRealAssets() {
   gltfLoader.load('models/car_mercedes.glb', g => {
     mercTemplate = normalizeModel(g.scene, 'car', 4.8);
     spawnMercFleet();
+  }, undefined, () => {});
+  gltfLoader.load('models/car_police.glb', g => {
+    policeTemplate = normalizeModel(g.scene, 'car', 4.6);
+    spawnPolice();
+  }, undefined, () => {});
+  gltfLoader.load('models/dog_doberman.glb', g => {
+    dobermanTemplate = normalizeModel(g.scene, 'person', 0.85);
+    placeGuardDogs();
   }, undefined, () => {});
   for (const url of ['models/person_cool.glb', 'models/person_suit.glb'])
     gltfLoader.load(url, g => {
@@ -1539,6 +1551,48 @@ function spawnMercFleet() {
     }
   }
   addFeed('🏎 E50 AMG fleet spotted around the city');
+}
+// Police supercars parked on patrol — real Dubai Police Aventador model,
+// drivable at high level, light bars strobing red/blue
+const policeLights = [];
+let policeSpawned = false;
+function spawnPolice() {
+  if (policeSpawned || !policeTemplate || !CITY) return;
+  policeSpawned = true;
+  const spots = [[-5.1, 44, Math.PI], [65.1, -36, 0], [-65.1, 96, Math.PI]];
+  for (const [x, z, ry] of spots) {
+    const wrap = new THREE.Group();
+    const m = SkeletonUtils.clone(policeTemplate);
+    wrap.add(m);
+    wrap.userData.wheelNodes = collectWheelNodes(m);
+    // strobing light bar
+    const red = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.09, 0.22),
+      new THREE.MeshBasicMaterial({ color: 0xff2222 }));
+    red.position.set(-0.22, 1.18, -0.3);
+    const blue = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.09, 0.22),
+      new THREE.MeshBasicMaterial({ color: 0x2266ff }));
+    blue.position.set(0.22, 1.18, -0.3);
+    wrap.add(red); wrap.add(blue);
+    policeLights.push({ red, blue, phase: Math.random() });
+    registerVehicle(wrap, x, z, ry, 'police');
+  }
+  addFeed('🚓 Police interceptors on patrol');
+}
+// Doberman guard dogs watching the doors of the busiest venues
+let dogsPlaced = false;
+function placeGuardDogs() {
+  if (dogsPlaced || !dobermanTemplate) return;
+  dogsPlaced = true;
+  const posts = [[-9.4, -48.5, Math.PI / 2], [9.4, 50.5, -Math.PI / 2], [-28, 73.5, Math.PI]];
+  for (const [x, z, ry] of posts) {
+    const d = SkeletonUtils.clone(dobermanTemplate);
+    const pos = new THREE.Vector3(x, 0, z);
+    resolveCollisions(pos, 0.8, 0.4);
+    d.position.set(pos.x, 0, pos.z);
+    d.rotation.y = ry;
+    scene.add(d);
+    modelBobbers.push({ obj: d, phase: Math.random() * 6, baseY: 0, baseRot: ry, amp: 0.22 });
+  }
 }
 let realPeoplePlaced = false;
 function placeRealPeople() {
@@ -2426,6 +2480,38 @@ function buildCity(city) {
     }
   }
 
+  // ---- street furniture: planters and benches along every avenue ----
+  {
+    const spots = [];
+    for (const s of STREETS)
+      for (let v = -118; v <= 118; v += 34) {
+        if (STREETS.some(q => Math.abs(v - q) < ROAD_HALF + 5)) continue;
+        for (const side of [-1, 1]) {
+          if (Math.random() < 0.45) spots.push([s + side * (ROAD_HALF + 3.1), v + (Math.random() - 0.5) * 6, side, 'x']);
+          if (Math.random() < 0.45) spots.push([v + (Math.random() - 0.5) * 6, s + side * (ROAD_HALF + 3.1), side, 'z']);
+        }
+      }
+    if (spots.length) {
+      const boxes = new THREE.InstancedMesh(new THREE.BoxGeometry(1.5, 0.5, 0.6),
+        new THREE.MeshStandardMaterial({ color: 0x707478, roughness: 0.9 }), spots.length);
+      const bushes = new THREE.InstancedMesh(new THREE.SphereGeometry(0.42, 8, 6),
+        new THREE.MeshStandardMaterial({ color: THEME.tree.color, roughness: 0.95 }), spots.length);
+      const m4 = new THREE.Matrix4();
+      const rot = new THREE.Matrix4();
+      spots.forEach(([x, z, side, ax], i) => {
+        const ry = ax === 'x' ? 0 : Math.PI / 2;
+        rot.makeRotationY(ry);
+        m4.copy(rot).setPosition(x, 0.25, z);
+        boxes.setMatrixAt(i, m4);
+        m4.makeScale(1.3, 0.8, 1.3).premultiply(rot).setPosition(x, 0.75, z);
+        bushes.setMatrixAt(i, m4);
+      });
+      boxes.castShadow = bushes.castShadow = true;
+      scene.add(boxes);
+      scene.add(bushes);
+    }
+  }
+
   // ---- traffic lights on the central avenues ----
   {
     const mPoleT = new THREE.MeshStandardMaterial({ color: 0x23262b, roughness: 0.6, metalness: 0.5 });
@@ -2497,6 +2583,7 @@ function buildCity(city) {
   for (let i = 0; i < 10; i++) spawnCanPickup();
   loadRealAssets();
   spawnMercFleet();   // in case the model finished loading before the city
+  spawnPolice();
   placeRealPeople();
 
   // capture the finished city as the environment map (deferred so the page
@@ -3061,6 +3148,13 @@ function updateAtmosphere(dt) {
   }
 
   for (const b of blinkers) b.mesh.visible = ((game.time * 1.4 + b.phase) % 2) < 1.5;
+
+  // police light bars strobe red/blue
+  for (const pl of policeLights) {
+    const t = (game.time + pl.phase) % 0.7;
+    pl.red.visible = t < 0.35;
+    pl.blue.visible = t >= 0.35;
+  }
 
   // boats, ships and buoys ride a gentle swell
   for (const b of seaBits) {
@@ -4027,13 +4121,14 @@ function addXP(n) {
 // Retention loop: unlock ladder, daily missions, streaks, VIP orders, records
 // ---------------------------------------------------------------------------
 const WEAPON_UNLOCK = [1, 3, 6];
-const VEH_UNLOCK = { sports: 8, phantom: 10, hyper: 12 };
+const VEH_UNLOCK = { sports: 8, phantom: 10, hyper: 12, police: 14 };
 const UNLOCK_LADDER = [
   { level: 3, what: 'P9 SIDEARM' },
   { level: 6, what: 'VIPER SMG' },
   { level: 8, what: 'ROSSO GT' },
   { level: 10, what: 'PHANTOM LIMO' },
   { level: 12, what: 'TORO HYPER' },
+  { level: 14, what: 'POLICE INTERCEPTOR' },
 ];
 function nextUnlock() {
   return UNLOCK_LADDER.find(u => u.level > prog.level);
@@ -4355,6 +4450,49 @@ function buildVenues() {
   // --- PARK with fountain (plaza) ---
   {
     const { x: px, z: pz } = PLAZAS[2];
+    // a real lawn: green grass circle, gravel cross-paths, flower beds, hedges
+    const lawn = new THREE.Mesh(new THREE.CircleGeometry(20, 28),
+      new THREE.MeshStandardMaterial({ color: THEME.camels ? 0x8a9152 : 0x3e6b3a, roughness: 0.95 }));
+    lawn.rotation.x = -Math.PI / 2;
+    lawn.position.set(px, 0.015, pz);
+    lawn.receiveShadow = true;
+    scene.add(lawn);
+    const mPath = new THREE.MeshStandardMaterial({ color: 0xb9ab90, roughness: 0.95 });
+    for (const rot of [0, Math.PI / 2]) {
+      const path = new THREE.Mesh(new THREE.PlaneGeometry(40, 2.4), mPath);
+      path.rotation.x = -Math.PI / 2;
+      path.rotation.z = rot;
+      path.position.set(px, 0.025, pz);
+      scene.add(path);
+    }
+    { // flower beds dotted across the lawn
+      const flowerCols = [0xd8385a, 0xe8c33a, 0xd87ae0, 0xe8e8e8, 0xe8703a];
+      const flowers = new THREE.InstancedMesh(new THREE.SphereGeometry(0.09, 6, 5),
+        new THREE.MeshStandardMaterial({ roughness: 0.8 }), 48);
+      const m4 = new THREE.Matrix4();
+      const col = new THREE.Color();
+      for (let i = 0; i < 48; i++) {
+        const a = Math.random() * Math.PI * 2, r = 5 + Math.random() * 13;
+        const fx = px + Math.cos(a) * r, fz = pz + Math.sin(a) * r;
+        m4.makeTranslation(fx, 0.12, fz);
+        flowers.setMatrixAt(i, m4);
+        flowers.setColorAt(i, col.setHex(flowerCols[i % flowerCols.length]));
+      }
+      scene.add(flowers);
+    }
+    { // hedge ring with gaps at the paths
+      const mHedge = new THREE.MeshStandardMaterial({ color: 0x2c4a28, roughness: 0.95 });
+      for (let i = 0; i < 16; i++) {
+        const a = (i / 16) * Math.PI * 2;
+        // leave openings where the gravel paths cross the ring
+        if (Math.abs(Math.sin(a)) < 0.22 || Math.abs(Math.cos(a)) < 0.22) continue;
+        const hedge = new THREE.Mesh(new THREE.BoxGeometry(5.5, 0.9, 1.1), mHedge);
+        hedge.position.set(px + Math.cos(a) * 19, 0.45, pz + Math.sin(a) * 19);
+        hedge.rotation.y = -a + Math.PI / 2;
+        hedge.castShadow = true;
+        scene.add(hedge);
+      }
+    }
     const base = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.6, 0.55, 18),
       new THREE.MeshStandardMaterial({ color: 0x8a8d92, roughness: 0.8 }));
     base.position.set(px, 0.27, pz);
@@ -4583,7 +4721,7 @@ function updateVenues(dt) {
   for (const b of modelBobbers) {
     b.phase += dt;
     // clearly visible: weight shifts, breathing bob, slow look-around
-    b.obj.rotation.y = b.baseRot + Math.sin(b.phase * 0.35) * 0.5;
+    b.obj.rotation.y = b.baseRot + Math.sin(b.phase * 0.35) * (b.amp ?? 0.5);
     b.obj.rotation.z = Math.sin(b.phase * 0.9) * 0.02;
     b.obj.position.y = b.baseY + Math.abs(Math.sin(b.phase * 1.4)) * 0.025;
   }
