@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=20';
+import { CITIES } from './sponsors.js?v=21';
 
 // ---------------------------------------------------------------------------
 // Renderer / scene / camera
@@ -60,7 +60,7 @@ const THEMES = {
     neon: ['#41d8ff', '#ff4fd8', '#7dff8a', '#d07dff', '#ffd23f'],
     rain: 1400, thunder: true, hMin: 18, hMax: 46,
     styles: { curtain: 0.5, brick: 0.05 }, tree: { color: 0x1e3022, every: 26, chance: 0.5 },
-    landmark: { x: 90, z: 90 }, // holo-spire block
+    landmark: { x: 90, z: 90, kind: 'spire' }, // holo-spire block
   },
   marina: {
     sky: 0x141824, fog: 0.008, hemi: [0x5a6a8a, 0x2a2318, 1.6],
@@ -81,8 +81,44 @@ const THEMES = {
     tree: { color: 0x3a5a2a, every: 30, chance: 0.4, palm: true },
     ground: { base: '#b89a6a', road: '#7a6a50', line: '#e8dcc0' },
     arch: 'arabic', dress: 'arabic', camels: true,
-    landmark: { x: -90, z: 90 }, // kasbah watchtower block
+    landmark: { x: -90, z: 90, kind: 'watchtower' }, // kasbah block
     gates: true,                 // adobe city gates over the main avenues
+  },
+  nyc: {
+    sky: 0x10131c, fog: 0.0095, hemi: [0x56607a, 0x24201a, 1.5],
+    moonColor: 0xaebbdd, lamp: 0xffd9a0,
+    wall: { h: 215, s: 8, l: 30 }, windowHues: [45, 50, 42, 205, 48, 40],
+    neon: ['#ffd23f', '#ff5f6d', '#41d8ff', '#f2f2f2', '#ff9c41'],
+    rain: 500, thunder: false, hMin: 22, hMax: 58,
+    styles: { curtain: 0.4, brick: 0.45 }, tree: { color: 0x2e4a26, every: 24, chance: 0.5 },
+    landmark: { x: 90, z: -90, kind: 'deco' }, // art-deco giant
+    taxis: true,
+  },
+  dubai: {
+    sky: 0x121826, fog: 0.0075, hemi: [0x6a7a95, 0x3a2c18, 1.6],
+    moonColor: 0xcdd8ff, lamp: 0xffe0b0,
+    wall: { h: 40, s: 18, l: 38 }, windowHues: [200, 205, 45, 210, 48, 195],
+    neon: ['#ffd700', '#41d8ff', '#f2f2f2', '#ff9c41', '#7dff8a'],
+    rain: 0, thunder: false, hMin: 24, hMax: 70,
+    styles: { curtain: 0.85, brick: 0 },
+    tree: { color: 0x2f5c33, every: 22, chance: 0.55, palm: true },
+    waterfront: 'east',
+    landmark: { x: -90, z: 30, kind: 'needle' }, // supertall needle tower
+    sail: { x: 152, z: -55 },                    // sail hotel on the shore
+    luxCars: true,
+  },
+  doha: {
+    sky: 0x131722, fog: 0.008, hemi: [0x64708a, 0x2f2718, 1.55],
+    moonColor: 0xc8d4f0, lamp: 0xffcf8a,
+    wall: { h: 42, s: 20, l: 40 }, windowHues: [190, 200, 45, 210, 35, 205],
+    neon: ['#e05a7a', '#41d8ff', '#ffd23f', '#f2f2f2', '#7dff8a'],
+    rain: 0, thunder: false, hMin: 18, hMax: 55,
+    styles: { curtain: 0.7, brick: 0.05 },
+    tree: { color: 0x2f5c33, every: 22, chance: 0.55, palm: true },
+    waterfront: 'east',
+    landmark: { x: -90, z: 30, kind: 'museum' }, // stepped stone museum
+    pearl: { x: 126, z: 20 },                    // pearl-in-oyster monument
+    dress: 'arabic',
   },
   harbor: {
     sky: 0x14100e, fog: 0.0125, hemi: [0x6a5648, 0x241c14, 1.4],
@@ -122,6 +158,9 @@ const DAY = {
   marina: { sky: 0x9dbcdd, fogMul: 0.4 },    // clear blue
   sahara: { sky: 0xd8b98a, fogMul: 0.6 },    // sandy haze
   harbor: { sky: 0x9aa4ac, fogMul: 0.6 },
+  nyc:    { sky: 0x9db4d8, fogMul: 0.45 },   // crisp east-coast blue
+  dubai:  { sky: 0xa8cbe8, fogMul: 0.35 },   // blazing clear gulf sky
+  doha:   { sky: 0xaacde6, fogMul: 0.35 },   // bright corniche morning
 };
 const lampLights = [];   // point lights that dim at day
 const EMI_MATS = [];     // window/storefront materials whose glow dims at day
@@ -1194,6 +1233,8 @@ function buildCarMesh(bodyColor, style = 'car') {
 }
 function randomCarStyle() {
   const r = Math.random();
+  if (THEME && THEME.luxCars) // gulf money: mostly exotics on the road
+    return r < 0.2 ? 'luxury' : r < 0.45 ? 'sports' : r < 0.7 ? 'phantom' : r < 0.9 ? 'hyper' : 'suv';
   return r < 0.34 ? 'car' : r < 0.54 ? 'suv' : r < 0.72 ? 'luxury'
     : r < 0.84 ? 'sports' : r < 0.93 ? 'phantom' : 'hyper';
 }
@@ -1536,7 +1577,14 @@ function spawnTraffic() {
     const lane = 3.5 * dir; // right-hand side of travel direction
     const v = -120 + Math.random() * 240;
     const style = randomCarStyle();
-    const g = buildCarMesh(carColorFor(style), style);
+    const taxi = THEME.taxis && Math.random() < 0.55;
+    const g = taxi ? buildCarMesh(0xf7c500, 'car') : buildCarMesh(carColorFor(style), style);
+    if (taxi) { // rooftop TAXI sign
+      const sign = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.28, 0.35),
+        new THREE.MeshBasicMaterial({ color: 0xfff0b0 }));
+      sign.position.set(0, 1.52, -0.2);
+      g.add(sign);
+    }
     scene.add(g);
     const car = { group: g, s, alongX, dir, lane, v, speed: 8 + Math.random() * 3 };
     placeTrafficCar(car);
@@ -2475,10 +2523,128 @@ function addLandmarks() {
   if (THEME.waterfront === 'east') addSea(1, 0x0d4a66, true);
   if (THEME.docks === 'west') { addSea(-1, 0x11333f, false); addDocks(); }
   if (THEME.landmark) {
-    if (THEME.arch === 'arabic') addWatchtower(THEME.landmark.x, THEME.landmark.z);
-    else addHoloSpire(THEME.landmark.x, THEME.landmark.z);
+    const { x, z, kind } = THEME.landmark;
+    if (kind === 'watchtower') addWatchtower(x, z);
+    else if (kind === 'deco') addDecoTower(x, z);
+    else if (kind === 'needle') addNeedleTower(x, z);
+    else if (kind === 'museum') addMuseum(x, z);
+    else addHoloSpire(x, z);
   }
+  if (THEME.sail) addSailHotel(THEME.sail.x, THEME.sail.z);
+  if (THEME.pearl) addPearlMonument(THEME.pearl.x, THEME.pearl.z);
   if (THEME.gates) addCityGates();
+}
+// NEW YORK: limestone art-deco giant with setbacks and a lit crown
+function addDecoTower(x, z) {
+  const mStone = new THREE.MeshStandardMaterial({ color: 0xcfc4ae, roughness: 0.8 });
+  const tower = new THREE.Group();
+  let y = 0;
+  for (const [w, h] of [[21, 20], [16.5, 17], [12.5, 15], [8.5, 13], [5.5, 10]]) {
+    const tier = new THREE.Mesh(new THREE.BoxGeometry(w, h, w), mStone);
+    tier.position.y = y + h / 2; tower.add(tier);
+    y += h;
+  }
+  const crown = new THREE.Mesh(new THREE.BoxGeometry(6.3, 1.2, 6.3),
+    new THREE.MeshBasicMaterial({ color: 0xfff2cc }));
+  crown.position.y = y + 0.4; tower.add(crown);
+  const spike = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.5, 14, 6), mStone);
+  spike.position.y = y + 7.5; tower.add(spike);
+  const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 6),
+    new THREE.MeshBasicMaterial({ color: 0xff4444 }));
+  beacon.position.y = y + 14.5; tower.add(beacon);
+  blinkers.push({ mesh: beacon, phase: 0.7 });
+  tower.position.set(x, 0, z);
+  tower.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  scene.add(tower);
+  addCollider(new THREE.Box3(
+    new THREE.Vector3(x - 10.5, 0, z - 10.5), new THREE.Vector3(x + 10.5, y, z + 10.5)));
+}
+// DUBAI: tapering supertall needle — tallest thing in any city
+function addNeedleTower(x, z) {
+  const mGlass = new THREE.MeshStandardMaterial({ color: 0xaec8dd, roughness: 0.35, metalness: 0.15 });
+  const tower = new THREE.Group();
+  let y = 0;
+  for (const [r, h] of [[8.5, 20], [7, 18], [5.7, 16], [4.5, 14], [3.4, 12], [2.4, 10], [1.5, 8]]) {
+    const tier = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.88, r, h, 10), mGlass);
+    tier.position.y = y + h / 2; tower.add(tier);
+    const band = new THREE.Mesh(new THREE.TorusGeometry(r * 0.9, 0.22, 6, 20),
+      new THREE.MeshBasicMaterial({ color: 0xffe9b0 }));
+    band.rotation.x = Math.PI / 2;
+    band.position.y = y + h; tower.add(band);
+    y += h;
+  }
+  const needle = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.5, 18, 6), mGlass);
+  needle.position.y = y + 9; tower.add(needle);
+  const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 6),
+    new THREE.MeshBasicMaterial({ color: 0xff4444 }));
+  beacon.position.y = y + 18; tower.add(beacon);
+  blinkers.push({ mesh: beacon, phase: 1.4 });
+  tower.position.set(x, 0, z);
+  tower.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  scene.add(tower);
+  addCollider(new THREE.Box3(
+    new THREE.Vector3(x - 8.5, 0, z - 8.5), new THREE.Vector3(x + 8.5, y, z + 8.5)));
+}
+// DUBAI: white sail-shaped hotel standing in the shallows
+function addSailHotel(x, z) {
+  const hotel = new THREE.Group();
+  const mWhite = new THREE.MeshStandardMaterial({ color: 0xf4f6f8, roughness: 0.4, side: THREE.DoubleSide });
+  const sail = new THREE.Mesh(
+    new THREE.CylinderGeometry(11, 13, 52, 14, 1, true, 0, Math.PI), mWhite);
+  sail.position.y = 26; hotel.add(sail);
+  const mast = new THREE.Mesh(new THREE.BoxGeometry(2.4, 58, 2.4), mWhite);
+  mast.position.set(0, 29, -11); hotel.add(mast);
+  const glow = new THREE.Mesh(new THREE.BoxGeometry(2.5, 52, 0.4),
+    new THREE.MeshBasicMaterial({ color: 0x9fd8ff }));
+  glow.position.set(0, 26, -12.3); hotel.add(glow);
+  hotel.position.set(x, 0, z);
+  hotel.rotation.y = -Math.PI / 2; // sail faces the city
+  hotel.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  scene.add(hotel);
+}
+// DOHA: stepped stone museum on its own block, like a stack of carved cubes
+function addMuseum(x, z) {
+  const mCream = new THREE.MeshStandardMaterial({ color: 0xe8e0d0, roughness: 0.85 });
+  const museum = new THREE.Group();
+  const tiers = [[24, 7, 0], [18, 6, Math.PI / 8], [12.5, 6, Math.PI / 4], [8, 5, Math.PI / 8]];
+  let y = 0;
+  for (const [w, h, rot] of tiers) {
+    const tier = new THREE.Mesh(new THREE.BoxGeometry(w, h, w), mCream);
+    tier.position.y = y + h / 2;
+    tier.rotation.y = rot;
+    museum.add(tier);
+    y += h;
+  }
+  // slotted window band on the top tier, like the carved lantern
+  const slot = new THREE.Mesh(new THREE.BoxGeometry(8.3, 0.9, 8.3),
+    new THREE.MeshBasicMaterial({ color: 0xffe9c0 }));
+  slot.rotation.y = Math.PI / 8;
+  slot.position.y = y - 2.2; museum.add(slot);
+  museum.position.set(x, 0, z);
+  museum.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  scene.add(museum);
+  addCollider(new THREE.Box3(
+    new THREE.Vector3(x - 12, 0, z - 12), new THREE.Vector3(x + 12, y, z + 12)));
+}
+// DOHA: giant open oyster holding a pearl, on the corniche roundabout
+function addPearlMonument(x, z) {
+  const mon = new THREE.Group();
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(3.6, 4.2, 0.8, 16),
+    new THREE.MeshStandardMaterial({ color: 0xbfb5a0, roughness: 0.9 }));
+  base.position.y = 0.4; mon.add(base);
+  const mShell = new THREE.MeshStandardMaterial({ color: 0xdcd4c2, roughness: 0.55, side: THREE.DoubleSide });
+  const lower = new THREE.Mesh(new THREE.SphereGeometry(2.6, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), mShell);
+  lower.rotation.x = Math.PI; lower.position.y = 3.1; mon.add(lower);
+  const upper = new THREE.Mesh(new THREE.SphereGeometry(2.6, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), mShell);
+  upper.position.y = 3.3; upper.rotation.x = -0.9; upper.position.z = -1.1; mon.add(upper);
+  const pearl = new THREE.Mesh(new THREE.SphereGeometry(1.1, 12, 10),
+    new THREE.MeshStandardMaterial({ color: 0xf6f2ea, roughness: 0.15, metalness: 0.1 }));
+  pearl.position.y = 3.6; mon.add(pearl);
+  mon.position.set(x, 0, z);
+  mon.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  scene.add(mon);
+  addCollider(new THREE.Box3(
+    new THREE.Vector3(x - 4.2, 0, z - 4.2), new THREE.Vector3(x + 4.2, 6, z + 4.2)));
 }
 function addSea(side, color, fancy) {
   const water = new THREE.Mesh(new THREE.PlaneGeometry(330, 660),
