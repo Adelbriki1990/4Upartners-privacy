@@ -79,6 +79,14 @@
   #orderpanel .dist { margin-top: 6px; font-size: 20px; font-weight: 800; color: #ffd479; }
   #orderpanel .pay { margin-top: 2px; font-size: 12px; color: #7dff8a; }
 
+  #missions { position: absolute; right: 30px; bottom: 210px; width: 235px; }
+  #missions .mrow { background: rgba(8,12,20,.7); border: 1px solid rgba(255,255,255,.16);
+    border-left: 3px solid #ffd479; border-radius: 6px; padding: 6px 10px; margin-top: 6px;
+    font-size: 12px; color: #cfe0ee; }
+  #missions .mrow.done { border-left-color: #7dff8a; color: #8fa2b4; text-decoration: line-through; }
+  #missions .mrow b { color: #ffd479; float: right; text-decoration: none; }
+  #missions .mtitle { font-size: 11px; letter-spacing: 2px; color: #ffd479; text-align: right; }
+
   #modes { display: flex; gap: 14px; margin-top: 26px; }
   .modebtn { padding: 10px 26px; border: 1px solid #3a4c5e; border-radius: 8px; cursor: pointer;
     color: #b9c7d4; font-size: 14px; letter-spacing: 2px; background: rgba(14,20,28,.85); transition: all .15s; }
@@ -172,6 +180,7 @@
     <div>HOSTILES <b id="alive">0</b></div>
     <div>ELIMINATIONS <b id="kills">0</b></div>
   </div>
+  <div id="missions"></div>
   <div id="orderpanel">
     <div class="app" id="order-app">DELIVERY APP</div>
     <div class="task" id="order-task">—</div>
