@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=24';
+import { CITIES } from './sponsors.js?v=25';
 
 // ---------------------------------------------------------------------------
 // Renderer / scene / camera
@@ -4013,6 +4013,7 @@ function playerDie() {
   saveProg();
   document.exitPointerLock();
   pausedEl.style.display = 'none';
+  recordScore();
   setTimeout(() => { gameoverEl.style.display = 'flex'; }, 1400);
 }
 
@@ -4150,6 +4151,93 @@ function toggleCafe() {
 document.getElementById('cafeclose').addEventListener('click', () => { if (cafeOpen) toggleCafe(); });
 cafehintEl.addEventListener('click', () => { if (!cafeOpen && nearRest) toggleCafe(); });
 cafehintEl.addEventListener('touchstart', e => { e.preventDefault(); if (!cafeOpen && nearRest) toggleCafe(); }, { passive: false });
+
+// ---------------------------------------------------------------------------
+// Leaderboard — named top-10 by best shift (local; LB_REMOTE enables sync
+// with an online backend when one is configured)
+// ---------------------------------------------------------------------------
+const LB_REMOTE = ''; // set to a backend endpoint to sync scores online
+function loadBoard() {
+  try { return JSON.parse(localStorage.getItem('streetops.board')) || []; } catch { return []; }
+}
+function recordScore() {
+  const name = playerName();
+  const b = loadBoard();
+  let e2 = b.find(r => r.name === name);
+  if (!e2) { e2 = { name, city: '', del: 0, cash: 0 }; b.push(e2); }
+  e2.del = Math.max(e2.del, game.deliveries);
+  e2.cash = Math.max(e2.cash, Math.floor(prog.bank + game.money));
+  if (CITY) e2.city = CITY.name;
+  localStorage.setItem('streetops.board', JSON.stringify(b));
+  if (LB_REMOTE) fetch(LB_REMOTE, { method: 'POST', body: JSON.stringify(e2) }).catch(() => {});
+}
+function renderBoard() {
+  recordScore();
+  const box = document.getElementById('boarditems');
+  const rows = loadBoard().sort((a, c) => c.del - a.del || c.cash - a.cash).slice(0, 10);
+  const me = playerName();
+  box.innerHTML = rows.length ? '' : '<div style="color:#8fa2b6">No drivers yet — complete a delivery!</div>';
+  rows.forEach((r, i) => {
+    const row = document.createElement('div');
+    row.className = 'boardrow' + (r.name === me ? ' me' : '');
+    row.innerHTML = `<div class="rk">#${i + 1}</div>
+      <div class="nm">${r.name}<div class="ct">${r.city || ''}</div></div>
+      <div class="sc">${r.del} 📦</div><div class="sc">$${r.cash}</div>`;
+    box.appendChild(row);
+  });
+}
+document.getElementById('lbbtn').addEventListener('click', e => {
+  e.stopPropagation();
+  renderBoard();
+  document.getElementById('board').style.display = 'flex';
+});
+document.getElementById('boardclose').addEventListener('click', () => {
+  document.getElementById('board').style.display = 'none';
+});
+document.getElementById('board').addEventListener('click', e => e.stopPropagation());
+
+// ---------------------------------------------------------------------------
+// First-shift tutorial — walks a brand-new driver through their first
+// delivery in about 30 seconds, then gets out of the way forever
+// ---------------------------------------------------------------------------
+const tut = { step: localStorage.getItem('streetops.tut') ? 4 : 0, t: 0 };
+const tutbarEl = document.getElementById('tutbar');
+const TUT_STEPS = [
+  () => `Welcome, <b>${playerName()}</b>! ${isTouch
+    ? 'Walk with the <b>left joystick</b>, drag the right side of the screen to look around'
+    : 'Move with <b>W A S D</b>, look around with the <b>mouse</b>'}`,
+  () => 'Follow the <b>yellow order marker</b> — pick up the order at the restaurant',
+  () => 'Got it! Now <b>deliver the order</b> to the waiting customer — follow the marker',
+  () => `🎉 <b>FIRST DELIVERY COMPLETE!</b> +$40 bonus · ${isTouch
+    ? 'Tap 🚗 near a vehicle to drive · ⚡ Red Bull · 🛒 upgrades'
+    : '<b>E</b> drive · <b>Q</b> Red Bull · <b>F</b> eat · <b>B</b> shop'}`,
+];
+function updateTutorial(dt) {
+  if (tut.step >= 4) return;
+  if (mode !== 'delivery' || !started || cine.active || player.dead) {
+    tutbarEl.style.display = 'none';
+    return;
+  }
+  if (tut.step === 0 && Math.hypot(player.pos.x - 4, player.pos.z - 26) > 4) tut.step = 1;
+  else if (tut.step === 1 && order.active && order.stage === 'dropoff') tut.step = 2;
+  else if (tut.step === 2 && game.deliveries > 0) {
+    tut.step = 3;
+    tut.t = 9;
+    game.money += 40; prog.bank += 40; saveProg();
+    showBanner('TUTORIAL COMPLETE +$40');
+  } else if (tut.step === 3) {
+    tut.t -= dt;
+    if (tut.t <= 0) {
+      tut.step = 4;
+      localStorage.setItem('streetops.tut', '1');
+      tutbarEl.style.display = 'none';
+      return;
+    }
+  }
+  tutbarEl.style.display = 'block';
+  tutbarEl.querySelector('.step').textContent = `FIRST SHIFT · STEP ${Math.min(tut.step + 1, 4)} / 4`;
+  tutbarEl.querySelector('.txt').innerHTML = TUT_STEPS[Math.min(tut.step, 3)]();
+}
 
 function xpNeed(l) { return 40 + l * 12; }
 function saveProg() { localStorage.setItem('streetops.prog', JSON.stringify(prog)); }
@@ -5083,6 +5171,7 @@ function updateDelivery(dt) {
       game.streak++;
       prog.bank += pay;
       addXP(16 + pay / 2);
+      recordScore();
       if (energy.cans < energyCap()) energy.cans++;
       for (const w2 of WEAPONS) w2.reserve = Math.max(w2.reserve, w2.magSize * 4);
       player.health = Math.min(maxHealth(), player.health + 25);
@@ -5627,6 +5716,7 @@ function tick() {
   updateEnergy(dt);
   updateClub(dt);
   updateVenues(dt);
+  updateTutorial(dt);
   updateMusic();
   updateNavArrow();
   trackDistance();
@@ -5684,6 +5774,7 @@ window.__so = {
       pos: [player.pos.x, player.pos.z],
       camels: camels.length, realCamels: camels.filter(c => !c.rig.legs).length,
       weather: weather.state, rain: weather.amount | 0, vehicles: vehicles.length,
+      tut: tut.step, tutDisp: tutbarEl.style.display,
     };
   },
 };
