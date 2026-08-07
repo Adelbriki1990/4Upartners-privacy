@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from './lib/jsm/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader } from './lib/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from './lib/jsm/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from './lib/jsm/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=54';
+import { CITIES } from './sponsors.js?v=55';
 
 // Clean-brand mode: the portal build (CrazyGames etc.) must carry no real
 // trademarks. window.CLEAN_BUILD is injected by the build script; ?clean=1
@@ -78,7 +78,11 @@ try {
 } catch (e) {}
 const LOWMEM = CRASHED_LAST_BOOT ||
   matchMedia('(pointer: coarse)').matches || /iPhone|iPad|Android/i.test(navigator.userAgent);
-const SAFEMODE = CRASHED_LAST_BOOT;
+const IS_IOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+// iPhones skip ALL optional 3D models unless the player turns on HQ —
+// guaranteed to fit in Safari's memory cap; procedural stand-ins cover it
+const HQ_ON = (() => { try { return localStorage.getItem('streetops.hq') === '1'; } catch (e) { return false; } })();
+const SAFEMODE = CRASHED_LAST_BOOT || (IS_IOS && !HQ_ON);
 const renderer = makeRenderer();
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, SAFEMODE ? 1 : LOWMEM ? 1.5 : 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -1705,7 +1709,8 @@ let skylineTemplate = null;
 const personTemplates = [];
 function loadRealAssets() {
   if (SAFEMODE) {
-    addFeed('⚡ SAFE MODE — light graphics after a crash; reload once to try full quality');
+    addFeed(IS_IOS && !HQ_ON ? '⚡ PHONE MODE — light graphics (HIGH QUALITY toggle on the menu)'
+      : '⚡ SAFE MODE — light graphics after a crash; reload once to try full quality');
     return;
   }
   gltfLoader.load('models/car_mercedes.glb', g => {
@@ -5694,6 +5699,19 @@ function runSpin() {
       refreshSpinBtn();
     }
   })();
+}
+// phone quality toggle: light (guaranteed to load) vs full 3D models
+{
+  const hqBtn = document.getElementById('hqbtn');
+  if (IS_IOS || LOWMEM) {
+    hqBtn.style.display = '';
+    hqBtn.textContent = HQ_ON ? '✨ QUALITY: HIGH (tap for LIGHT)' : '✨ QUALITY: LIGHT (tap for HIGH)';
+    hqBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      try { localStorage.setItem('streetops.hq', HQ_ON ? '0' : '1'); } catch (err) {}
+      location.reload();
+    });
+  }
 }
 document.getElementById('spinbtn').addEventListener('click', e => {
   e.stopPropagation();
