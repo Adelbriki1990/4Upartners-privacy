@@ -268,6 +268,7 @@
   /* ---------- driver shop ---------- */
   #wallet { margin-top: 8px; font-size: 20px; font-weight: 800; color: #7dff8a; letter-spacing: 2px; }
   #shopitems { margin-top: 18px; display: flex; flex-direction: column; gap: 10px; width: min(560px, 92vw); }
+  #wardrobeitems { margin-top: 12px; display: flex; flex-direction: column; gap: 10px; width: min(560px, 92vw); }
   #garageitems { margin-top: 12px; display: flex; flex-direction: column; gap: 10px; width: min(560px, 92vw); }
   #achitems { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; width: min(600px, 94vw);
     max-height: 58vh; overflow-y: auto; padding-right: 4px; }
@@ -512,6 +513,8 @@
   <div id="shopitems"></div>
   <div style="margin-top:20px;font-size:15px;letter-spacing:3px;color:#7fd0ff;font-weight:700">🚗 GARAGE — BUY &amp; OWN CARS · CALL YOURS WITH <b style="color:#ffd479">G</b></div>
   <div id="garageitems"></div>
+  <div style="margin-top:20px;font-size:15px;letter-spacing:3px;color:#ffd479;font-weight:700">👔 WARDROBE — DRESS YOUR DRIVER</div>
+  <div id="wardrobeitems"></div>
   <div class="go" id="shopclose">CLOSE SHOP (B)</div>
 </div>
 
@@ -603,6 +606,6 @@ if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js').ca
   "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.1/examples/jsm/"
 } }
 </script>
-<script type="module" src="game.js?v=50"></script>
+<script type="module" src="game.js?v=51"></script>
 </body>
 </html>
