@@ -600,12 +600,20 @@ if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js').ca
 })();
 </script>
 
+<script>
+// CrazyGames build: the platform SDK loads only when this build is flagged clean
+if (window.CLEAN_BUILD) {
+  var cgs = document.createElement('script');
+  cgs.src = 'https://sdk.crazygames.com/crazygames-sdk-v3.js';
+  document.head.appendChild(cgs);
+}
+</script>
 <script type="importmap">
 { "imports": {
-  "three": "https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.min.js",
-  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.1/examples/jsm/"
+  "three": "./lib/three.module.min.js",
+  "three/addons/": "./lib/jsm/"
 } }
 </script>
-<script type="module" src="game.js?v=51"></script>
+<script type="module" src="game.js?v=52"></script>
 </body>
 </html>
