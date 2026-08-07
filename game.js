@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from './lib/jsm/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader } from './lib/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from './lib/jsm/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from './lib/jsm/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=64';
+import { CITIES } from './sponsors.js?v=65';
 
 // Clean-brand mode: the portal build (CrazyGames etc.) must carry no real
 // trademarks. window.CLEAN_BUILD is injected by the build script; ?clean=1
@@ -4262,7 +4262,9 @@ pausedEl.addEventListener('click', () => {
   if (isTouch) { locked = true; pausedEl.style.display = 'none'; hudEl.style.display = 'block'; }
   else requestLock();
 });
-gameoverEl.addEventListener('click', () => location.reload());
+// No click-anywhere-to-reload: a stray tap used to throw the run away. The
+// screen now offers explicit choices, and only they act.
+gameoverEl.addEventListener('click', e => e.stopPropagation());
 
 document.addEventListener('pointerlockchange', () => {
   locked = document.pointerLockElement === canvas;
@@ -5047,11 +5049,15 @@ function playerDie() {
   if (newRec) setTimeout(() => showBanner('🏆 NEW PERSONAL RECORD'), 300);
   if (driving) { engineStop(); speedoEl.style.display = 'none'; driving = null; gun.visible = !(THEME && THEME.noGuns); }
   canvas.style.filter = 'grayscale(0.85) brightness(0.75)';
-  document.querySelector('#gameover .stats').innerHTML = `<b>${playerName()}</b><br>` + (mode === 'delivery'
-    ? `Deliveries completed: <b>${game.deliveries}</b><br>Cash earned: <b>$${game.money}</b><br>Eliminations: <b>${game.kills}</b>`
-    : `Waves survived: <b>${game.wave}</b><br>Eliminations: <b>${game.kills}</b>`)
-    + `<br>Driver level: <b>${prog.level} / 100</b>`
-    + `<br><span style="font-size:14px;color:#9fb2c4">Records — deliveries ${prog.best.deliveries || 0} · cash $${prog.best.cash || 0} · wave ${prog.best.wave || 0}</span>`;
+  document.getElementById('go-cash').textContent = '$' + game.money;
+  document.getElementById('go-del').textContent = mode === 'delivery' ? game.deliveries : game.wave;
+  document.querySelector('#go-del + span').textContent = mode === 'delivery' ? 'DELIVERIES' : 'WAVES';
+  document.getElementById('go-lvl').textContent = prog.level;
+  document.getElementById('go-best').textContent = '$' + (prog.best.cash || 0);
+  document.querySelector('#gameover .stats').innerHTML =
+    `<b>${playerName()}</b> · ${rankName()} · ${CITY ? CITY.name : ''}`
+    + `<br>Wallet $${prog.bank} · eliminations ${game.kills}`
+    + ` · best run ${prog.best.deliveries || 0} deliveries`;
   saveProg();
   document.exitPointerLock();
   pausedEl.style.display = 'none';
@@ -5063,7 +5069,10 @@ function playerDie() {
   const buy = document.getElementById('gobuy');
   buy.style.display = game.money >= cost ? '' : 'none';
   buy.textContent = `💵 PAY $${cost} → CONTINUE YOUR RUN`;
-  setTimeout(() => { gameoverEl.style.display = 'flex'; }, 1400);
+  setTimeout(() => {
+    gameoverEl.style.display = 'flex';
+    hudEl.style.display = 'none'; // the summary gets the screen to itself
+  }, 1400);
 }
 
 // Second chances: one free per run for watching an ad, or pay with the cash
@@ -5088,13 +5097,56 @@ function revivePlayer() {
   cgGame('start');
   celebrate('BACK ON YOUR FEET', '💪');
   addFeed('📺 Second chance — your run continues!');
-  if (isTouch) { locked = true; hudEl.style.display = 'block'; }
+  hudEl.style.display = 'block';
+  if (isTouch) locked = true;
   else pausedEl.style.display = 'flex';
 }
 document.getElementById('gorevive').addEventListener('click', e => {
   e.stopPropagation();
   if (revivedThisRun || !player.dead) return;
   showRewardedAd(() => { revivedThisRun = true; revivePlayer(); });
+});
+// A fresh shift in the same city, without paying the full load again.
+function restartRun() {
+  gameoverEl.style.display = 'none';
+  canvas.style.filter = '';
+  revivedThisRun = false;
+  reviveBuys = 0;
+  streakAtDeath = 0;
+  reviveSafeT = 0;
+  player.dead = false;
+  player.health = maxHealth();
+  player.pos.set(4, 0, 26);
+  player.vel.set(0, 0, 0);
+  player.yaw = 0;
+  player.pitch = 0;
+  if (driving) { engineStop(); speedoEl.style.display = 'none'; driving = null; }
+  gun.visible = !(THEME && THEME.noGuns);
+  game.money = 0;
+  game.deliveries = 0;
+  game.kills = 0;
+  game.wave = 0;
+  game.streak = 0;
+  game.intermission = 0;
+  energy.boostT = 0;
+  slowmo = 0;
+  shake = 0;
+  clearPursuit(false);
+  for (let i = enemies.length - 1; i >= 0; i--) { scene.remove(enemies[i].rig.group); enemies.splice(i, 1); }
+  order.active = false;
+  order.cooldown = 2;
+  cgGame('start');
+  hudEl.style.display = 'block';
+  if (isTouch) locked = true;
+  else requestLock();
+}
+document.getElementById('goagain').addEventListener('click', e => {
+  e.stopPropagation();
+  restartRun();
+});
+document.getElementById('gohome').addEventListener('click', e => {
+  e.stopPropagation();
+  location.reload(); // straight back to the city picker, guaranteed clean
 });
 document.getElementById('gobuy').addEventListener('click', e => {
   e.stopPropagation();
