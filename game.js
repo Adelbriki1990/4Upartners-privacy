@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=43';
+import { CITIES } from './sponsors.js?v=44';
 
 // ---------------------------------------------------------------------------
 // Renderer / scene / camera
@@ -5039,6 +5039,10 @@ function addHeat(n, why) {
   if (heat.level > was) {
     showBanner('★'.repeat(heat.level) + ' WANTED');
     addFeed(`🚓 ${why} — police alerted!`);
+    if (was === 0) {
+      phoneNotify('🚨 POLICE ALERT', 'You are wanted — lose the heat!', player.pos.x, player.pos.z);
+      say('Warning. Police alerted.');
+    }
     playClick(500, 0.3);
   }
 }
@@ -5615,6 +5619,7 @@ function updateRace(dt) {
       placeRaceRing();
       raceHudEl.style.display = 'block';
       showBanner('🏁 RACE — hit every ring!');
+      say('Race started. Follow the rings.');
       playChirp();
     }
     return;
@@ -6447,6 +6452,9 @@ function newOrder() {
   order.dropped = false;
   if (order.fragile) order.reward = Math.round(order.reward * 1.8);
   setBeacon(from.x, from.z, order.vip ? 0xffd23f : 0x41d8ff, '🍕');
+  phoneNotify(order.vip ? '📳 VIP ORDER' : order.fragile ? '📳 FRAGILE ORDER' : '📳 NEW ORDER',
+    `${order.name} — $${order.reward}${order.fragile ? ' · no crashing!' : ''}`, from.x, from.z);
+  say(`New order from ${order.name}`);
   showBanner(order.vip ? '⭐ VIP RUSH ORDER' : order.fragile ? '🥡 FRAGILE ORDER — 1.8× pay' : 'New order');
   addFeed(order.vip ? `⭐ VIP order from ${order.name} — 2.5× pay!`
     : order.fragile ? `🥡 Fragile order from ${order.name} — no crashing!`
@@ -6509,6 +6517,7 @@ function updateDelivery(dt) {
       if (order.vip)
         order.timeLeft = 14 + Math.hypot(order.tx - player.pos.x, order.tz - player.pos.z) * 0.55;
       setBeacon(order.tx, order.tz, order.vip ? 0xffd23f : 0x7dff8a, '📦');
+      say('Picked up. Deliver to the customer.');
       showBanner(order.vip ? `Picked up — ⏱ beat the clock!` : 'Picked up — go deliver!');
       playClick(1900, 0.25);
       if (Math.random() < Math.min(0.35 + prog.level * 0.008, 0.85)) {
@@ -6568,67 +6577,309 @@ function updateDelivery(dt) {
 // ---------------------------------------------------------------------------
 // Minimap
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// The driver phone — Waze-style navigation: camera-follow heading-up map,
+// live route line, voice guidance, and orders arriving as push notifications
+// with a radar ping
+// ---------------------------------------------------------------------------
 const mmCanvas = document.getElementById('minimap');
 const mmCtx = mmCanvas.getContext('2d');
-function drawMinimap() {
-  const S = mmCanvas.width, k = S / (CITY_HALF * 2);
-  const M = v => (v + CITY_HALF) * k;
-  mmCtx.fillStyle = 'rgba(8,12,18,.82)';
-  mmCtx.fillRect(0, 0, S, S);
-  mmCtx.fillStyle = 'rgba(120,130,145,.5)';
-  for (const s of STREETS) {
-    mmCtx.fillRect(M(s - ROAD_HALF), 0, ROAD_HALF * 2 * k, S);
-    mmCtx.fillRect(0, M(s - ROAD_HALF), S, ROAD_HALF * 2 * k);
-  }
-  mmCtx.fillStyle = 'rgba(90,190,255,.7)';
-  for (const v of vehicles)
-    mmCtx.fillRect(M(v.group.position.x) - 1, M(v.group.position.z) - 1, 2, 2);
-  mmCtx.fillStyle = 'rgba(200,200,200,.55)';
-  for (const c of traffic)
-    mmCtx.fillRect(M(c.group.position.x) - 1, M(c.group.position.z) - 1, 2, 2);
-  // venue markers + labels
-  mmCtx.font = '7px Arial';
-  for (const v of venues) {
-    mmCtx.fillStyle = v.color;
-    mmCtx.fillRect(M(v.x) - 2, M(v.z) - 2, 4, 4);
-    mmCtx.fillText(v.name, M(v.x) + 4, M(v.z) + 3);
-  }
-  if (mode === 'delivery' && order.active) {
-    const tx = order.stage === 'pickup' ? order.fx : order.tx;
-    const tz = order.stage === 'pickup' ? order.fz : order.tz;
-    mmCtx.fillStyle = order.stage === 'pickup' ? '#41d8ff' : '#7dff8a';
-    mmCtx.beginPath();
-    mmCtx.arc(M(tx), M(tz), 3.6, 0, Math.PI * 2);
-    mmCtx.fill();
-  }
-  mmCtx.fillStyle = '#ffd23f';
+const radarCv = document.getElementById('radar');
+const radarCtx = radarCv.getContext('2d');
+const nav = { lastSpeak: 0, lastInstr: '', notifT: 0, nx: 0, nz: 0, arrived: false };
+let mmFrame = 0;
+
+function say(text, force) {
+  const t = performance.now();
+  if (!force && t - nav.lastSpeak < 3500) return;
+  nav.lastSpeak = t;
+  try {
+    if (!window.speechSynthesis) return;
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.06; u.volume = 0.9;
+    speechSynthesis.speak(u);
+  } catch (e) { /* voice is a bonus, never fatal */ }
+}
+function nearestStreetC(v) {
+  return STREETS.reduce((a, b) => Math.abs(b - v) < Math.abs(a - v) ? b : a);
+}
+function navTarget() {
   if (race.active) {
     const c = RACE_CPS[race.cp];
-    mmCtx.beginPath();
-    mmCtx.arc(M(c[0]), M(c[1]), 4, 0, Math.PI * 2);
-    mmCtx.fill();
+    return { x: c[0], z: c[1], label: `🏁 RING ${race.cp + 1} / ${RACE_CPS.length}` };
+  }
+  if (mode === 'delivery' && order.active) {
+    return order.stage === 'pickup'
+      ? { x: order.fx, z: order.fz, label: '🍕 ' + order.name }
+      : { x: order.tx, z: order.tz, label: '📦 CUSTOMER' };
+  }
+  return null;
+}
+// Manhattan route down the street grid: onto my road, along it, across, arrive
+function navRoutePts(t) {
+  const px = player.pos.x, pz = player.pos.z;
+  const vx = nearestStreetC(px);
+  const hz = nearestStreetC(t.z);
+  const raw = [[px, pz], [vx, pz], [vx, hz], [t.x, hz], [t.x, t.z]];
+  const pts = [raw[0]];
+  for (let i = 1; i < raw.length; i++) {
+    const prev = pts[pts.length - 1];
+    if (Math.hypot(raw[i][0] - prev[0], raw[i][1] - prev[1]) > 2) pts.push(raw[i]);
+  }
+  return pts;
+}
+function updateNavPhone(dt) {
+  // status bar clock = the player's real time
+  const d = new Date();
+  document.getElementById('ph-time').textContent =
+    `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const t = navTarget();
+  const destEl = document.getElementById('ph-dest');
+  const etaEl = document.getElementById('ph-eta');
+  if (!t) {
+    destEl.textContent = mode === 'delivery' ? 'NO ACTIVE ORDER' : 'SURVIVE THE WAVE';
+    etaEl.textContent = mode === 'delivery' ? 'waiting for orders…' : 'hostiles marked in red';
+    nav.arrived = false;
   } else {
-    mmCtx.fillRect(M(RACE_START.x) - 2, M(RACE_START.z) - 2, 4, 4);
-    mmCtx.fillText('RACE', M(RACE_START.x) + 4, M(RACE_START.z) + 3);
+    const pts = navRoutePts(t);
+    let dist = 0;
+    for (let i = 1; i < pts.length; i++)
+      dist += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+    destEl.textContent = t.label;
+    etaEl.textContent = `${Math.round(dist)} m · ~${Math.max(1, Math.ceil(dist / 9))}s · follow the blue line`;
+    // voice turn guidance: announce the next corner as it approaches
+    if (pts.length > 2) {
+      const dNext = Math.hypot(pts[1][0] - player.pos.x, pts[1][1] - player.pos.z);
+      if (dNext < 24) {
+        const a = [pts[1][0] - pts[0][0], pts[1][1] - pts[0][1]];
+        const b = [pts[2][0] - pts[1][0], pts[2][1] - pts[1][1]];
+        const cross = a[0] * b[1] - a[1] * b[0];
+        if (Math.abs(cross) > 1) {
+          const instr = cross > 0 ? 'left' : 'right';
+          if (nav.lastInstr !== instr + pts[1][0] + ',' + pts[1][1]) {
+            nav.lastInstr = instr + pts[1][0] + ',' + pts[1][1];
+            say(`Turn ${instr} ahead`);
+          }
+        }
+      }
+    }
+    const dHere = Math.hypot(t.x - player.pos.x, t.z - player.pos.z);
+    if (dHere < 14 && !nav.arrived) { nav.arrived = true; say('You have arrived'); }
+    if (dHere > 25) nav.arrived = false;
+  }
+  // push notification lifetime + radar sweep
+  if (nav.notifT > 0) {
+    nav.notifT -= dt;
+    if (nav.notifT <= 0) document.getElementById('phonenotif').style.display = 'none';
+    else drawRadar();
+  }
+}
+function phoneNotify(title, sub, x, z) {
+  nav.notifT = 6.5;
+  nav.nx = x; nav.nz = z;
+  document.querySelector('#ph-notif-txt b').textContent = title;
+  document.getElementById('ph-notif-sub').textContent = sub;
+  document.getElementById('phonenotif').style.display = 'flex';
+  const ph = document.getElementById('phone');
+  ph.classList.remove('ring');
+  void ph.offsetWidth;
+  ph.classList.add('ring');
+  playClick(1240, 0.14);
+  setTimeout(() => playClick(1650, 0.14), 140);
+  setTimeout(() => playClick(1240, 0.12), 300);
+}
+function drawRadar() {
+  const S = radarCv.width, C = S / 2;
+  radarCtx.clearRect(0, 0, S, S);
+  radarCtx.fillStyle = '#0a1410';
+  radarCtx.beginPath(); radarCtx.arc(C, C, C - 1, 0, Math.PI * 2); radarCtx.fill();
+  radarCtx.strokeStyle = 'rgba(60,220,120,.35)';
+  for (const r of [0.35, 0.68, 1]) {
+    radarCtx.beginPath(); radarCtx.arc(C, C, (C - 2) * r, 0, Math.PI * 2); radarCtx.stroke();
+  }
+  // rotating sweep
+  const a = game.time * 2.6;
+  const grd = radarCtx.createLinearGradient(C, C, C + Math.cos(a) * C, C + Math.sin(a) * C);
+  grd.addColorStop(0, 'rgba(60,220,120,0)');
+  grd.addColorStop(1, 'rgba(60,220,120,.8)');
+  radarCtx.strokeStyle = grd; radarCtx.lineWidth = 2;
+  radarCtx.beginPath(); radarCtx.moveTo(C, C);
+  radarCtx.lineTo(C + Math.cos(a) * (C - 2), C + Math.sin(a) * (C - 2));
+  radarCtx.stroke();
+  radarCtx.lineWidth = 1;
+  // blip at the order's true bearing (heading-up, same frame as the map)
+  const sy = Math.sin(player.yaw), cy = Math.cos(player.yaw);
+  const dx = nav.nx - player.pos.x, dz = nav.nz - player.pos.z;
+  const bx = dx * -cy + dz * sy, by = -(dx * -sy + dz * -cy);
+  const bd = Math.hypot(bx, by) || 1;
+  const rr = Math.min(1, bd / 160) * (C - 6);
+  const blink = 0.55 + 0.45 * Math.sin(game.time * 7);
+  radarCtx.fillStyle = `rgba(125,255,138,${blink})`;
+  radarCtx.beginPath();
+  radarCtx.arc(C + (bx / bd) * rr, C + (by / bd) * rr, 3, 0, Math.PI * 2);
+  radarCtx.fill();
+}
+
+// ---------------------------------------------------------------------------
+// Street voices — locals talk to you Zelda-style when you walk up close,
+// and some of them hand the driver a little gift
+// ---------------------------------------------------------------------------
+const TALK_LINES = [
+  'Welcome to {city}, driver!',
+  'Best pizza in {city} — the place with the neon sign.',
+  'I saw the police chase a courier this morning…',
+  'The race arch is on the east avenue. You look fast!',
+  'Deliver without crashing — fragile boxes pay double.',
+  'Somebody said a shark lives in the bay 🦈',
+  'The gym makes your legs faster. True story.',
+  'Keep your streak going — the app pays extra!',
+  'Stay away from the robbers near the club.',
+  'Nice helmet!',
+  '{city} never sleeps.',
+  'They say a UFO circles the desert at night…',
+  'My grandmother tips every driver. Be nice!',
+  'A gang boss runs this district. Watch yourself.',
+  'Rush hour pays the best. Keep riding!',
+  'Good luck on your shift, driver!',
+  'I ordered coffee an hour ago… is it you?',
+  'The bus never comes. I should order a ride.',
+];
+const npcBubbleEl = document.getElementById('npcbubble');
+const _bub = new THREE.Vector3();
+let bubbleNpc = null;
+function updateNpcTalk() {
+  if (!started || player.dead || cine.active || (driving && Math.abs(driving.speed) > 6)) {
+    npcBubbleEl.style.display = 'none';
+    bubbleNpc = null;
+    return;
+  }
+  let best = null, bd = 4;
+  for (const p of peds) {
+    if (p.fleeing) continue;
+    const g = p.rig.group.position;
+    const d = Math.hypot(g.x - player.pos.x, g.z - player.pos.z);
+    if (d < bd) { bd = d; best = p; }
+  }
+  if (best !== bubbleNpc) {
+    bubbleNpc = best;
+    if (best) {
+      if (!best.line) {
+        best.line = TALK_LINES[(Math.random() * TALK_LINES.length) | 0].replace('{city}', CITY.name);
+        // one in six locals has a gift for their favourite courier
+        if (!best.gifted && peds.indexOf(best) % 6 === 2) {
+          best.gifted = true;
+          const cash = 10 + ((Math.random() * 16) | 0);
+          game.money += cash;
+          prog.bank += cash;
+          saveProg();
+          best.line = `🎁 A tip for my favourite driver — take it! +$${cash}`;
+          addFeed(`🎁 A local slipped you $${cash}`);
+          playClick(2100, 0.2);
+        }
+      }
+      npcBubbleEl.textContent = best.line;
+    }
+  }
+  if (bubbleNpc) {
+    const g = bubbleNpc.rig.group.position;
+    _bub.set(g.x, 2.15, g.z).project(camera);
+    if (_bub.z < 1 && Math.abs(_bub.x) < 1.1) {
+      npcBubbleEl.style.display = 'block';
+      npcBubbleEl.style.left = ((_bub.x * 0.5 + 0.5) * window.innerWidth) + 'px';
+      npcBubbleEl.style.top = ((-_bub.y * 0.5 + 0.5) * window.innerHeight) + 'px';
+    } else npcBubbleEl.style.display = 'none';
+  } else npcBubbleEl.style.display = 'none';
+}
+
+function drawMinimap() {
+  const S = mmCanvas.width, H = mmCanvas.height;
+  const k = (S / (CITY_HALF * 2)) * 2.7; // zoomed in like a nav app
+  // heading-up frame: world forward maps to screen-up
+  const sy = Math.sin(player.yaw), cy = Math.cos(player.yaw);
+  const f0 = -sy, f1 = -cy;        // view direction in world
+  const r0 = -cy, r1 = sy;         // right-hand vector
+  const P = (x, z) => {
+    const dx = x - player.pos.x, dz = z - player.pos.z;
+    return [S / 2 + (dx * r0 + dz * r1) * k, H * 0.66 - (dx * f0 + dz * f1) * k];
+  };
+  mmCtx.fillStyle = '#101923';   // nav-app night ground
+  mmCtx.fillRect(0, 0, S, H);
+  // roads as thick strokes
+  mmCtx.strokeStyle = '#2c3947';
+  mmCtx.lineCap = 'butt';
+  mmCtx.lineWidth = ROAD_HALF * 2 * k;
+  for (const s of STREETS) {
+    let p1 = P(s, -CITY_HALF), p2 = P(s, CITY_HALF);
+    mmCtx.beginPath(); mmCtx.moveTo(p1[0], p1[1]); mmCtx.lineTo(p2[0], p2[1]); mmCtx.stroke();
+    p1 = P(-CITY_HALF, s); p2 = P(CITY_HALF, s);
+    mmCtx.beginPath(); mmCtx.moveTo(p1[0], p1[1]); mmCtx.lineTo(p2[0], p2[1]); mmCtx.stroke();
+  }
+  // centre dashes
+  mmCtx.strokeStyle = 'rgba(255,255,255,.14)';
+  mmCtx.lineWidth = 1;
+  mmCtx.setLineDash([4, 6]);
+  for (const s of STREETS) {
+    let p1 = P(s, -CITY_HALF), p2 = P(s, CITY_HALF);
+    mmCtx.beginPath(); mmCtx.moveTo(p1[0], p1[1]); mmCtx.lineTo(p2[0], p2[1]); mmCtx.stroke();
+    p1 = P(-CITY_HALF, s); p2 = P(CITY_HALF, s);
+    mmCtx.beginPath(); mmCtx.moveTo(p1[0], p1[1]); mmCtx.lineTo(p2[0], p2[1]); mmCtx.stroke();
+  }
+  mmCtx.setLineDash([]);
+  // the route — a glowing Waze-blue line to the destination
+  const target = navTarget();
+  if (target) {
+    const pts = navRoutePts(target);
+    mmCtx.strokeStyle = 'rgba(65,200,255,.28)';
+    mmCtx.lineWidth = 7;
+    mmCtx.lineJoin = 'round';
+    mmCtx.beginPath();
+    pts.forEach(([x, z], i) => {
+      const p = P(x, z);
+      i === 0 ? mmCtx.moveTo(p[0], p[1]) : mmCtx.lineTo(p[0], p[1]);
+    });
+    mmCtx.stroke();
+    mmCtx.strokeStyle = '#41c9ff';
+    mmCtx.lineWidth = 3;
+    mmCtx.stroke();
+    // destination pin
+    const tp = P(target.x, target.z);
+    mmCtx.fillStyle = race.active ? '#ffd23f' : order.stage === 'pickup' ? '#41d8ff' : '#7dff8a';
+    mmCtx.beginPath(); mmCtx.arc(tp[0], tp[1], 5, 0, Math.PI * 2); mmCtx.fill();
+    mmCtx.strokeStyle = '#fff'; mmCtx.lineWidth = 1.5;
+    mmCtx.beginPath(); mmCtx.arc(tp[0], tp[1], 5, 0, Math.PI * 2); mmCtx.stroke();
+  }
+  // traffic + hostiles
+  mmCtx.fillStyle = 'rgba(200,205,215,.5)';
+  for (const c of traffic) {
+    const p = P(c.group.position.x, c.group.position.z);
+    mmCtx.fillRect(p[0] - 1.5, p[1] - 1.5, 3, 3);
   }
   mmCtx.fillStyle = '#ff4d4d';
   for (const en of enemies) {
     if (en.dead) continue;
-    mmCtx.beginPath();
-    mmCtx.arc(M(en.pos.x), M(en.pos.z), 2.4, 0, Math.PI * 2);
-    mmCtx.fill();
+    const p = P(en.pos.x, en.pos.z);
+    mmCtx.beginPath(); mmCtx.arc(p[0], p[1], 3, 0, Math.PI * 2); mmCtx.fill();
   }
-  // player arrow
+  if (!race.active) {
+    const p = P(RACE_START.x, RACE_START.z);
+    mmCtx.fillStyle = '#ffd23f';
+    mmCtx.fillRect(p[0] - 2.5, p[1] - 2.5, 5, 5);
+  }
+  // the driver: fixed chevron, always pointing up
   mmCtx.save();
-  mmCtx.translate(M(player.pos.x), M(player.pos.z));
-  mmCtx.rotate(-player.yaw);
+  mmCtx.translate(S / 2, H * 0.66);
   mmCtx.fillStyle = '#ffffff';
+  mmCtx.strokeStyle = 'rgba(65,200,255,.9)';
+  mmCtx.lineWidth = 2;
   mmCtx.beginPath();
-  mmCtx.moveTo(0, -5);
-  mmCtx.lineTo(3.5, 4);
-  mmCtx.lineTo(-3.5, 4);
+  mmCtx.moveTo(0, -8);
+  mmCtx.lineTo(5.5, 6);
+  mmCtx.lineTo(0, 2.5);
+  mmCtx.lineTo(-5.5, 6);
   mmCtx.closePath();
   mmCtx.fill();
+  mmCtx.stroke();
   mmCtx.restore();
 }
 
@@ -7169,7 +7420,11 @@ function tick() {
     bannerTimer -= dt;
     bannerEl.style.opacity = Math.min(1, bannerTimer);
   }
-  drawMinimap();
+  if (++mmFrame % 3 === 0) { // nav app refreshes at a third of the framerate
+    drawMinimap();
+    updateNavPhone(dt * 3);
+    updateNpcTalk();
+  }
 
   doRender();
 }
@@ -7238,6 +7493,7 @@ window.__so = {
       camels: camels.length, realCamels: camels.filter(c => !c.rig.legs).length,
       wanderers: modelWanderers.length, walkers: realWalkers.length,
       music: +MUSIC.i.toFixed(3), musicOn: !!MUSIC.bus,
+      ocd: +order.cooldown.toFixed(2), gt: +game.time.toFixed(1),
       weather: weather.state, rain: weather.amount | 0, vehicles: vehicles.length,
       tut: tut.step, tutDisp: tutbarEl.style.display,
       heat: heat.level, pursuers: pursuers.length,
