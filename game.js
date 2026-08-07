@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=48';
+import { CITIES } from './sponsors.js?v=49';
 
 // ---------------------------------------------------------------------------
 // Renderer / scene / camera
@@ -4937,6 +4937,7 @@ const ACHS = [
   { id: 'x10',  icon: '🚕', name: 'TAXI VETERAN',     desc: 'Complete 10 taxi fares',      need: 10,    key: 'taxi',    reward: 300 },
   { id: 'f10',  icon: '🎣', name: 'ANGLER',           desc: 'Catch 10 fish',               need: 10,    key: 'fish',    reward: 250 },
   { id: 'home', icon: '🏠', name: 'HOMEOWNER',        desc: 'Buy the apartment',           need: 1,     key: 'home',    reward: 300 },
+  { id: 'gold', icon: '🕵️', name: 'THE GOLDEN COURIER', desc: 'Finish the adventure',      need: 1,     key: 'story',   reward: 1000 },
 ];
 function statVal(key) {
   if (key === 'level') return prog.level;
@@ -5945,6 +5946,158 @@ function updateFishing(dt) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// THE GOLDEN COURIER — a five-chapter adventure. A hooded stranger, a
+// mystery package, a rival race, hidden golden boxes, a legendary reward.
+// ---------------------------------------------------------------------------
+const STRANGER_POS = { x: -18, z: 84 };   // park edge, every city
+const MYSTERY_DROP = { x: -30, z: 90 };   // the park fountain
+const GOLD_SPOTS = [[120, 15], [-120, 45], [30, 117], [-30, -117], [90, -87]];
+const quest = { boxes: [], got: 0, mark: null, npc: null, talking: 0 };
+prog.quest = prog.quest || 0; // 0..5 = chapters, 6 = legend complete
+function questText() {
+  switch (prog.quest) {
+    case 0: return '📜 A hooded stranger waits near the park…';
+    case 1: return '📜 CH.1 — Deliver the mystery package to the fountain';
+    case 2: return '📜 CH.2 — The DJ at the club wants 2 Red Bulls';
+    case 3: return '📜 CH.3 — Beat the rival: WIN a street race';
+    case 4: return `📜 CH.4 — Find the 5 GOLDEN BOXES (${quest.got}/5)`;
+    case 5: return '📜 CH.5 — Return to the stranger at the park';
+    default: return null;
+  }
+}
+function questSay(lines) {
+  // deliver story dialogue as a timed banner sequence + voice
+  quest.talking = 1;
+  lines.forEach((l, i) => setTimeout(() => { showBanner(l); if (i === 0) say(l.replace(/[“”"]/g, '')); }, i * 2600));
+  setTimeout(() => { quest.talking = 0; }, lines.length * 2600);
+}
+function questAdvance(ch) {
+  prog.quest = ch;
+  saveProg();
+  refreshQuestbar();
+}
+function refreshQuestbar() {
+  const el = document.getElementById('questbar');
+  const t = questText();
+  if (t) { el.textContent = t; el.style.display = 'block'; }
+  else el.style.display = 'none';
+}
+function spawnGoldBoxes() {
+  for (const b of quest.boxes) scene.remove(b.mesh);
+  quest.boxes.length = 0;
+  quest.got = 0;
+  const mGold = new THREE.MeshStandardMaterial({ color: 0xffd23f, roughness: 0.2,
+    metalness: 0.7, emissive: 0xa87b10, emissiveIntensity: 0.5 });
+  for (const [x, z] of GOLD_SPOTS) {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.16, 0.6), mGold);
+    mesh.position.set(x, 1.1, z);
+    const halo = emojiSprite('✨', 1.6);
+    halo.position.y = 0.9;
+    mesh.add(halo);
+    scene.add(mesh);
+    quest.boxes.push({ mesh, x, z, got: false });
+  }
+  addFeed('✨ Five golden boxes are hidden around the city — check the gold dots');
+}
+function updateQuest(dt) {
+  if (!started || player.dead) return;
+  // stranger exclamation bob
+  if (quest.npc && quest.mark) {
+    quest.mark.position.y = 2.7 + Math.sin(game.time * 2.5) * 0.2;
+    quest.npc.group.rotation.y = Math.atan2(player.pos.x - STRANGER_POS.x, player.pos.z - STRANGER_POS.z);
+  }
+  if (prog.quest === 1 &&
+      Math.hypot(player.pos.x - MYSTERY_DROP.x, player.pos.z - MYSTERY_DROP.z) < 6) {
+    questSay(['📦 Package delivered to the fountain…',
+      '📱 Unknown: “Good. The DJ at the CLUB has your next clue.”']);
+    playCheer();
+    game.money += 100; prog.bank += 100;
+    addFeed('📜 Chapter 1 complete — +$100');
+    questAdvance(2);
+  }
+  if (prog.quest === 4) {
+    for (const b of quest.boxes) {
+      if (b.got) continue;
+      if (Math.hypot(player.pos.x - b.x, player.pos.z - b.z) < 3.5) {
+        b.got = true;
+        quest.got++;
+        scene.remove(b.mesh);
+        playClick(2500, 0.3);
+        game.money += 50; prog.bank += 50;
+        showBanner(`✨ GOLDEN BOX ${quest.got} / 5 (+$50)`);
+        refreshQuestbar();
+        if (quest.got >= 5) {
+          questSay(['📱 Unknown: “All five. You are the one.”',
+            '📜 Return to the stranger at the park…']);
+          questAdvance(5);
+        }
+      }
+    }
+  }
+}
+function strangerInteract() {
+  if (quest.talking) return;
+  if (prog.quest === 0) {
+    questSay(['🕵️ Stranger: “You. Courier. I have watched you ride…”',
+      '🕵️ “Take this package to the FOUNTAIN. Ask nothing.”',
+      '📜 THE GOLDEN COURIER — Chapter 1 begins']);
+    questAdvance(1);
+  } else if (prog.quest === 5) {
+    questSay(['🕵️ Stranger: “The city is yours now, GOLDEN COURIER.”',
+      '🏆 +$1,500 · GOLDEN HELMET UNLOCKED',
+      '⭐ Adventure complete — you are a LEGEND']);
+    game.money += 1500; prog.bank += 1500;
+    prog.goldRider = true;
+    prog.stats.story = 1;
+    checkAchs();
+    saveProg();
+    playCheer();
+    questAdvance(6);
+    if (quest.npc) { scene.remove(quest.npc.group); quest.npc = null; }
+    if (quest.mark) { scene.remove(quest.mark); quest.mark = null; }
+  } else {
+    questSay(['🕵️ Stranger: “Not yet. Finish what you started…”']);
+  }
+}
+function djInteract() {
+  if (quest.talking || prog.quest !== 2) return;
+  if (energy.cans >= 2) {
+    energy.cans -= 2;
+    questSay(['🎧 DJ: “Ha! My fuel. Here is your clue…”',
+      '🎧 “The rival courier races at the ARCH. BEAT HIM.”',
+      '📜 Chapter 3 — win a street race']);
+    questAdvance(3);
+  } else {
+    questSay(['🎧 DJ: “Bring me 2 RED BULLS and we talk.”',
+      '⚡ Grab cans on the street or buy at a café']);
+  }
+}
+function setupQuest() {
+  if (prog.quest >= 6) { refreshQuestbar(); return; }
+  // the hooded stranger waits at the park in every city
+  quest.npc = makeCharacter({ gender: 'm', skin: 0x8a6248, shirtHue: 0.6, pantsHue: 0.6,
+    hairColor: 0x1c1712, robe: 0x1a1a24 });
+  quest.npc.group.position.set(STRANGER_POS.x, 0, STRANGER_POS.z);
+  scene.add(quest.npc.group);
+  quest.mark = emojiSprite('❗', 1.7);
+  quest.mark.position.set(STRANGER_POS.x, 2.7, STRANGER_POS.z);
+  scene.add(quest.mark);
+  INTERACT_SPOTS.push({
+    x: STRANGER_POS.x, z: STRANGER_POS.z, r: 5,
+    label: () => prog.quest === 0 ? '🕵️ TALK TO THE STRANGER (F)'
+      : prog.quest === 5 ? '🕵️ CLAIM YOUR REWARD (F)' : '🕵️ STRANGER (F)',
+    cb: strangerInteract,
+  });
+  INTERACT_SPOTS.push({
+    x: -9.9, z: -41.5, r: 6,
+    label: () => prog.quest === 2 ? '🎧 TALK TO THE DJ (F)' : null,
+    cb: djInteract,
+  });
+  if (prog.quest === 4) spawnGoldBoxes();
+  refreshQuestbar();
+}
+
 // --- generic walk-up interactions (F key or tap the hint) ---
 const INTERACT_SPOTS = [];
 const acthintEl = document.getElementById('acthint');
@@ -5998,6 +6151,7 @@ function setupCityActivities() {
       setTimeout(() => { showBanner('🏠 RENT COLLECTED +$50'); addFeed('🏠 Your tenant paid $50 rent'); }, 12000);
     }
   }
+  setupQuest();
 }
 function updateInteractions() {
   let best = null, bd = 1e9;
@@ -6138,6 +6292,12 @@ function updateRace(dt) {
       recordScore();
       addFeed(`🏁 Race won in ${race.t.toFixed(1)}s — +$${reward}`);
       playCheer();
+      if (prog.quest === 3) {
+        questSay(['🏁 The rival slams his bars — you WON.',
+          '📱 Unknown: “Impressive. Now find my five GOLDEN BOXES…”']);
+        questAdvance(4);
+        spawnGoldBoxes();
+      }
       endRace(`🏁 RACE WON +$${reward}`);
     } else placeRaceRing();
   }
@@ -7112,6 +7272,14 @@ function navTarget() {
       : { x: order.tx, z: order.tz, label: '📦 CUSTOMER' };
   }
   if (taxi.state === 'wait') return { x: taxi.px, z: taxi.pz, label: '🚕 PASSENGER WAITING' };
+  if (prog.quest === 1) return { x: MYSTERY_DROP.x, z: MYSTERY_DROP.z, label: '📜 MYSTERY DROP' };
+  if (prog.quest === 2) return { x: -9.9, z: -41.5, label: '📜 THE DJ AT THE CLUB' };
+  if (prog.quest === 4) {
+    const nb = quest.boxes.find(b => !b.got);
+    if (nb) return { x: nb.x, z: nb.z, label: '📜 GOLDEN BOX' };
+  }
+  if (prog.quest === 0 || prog.quest === 5)
+    return { x: STRANGER_POS.x, z: STRANGER_POS.z, label: '📜 THE STRANGER' };
   return null;
 }
 // Manhattan route down the street grid: onto my road, along it, across, arrive
@@ -7375,6 +7543,14 @@ function drawMinimap() {
     const p = P(ws.x, ws.z);
     mmCtx.fillRect(p[0] - 3, p[1] - 3, 6, 6);
   }
+  if (prog.quest === 4) {
+    mmCtx.fillStyle = '#ffd23f';
+    for (const b of quest.boxes) {
+      if (b.got) continue;
+      const p = P(b.x, b.z);
+      mmCtx.beginPath(); mmCtx.arc(p[0], p[1], 3.5, 0, Math.PI * 2); mmCtx.fill();
+    }
+  }
   if (taxi.state === 'wait') {
     const p = P(taxi.px, taxi.pz);
     mmCtx.fillStyle = '#c86aff';
@@ -7513,7 +7689,7 @@ function makeRider() {
   c.legs[0].rotation.x = c.legs[1].rotation.x = -1.2;
   c.arms[0].rotation.x = c.arms[1].rotation.x = -0.85;
   // full-face courier helmet in the brand color with a dark visor
-  const brand = new THREE.Color(selectedCity().sponsors[0].colorA);
+  const brand = new THREE.Color(prog.goldRider ? 0xffd23f : selectedCity().sponsors[0].colorA);
   const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.055, 0.12, 8),
     new THREE.MeshStandardMaterial({ color: 0x181a1e, roughness: 0.8 }));
   neck.position.y = 1.5; c.group.add(neck);
@@ -7909,6 +8085,7 @@ function tick() {
   updateRace(dt);
   updateTaxi(dt);
   updateFishing(dt);
+  updateQuest(dt);
   updateInteractions();
   carryBox.visible = mode === 'delivery' && order.active && order.stage === 'dropoff'
     && !driving && !player.dead && !cine.active;
@@ -7934,7 +8111,8 @@ function tick() {
   killsEl.textContent = game.kills;
   document.getElementById('cash').textContent = '$' + game.money;
   document.getElementById('deliveries').textContent = game.deliveries;
-  document.getElementById('lvl').textContent = playerName() + ' · LVL ' + prog.level + ' · ' + rankName();
+  document.getElementById('lvl').textContent = playerName() + ' · LVL ' + prog.level + ' · '
+    + (prog.goldRider ? '⭐ GOLDEN ' : '') + rankName();
   document.getElementById('cans').textContent = '⚡ ×' + energy.cans;
   if (++frameNo % 20 === 0)
     document.getElementById('location').textContent =
