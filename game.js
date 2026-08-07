@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=38';
+import { CITIES } from './sponsors.js?v=39';
 
 // ---------------------------------------------------------------------------
 // Renderer / scene / camera
@@ -1028,6 +1028,8 @@ function texFromCanvas(cv, rx, ry) {
 // Buildings
 // ---------------------------------------------------------------------------
 const blinkers = [];
+const trafficLamps = [];   // intersection signals cycling red/green
+const billboardRoofs = []; // flat roofs suitable for a lit sponsor board
 const mRoof = new THREE.MeshStandardMaterial({ color: 0x14171c, roughness: 1 });
 const mRoofBox = new THREE.MeshStandardMaterial({ color: 0x23272e, roughness: 0.9 });
 const mMast = new THREE.MeshStandardMaterial({ color: 0x30343b, roughness: 0.6, metalness: 0.5 });
@@ -1096,6 +1098,8 @@ function addRoofClutter(x, yTop, z, w, d) {
     box.position.set(x + (Math.random() - 0.5) * (w - bw - 1), yTop + bh / 2, z + (Math.random() - 0.5) * (d - bw - 1));
     scene.add(box);
   }
+  if (yTop > 14 && yTop < 48 && Math.min(w, d) > 8)
+    billboardRoofs.push({ x, y: yTop, z, w: Math.min(w, d) });
   if (Math.random() < 0.45) {
     const mh = 3 + Math.random() * 5;
     const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.09, mh, 6), mMast);
@@ -2893,7 +2897,7 @@ function buildCity(city) {
     }
   }
 
-  // ---- traffic lights on the central avenues ----
+  // ---- traffic lights on the central avenues (live red/green cycles) ----
   {
     const mPoleT = new THREE.MeshStandardMaterial({ color: 0x23262b, roughness: 0.6, metalness: 0.5 });
     const headMat = new THREE.MeshStandardMaterial({ color: 0x15171b, roughness: 0.7 });
@@ -2907,12 +2911,117 @@ function buildCity(city) {
         const head = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.78, 0.28), headMat);
         head.position.set(px, 4.6, pz);
         scene.add(head);
-        const go = Math.random() < 0.5;
         const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.085, 8, 8),
-          new THREE.MeshBasicMaterial({ color: go ? 0x35e06a : 0xff3b30 }));
-        lamp.position.set(px, go ? 4.34 : 4.86, pz);
+          new THREE.MeshBasicMaterial({ color: 0x35e06a }));
+        lamp.position.set(px, 4.34, pz);
         scene.add(lamp);
+        trafficLamps.push({ lamp, off: (ox > 0 ? 0 : 0.5), green: true });
       }
+    }
+  }
+
+  // ---- bus shelters with lit sponsor ad panels ----
+  {
+    const mFrame = new THREE.MeshStandardMaterial({ color: 0x2a2f36, roughness: 0.5, metalness: 0.6 });
+    const mGlass = new THREE.MeshStandardMaterial({ color: 0x9fc4d8, roughness: 0.15,
+      metalness: 0.3, transparent: true, opacity: 0.3 });
+    const mSeat = new THREE.MeshStandardMaterial({ color: 0x5a4a38, roughness: 0.85 });
+    let bi = 0;
+    for (const s of STREETS)
+      for (const v of [-88, 42]) {
+        if (bi >= 10) break;
+        const side = bi % 2 ? 1 : -1;
+        const alongZ = bi % 3 !== 0; // mix roads running north-south and east-west
+        const g = new THREE.Group();
+        for (const dz of [-1.7, 1.7]) {
+          const post = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 2.6, 6), mFrame);
+          post.position.set(0.4, 1.3, dz);
+          g.add(post);
+        }
+        const roof = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.09, 4.2), mFrame);
+        roof.position.set(0.1, 2.62, 0);
+        roof.castShadow = true;
+        g.add(roof);
+        const back = new THREE.Mesh(new THREE.PlaneGeometry(3.8, 2.2), mGlass);
+        back.rotation.y = -Math.PI / 2;
+        back.position.set(0.78, 1.35, 0);
+        g.add(back);
+        const sp = CITY.sponsors[sponsorIdx++ % CITY.sponsors.length];
+        const panel = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 1.35),
+          new THREE.MeshBasicMaterial({ map: makeBillboardTexture(sp), side: THREE.DoubleSide }));
+        panel.rotation.y = -Math.PI / 2;
+        panel.position.set(0.74, 1.42, 0);
+        g.add(panel);
+        const seat = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.08, 3.0), mSeat);
+        seat.position.set(0.42, 0.55, 0);
+        g.add(seat);
+        for (const dz of [-1.3, 0, 1.3]) {
+          const leg = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.55, 0.08), mSeat);
+          leg.position.set(0.42, 0.27, dz);
+          g.add(leg);
+        }
+        if (alongZ) {
+          g.position.set(s + side * (ROAD_HALF + 2.5), 0, v + (bi % 2) * 9);
+          g.rotation.y = side > 0 ? 0 : Math.PI;
+        } else {
+          g.position.set(v + (bi % 2) * 9, 0, s + side * (ROAD_HALF + 2.5));
+          g.rotation.y = side > 0 ? -Math.PI / 2 : Math.PI / 2;
+        }
+        scene.add(g);
+        bi++;
+      }
+  }
+
+  // ---- hydrants and trash bins along the sidewalks (instanced) ----
+  {
+    const spots = [];
+    for (const s of STREETS)
+      for (let v = -110; v <= 110; v += 26) {
+        if (STREETS.some(q => Math.abs(v - q) < ROAD_HALF + 4)) continue;
+        const side = Math.random() < 0.5 ? 1 : -1;
+        if (Math.random() < 0.5) spots.push([s + side * (ROAD_HALF + 1.6), v + Math.random() * 8]);
+        else spots.push([v + Math.random() * 8, s + side * (ROAD_HALF + 1.6)]);
+      }
+    const half = Math.ceil(spots.length / 2);
+    const hyd = new THREE.InstancedMesh(new THREE.CapsuleGeometry(0.14, 0.4, 4, 8),
+      new THREE.MeshStandardMaterial({ color: 0xc22a20, roughness: 0.55, metalness: 0.2 }), half);
+    const bins = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.26, 0.22, 0.75, 10),
+      new THREE.MeshStandardMaterial({ color: 0x2e4636, roughness: 0.8, metalness: 0.3 }),
+      spots.length - half);
+    const m4 = new THREE.Matrix4();
+    spots.forEach(([x, z], i) => {
+      if (i < half) { m4.makeTranslation(x, 0.32, z); hyd.setMatrixAt(i, m4); }
+      else { m4.makeTranslation(x, 0.38, z); bins.setMatrixAt(i - half, m4); }
+    });
+    hyd.castShadow = bins.castShadow = true;
+    scene.add(hyd);
+    scene.add(bins);
+  }
+
+  // ---- rooftop billboards: lit sponsor boards crowning mid-rise towers ----
+  {
+    let placed = 0;
+    for (const b of billboardRoofs) {
+      if (placed >= 8) break;
+      if (Math.random() < 0.55) continue;
+      const sp = CITY.sponsors[sponsorIdx++ % CITY.sponsors.length];
+      const w = Math.min(b.w * 0.85, 13);
+      const g = new THREE.Group();
+      const mFrame2 = new THREE.MeshStandardMaterial({ color: 0x33373d, roughness: 0.6, metalness: 0.6 });
+      for (const dx of [-w * 0.35, w * 0.35]) {
+        const leg = new THREE.Mesh(new THREE.BoxGeometry(0.3, 2.2, 0.3), mFrame2);
+        leg.position.set(dx, 1.1, 0);
+        g.add(leg);
+      }
+      const panel = new THREE.Mesh(new THREE.PlaneGeometry(w, w * 0.42),
+        new THREE.MeshBasicMaterial({ map: makeBillboardTexture(sp), side: THREE.DoubleSide }));
+      panel.position.y = 2.2 + w * 0.21;
+      g.add(panel);
+      g.position.set(b.x, b.y, b.z);
+      g.rotation.y = Math.abs(b.x) > Math.abs(b.z) ? (b.x > 0 ? -Math.PI / 2 : Math.PI / 2)
+        : (b.z > 0 ? Math.PI : 0);
+      scene.add(g);
+      placed++;
     }
   }
 
@@ -3542,6 +3651,15 @@ function updateAtmosphere(dt) {
   }
 
   for (const b of blinkers) b.mesh.visible = ((game.time * 1.4 + b.phase) % 2) < 1.5;
+  // traffic signals: opposite corners alternate green/red on a 12s cycle
+  for (const t of trafficLamps) {
+    const green = ((game.time / 12 + t.off) % 1) < 0.5;
+    if (green !== t.green) {
+      t.green = green;
+      t.lamp.material.color.set(green ? 0x35e06a : 0xff3b30);
+      t.lamp.position.y = green ? 4.34 : 4.86;
+    }
+  }
 
   // police light bars strobe red/blue
   for (const pl of policeLights) {
@@ -6726,6 +6844,21 @@ window.__so = {
   },
   get ride() {
     return myRide ? [myRide.type, myRide.group.position.x, myRide.group.position.z] : null;
+  },
+  near(x, z, r = 6) {
+    const out = [], v = new THREE.Vector3();
+    scene.traverse(o => {
+      if (!o.isMesh && !o.isSprite) return;
+      o.getWorldPosition(v);
+      if (Math.hypot(v.x - x, v.z - z) < r && v.y < 25) {
+        let root = o;
+        while (root.parent && root.parent !== scene) root = root.parent;
+        const col = o.material && o.material.color ? o.material.color.getHexString() : '?';
+        out.push(`${o.name || (o.geometry && o.geometry.type) || o.type}#${col}<${root.name || root.type}` +
+          `@${v.x.toFixed(1)},${v.y.toFixed(1)},${v.z.toFixed(1)}`);
+      }
+    });
+    return out.slice(0, 25);
   },
   wanted(n = 1) { heat.crimeCd = 0; addHeat(n, 'Debug'); },
   giants() {
