@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from './lib/jsm/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader } from './lib/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from './lib/jsm/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from './lib/jsm/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=62';
+import { CITIES } from './sponsors.js?v=64';
 
 // Clean-brand mode: the portal build (CrazyGames etc.) must carry no real
 // trademarks. window.CLEAN_BUILD is injected by the build script; ?clean=1
@@ -4162,6 +4162,7 @@ window.addEventListener('orientationchange', () => setTimeout(checkOrientation, 
 const touchMove = { x: 0, y: 0, hard: false };
 let joyTouchId = null, lookTouchId = null, lastLook = null;
 if (isTouch) {
+  document.body.classList.add('touch'); // switches the HUD to its lean layout
   const ui = document.getElementById('touchui');
   ui.style.display = 'block';
   checkOrientation(); // a phone may already be upright before the first frame
@@ -6053,7 +6054,10 @@ function updateTutorial(dt) {
   tutbarEl.style.display = 'block';
   tutbarEl.querySelector('.step').textContent = `FIRST SHIFT · STEP ${Math.min(tut.step + 1, 4)} / 4`;
   tutbarEl.querySelector('.txt').innerHTML = TUT_STEPS[Math.min(tut.step, 3)]();
+  // each step is readable for a few seconds, then gets out of the way
+  if (tut.step !== tutShownStep) { tutShownStep = tut.step; autoFade(tutbarEl, 9000); }
 }
+let tutShownStep = -1;
 
 function xpNeed(l) { return 40 + l * 12; }
 function saveProg() { localStorage.setItem('streetops.prog', JSON.stringify(prog)); }
@@ -6516,10 +6520,21 @@ function questAdvance(ch) {
   saveProg();
   refreshQuestbar();
 }
+// On a phone the screen is the game — a panel that has been read is clutter.
+// Text panels stay long enough to read, then fade out; they come back the
+// moment their content changes.
+const fadeTimers = new WeakMap();
+function autoFade(el, ms = 7000) {
+  if (!isTouch) return;
+  el.classList.add('autofade');
+  el.classList.remove('gone');
+  clearTimeout(fadeTimers.get(el));
+  fadeTimers.set(el, setTimeout(() => el.classList.add('gone'), ms));
+}
 function refreshQuestbar() {
   const el = document.getElementById('questbar');
   const t = questText();
-  if (t) { el.textContent = t; el.style.display = 'block'; }
+  if (t) { el.textContent = t; el.style.display = 'block'; autoFade(el); }
   else el.style.display = 'none';
 }
 function spawnGoldBoxes() {
