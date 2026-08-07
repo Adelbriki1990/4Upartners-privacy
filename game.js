@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from './lib/jsm/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader } from './lib/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from './lib/jsm/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from './lib/jsm/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=58';
+import { CITIES } from './sponsors.js?v=59';
 
 // Clean-brand mode: the portal build (CrazyGames etc.) must carry no real
 // trademarks. window.CLEAN_BUILD is injected by the build script; ?clean=1
@@ -1431,6 +1431,12 @@ const VEH_STATS = {
   phantom: { label: 'PHANTOM LIMO', maxF: 34, maxR: -8, accel: 14, turn: 1.35, camH: 1.5,  size: [2.1, 5.2], engine: true,  freq: 42, radius: 1.55, kill: 2.5 },
   scooter: { label: 'SCOOTER',     maxF: 24, maxR: -5,  accel: 21, turn: 2.3, camH: 1.52, size: [0.8, 2.2], engine: true,  freq: 95, radius: 0.7,  kill: 1.4 },
   bicycle: { label: 'BICYCLE',     maxF: 13, maxR: -3,  accel: 9,  turn: 2.6, camH: 1.55, size: [0.7, 2.0], engine: false, freq: 0,  radius: 0.6,  kill: 1.2 },
+  // garage-only collectibles (reuse the base silhouettes with their own stats)
+  pickup:  { label: 'TITAN PICKUP', maxF: 30, maxR: -9,  accel: 14, turn: 1.4,  camH: 1.62, size: [2.1, 4.8], engine: true, freq: 42, radius: 1.55, kill: 2.6 },
+  muscle:  { label: 'V8 STALLION',  maxF: 41, maxR: -10, accel: 21, turn: 1.6,  camH: 1.2,  size: [2.0, 4.5], engine: true, freq: 62, radius: 1.45, kill: 2.3 },
+  offroad: { label: 'DUNE RAIDER',  maxF: 38, maxR: -10, accel: 19, turn: 1.55, camH: 1.62, size: [2.1, 4.6], engine: true, freq: 58, radius: 1.55, kill: 2.6 },
+  gtr:     { label: 'APEX GT-R',    maxF: 48, maxR: -10, accel: 26, turn: 1.72, camH: 1.1,  size: [2.0, 4.3], engine: true, freq: 82, radius: 1.4,  kill: 2.2 },
+  royal:   { label: 'ROYAL PHANTOM', maxF: 36, maxR: -8, accel: 15, turn: 1.4,  camH: 1.5,  size: [2.1, 5.2], engine: true, freq: 42, radius: 1.55, kill: 2.5 },
 };
 const CAR_STYLE_COLORS = {
   car:    [0x7a2f2f, 0x2f4a7a, 0x565b60, 0x6d6437, 0x3b4b41, 0x802a48, 0x1d5c66],
@@ -1439,6 +1445,11 @@ const CAR_STYLE_COLORS = {
   hyper:  [0xf0a814, 0xf07800, 0x1a1c20, 0xb8bcc4, 0x38c04a],
   luxury: [0x0e1013, 0xe8e8ea, 0xb8bcc2, 0x1c2436, 0x2e2226],
   phantom: [0x101216, 0xe8d8c8, 0xdfe2e6, 0x24182a, 0x2a2018],
+  pickup:  [0x8a2a1e, 0x2e3438, 0x5c5348, 0xd8d4c8],
+  muscle:  [0x111318, 0xc41e1e, 0x2f4a7a, 0xe0b41e],
+  offroad: [0xc46a14, 0x8a7a5c, 0x3d4a3a, 0xe8e8ea],
+  gtr:     [0x14161a, 0xd8d8d8, 0x38c04a, 0xc41e1e],
+  royal:   [0xd8b21e, 0x101216, 0xe8d8c8],
 };
 function carBox(pos, yaw, size = [2.0, 4.4]) {
   const along = Math.abs(Math.sin(yaw)) > 0.5;
@@ -1449,6 +1460,9 @@ function carBox(pos, yaw, size = [2.0, 4.4]) {
 // Four distinct real-world silhouettes: sedan, big 4x4 SUV,
 // low sports GT, and a long luxury sedan.
 function buildCarMesh(bodyColor, style = 'car') {
+  // collectible types borrow an existing body shape; stats/colors stay their own
+  const SILHOUETTE = { pickup: 'suv', muscle: 'sports', offroad: 'suv', gtr: 'sports', royal: 'phantom' };
+  style = SILHOUETTE[style] || style;
   const g = new THREE.Group();
   // physical clearcoat = real automotive paint under the environment reflections
   const mBody = new THREE.MeshPhysicalMaterial({
@@ -4919,7 +4933,7 @@ function updateDriving(dt) {
 // ---------------------------------------------------------------------------
 const vignetteEl = document.getElementById('vignette');
 function hurtPlayer(dmg) {
-  if (player.dead) return;
+  if (player.dead || game.time < reviveSafeT) return;
   player.health -= dmg * (1 - 0.06 * upgLvl('vest'));
   player.lastHurt = game.time;
   shake = Math.min(shake + 0.45, 0.8);
@@ -4932,10 +4946,12 @@ function hurtPlayer(dmg) {
 function playerDie() {
   player.dead = true;
   cgGame('stop');
-  setTimeout(showMidgameAd, 1200);
+  // first death offers a rewarded CONTINUE instead; midgame only after it's used
+  if (revivedThisRun) setTimeout(showMidgameAd, 1200);
   firing = false;
   slowmo = 1.6;
   shake = 0.9;
+  streakAtDeath = game.streak;
   game.streak = 0;
   // personal records
   prog.best = prog.best || {};
@@ -4956,7 +4972,96 @@ function playerDie() {
   document.exitPointerLock();
   pausedEl.style.display = 'none';
   recordScore();
+  const rv = document.getElementById('gorevive');
+  rv.style.display = revivedThisRun ? 'none' : '';
+  rv.textContent = CLEAN ? '📺 WATCH AD → CONTINUE YOUR RUN' : '💪 SECOND CHANCE → CONTINUE YOUR RUN';
+  const cost = reviveCost();
+  const buy = document.getElementById('gobuy');
+  buy.style.display = game.money >= cost ? '' : 'none';
+  buy.textContent = `💵 PAY $${cost} → CONTINUE YOUR RUN`;
   setTimeout(() => { gameoverEl.style.display = 'flex'; }, 1400);
+}
+
+// Second chances: one free per run for watching an ad, or pay with the cash
+// earned this run (the price doubles each time). The player keeps money,
+// deliveries and streak, wakes with full health, and the danger is cleared.
+let revivedThisRun = false, reviveBuys = 0, streakAtDeath = 0, reviveSafeT = 0;
+function reviveCost() { return 300 * Math.pow(2, reviveBuys); }
+function revivePlayer() {
+  player.dead = false;
+  player.health = 100;
+  game.streak = streakAtDeath;
+  reviveSafeT = game.time + 4;
+  slowmo = 0;
+  shake = 0;
+  canvas.style.filter = '';
+  clearPursuit(false);
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    const en = enemies[i];
+    if (!en.dead) { scene.remove(en.rig.group); enemies.splice(i, 1); }
+  }
+  gameoverEl.style.display = 'none';
+  cgGame('start');
+  celebrate('BACK ON YOUR FEET', '💪');
+  addFeed('📺 Second chance — your run continues!');
+  if (isTouch) { locked = true; hudEl.style.display = 'block'; }
+  else pausedEl.style.display = 'flex';
+}
+document.getElementById('gorevive').addEventListener('click', e => {
+  e.stopPropagation();
+  if (revivedThisRun || !player.dead) return;
+  showRewardedAd(() => { revivedThisRun = true; revivePlayer(); });
+});
+document.getElementById('gobuy').addEventListener('click', e => {
+  e.stopPropagation();
+  const cost = reviveCost();
+  if (!player.dead || game.money < cost) return;
+  game.money -= cost;
+  reviveBuys++;
+  addFeed(`💵 Paid $${cost} for a second chance`);
+  revivePlayer();
+});
+
+// ---------------------------------------------------------------------------
+// Celebration burst — confetti + a big popping title for every win moment
+// (level up, new car, new outfit, career goal, spin prize, second chance)
+// ---------------------------------------------------------------------------
+const celebRoot = document.createElement('div');
+celebRoot.id = 'celebrate';
+document.body.appendChild(celebRoot);
+const celebCss = document.createElement('style');
+celebCss.textContent = `
+#celebrate { position: fixed; inset: 0; pointer-events: none; z-index: 55; }
+#celebrate .celeb { position: absolute; left: 50%; top: 38%; }
+#celebrate .ctext { position: absolute; transform: translate(-50%,-50%); white-space: nowrap;
+  font-weight: 800; font-size: 30px; letter-spacing: 2px; color: #ffd479;
+  text-shadow: 0 2px 14px rgba(0,0,0,.9), 0 0 26px rgba(255,212,121,.45);
+  animation: cpop 2s ease-out forwards; }
+#celebrate .cemoji { font-size: 40px; margin-right: 10px; vertical-align: -6px; }
+#celebrate i { position: absolute; width: 9px; height: 14px; border-radius: 2px;
+  animation: cfly 1.6s cubic-bezier(.16,.84,.44,1) forwards; }
+@keyframes cpop { 0% { transform: translate(-50%,-50%) scale(.2); opacity: 0; }
+  14% { transform: translate(-50%,-50%) scale(1.28); opacity: 1; }
+  24% { transform: translate(-50%,-50%) scale(1); }
+  78% { opacity: 1; } 100% { transform: translate(-50%,-90%) scale(1); opacity: 0; } }
+@keyframes cfly { 0% { transform: translate(0,0) rotate(0deg); opacity: 1; }
+  100% { transform: translate(var(--dx), var(--dy)) rotate(560deg); opacity: 0; } }`;
+document.head.appendChild(celebCss);
+function celebrate(title, emoji = '🎉') {
+  const wrap = document.createElement('div');
+  wrap.className = 'celeb';
+  const cols = ['#ffd23f', '#41c9ff', '#ff5f8f', '#3ddc84', '#c98bff', '#ff9d3f'];
+  let inner = `<div class="ctext"><span class="cemoji">${emoji}</span>${title}</div>`;
+  for (let i = 0; i < 26; i++) {
+    const a = Math.random() * Math.PI * 2, d = 90 + Math.random() * 170;
+    inner += `<i style="background:${cols[i % cols.length]};` +
+      `--dx:${(Math.cos(a) * d).toFixed(0)}px;--dy:${(Math.sin(a) * d - 70).toFixed(0)}px;` +
+      `animation-delay:${(Math.random() * 0.14).toFixed(2)}s"></i>`;
+  }
+  wrap.innerHTML = inner;
+  celebRoot.appendChild(wrap);
+  playCheer();
+  setTimeout(() => wrap.remove(), 2100);
 }
 
 // ---------------------------------------------------------------------------
@@ -4993,12 +5098,17 @@ function rankName() {
 // your selected ride to the nearest street
 // ---------------------------------------------------------------------------
 const GARAGE = [
-  { type: 'car',     icon: '🚗', price: 600,  desc: 'Reliable city sedan' },
-  { type: 'suv',     icon: '🚙', price: 900,  desc: 'Big 4x4 — shrugs off crashes' },
-  { type: 'sports',  icon: '🏎', price: 2500, desc: 'Low, loud and fast' },
-  { type: 'luxury',  icon: '🚘', price: 3200, desc: 'Long executive sedan' },
-  { type: 'phantom', icon: '🕴', price: 5000, desc: 'The VIP limousine' },
-  { type: 'hyper',   icon: '⚡', price: 9000, desc: 'The fastest thing on wheels' },
+  { type: 'car',     icon: '🚗', price: 600,   desc: 'Reliable city sedan' },
+  { type: 'suv',     icon: '🚙', price: 900,   desc: 'Big 4x4 — shrugs off crashes' },
+  { type: 'pickup',  icon: '🛻', price: 1500,  desc: 'Workhorse truck — tough as nails' },
+  { type: 'sports',  icon: '🏎', price: 2500,  desc: 'Low, loud and fast' },
+  { type: 'luxury',  icon: '🚘', price: 3200,  desc: 'Long executive sedan' },
+  { type: 'muscle',  icon: '🐎', price: 4200,  desc: 'Old-school V8 muscle' },
+  { type: 'phantom', icon: '🕴', price: 5000,  desc: 'The VIP limousine' },
+  { type: 'offroad', icon: '🏜', price: 6500,  desc: 'Desert rally beast' },
+  { type: 'hyper',   icon: '⚡', price: 9000,  desc: 'The fastest thing on wheels' },
+  { type: 'gtr',     icon: '🏁', price: 14000, desc: 'Track legend — pure speed' },
+  { type: 'royal',   icon: '👑', price: 25000, desc: 'The golden royal limousine' },
 ];
 let myRide = null;
 function spawnRide() {
@@ -5062,6 +5172,7 @@ function renderGarage() {
         prog.garage[gcar.type] = true;
         prog.stats.cars = Object.keys(prog.garage).length;
         addFeed(`🔑 You now OWN the ${st.label} — press G to call it`);
+        celebrate(`${st.label} IS YOURS!`, '🔑');
         checkAchs();
       }
       prog.ride = gcar.type;
@@ -5121,7 +5232,7 @@ function checkAchs() {
     if (statVal(a.key) >= a.need) {
       prog.achs[a.id] = true;
       prog.bank += a.reward;
-      showBanner(`🏅 ${a.name} — +$${a.reward}`);
+      celebrate(`${a.name} · +$${a.reward}`, '🏅');
       addFeed(`🏅 Career goal complete: ${a.name} (+$${a.reward})`);
       playClick(2600, 0.3);
     }
@@ -5160,12 +5271,18 @@ const UPGRADES = [
 ];
 // wardrobe — dress your driver, seen in the menu preview and on the scooter
 const OUTFITS = [
-  { id: 'street', name: 'STREET KIT',    price: 0,    shirt: null,     pants: null },
-  { id: 'sport',  name: 'SPORT SET',     price: 300,  shirt: 0x35a061, pants: 0xf0f2f4 },
-  { id: 'biz',    name: 'BUSINESS SUIT', price: 800,  shirt: 0x1c2a48, pants: 0x10141c },
-  { id: 'racer',  name: 'NEON RACER',    price: 1500, shirt: 0x11c8e8, pants: 0x10141c },
-  { id: 'royal',  name: 'ROYAL GOLD',    price: 3000, shirt: 0xd8b21e, pants: 0x2a1c08 },
-  { id: 'shadow', name: 'SHADOW SKIN',   price: 0,    shirt: 0x16161c, pants: 0x5e1420, questReward: true },
+  { id: 'street', name: 'STREET KIT',    price: 0,     shirt: null,     pants: null },
+  { id: 'sport',  name: 'SPORT SET',     price: 300,   shirt: 0x35a061, pants: 0xf0f2f4 },
+  { id: 'desert', name: 'DESERT NOMAD',  price: 500,   shirt: 0xc8a86a, pants: 0x6a4a2a },
+  { id: 'biz',    name: 'BUSINESS SUIT', price: 800,   shirt: 0x1c2a48, pants: 0x10141c },
+  { id: 'medic',  name: 'NIGHT MEDIC',   price: 1200,  shirt: 0xe8e8ea, pants: 0x1c2a48 },
+  { id: 'racer',  name: 'NEON RACER',    price: 1500,  shirt: 0x11c8e8, pants: 0x10141c },
+  { id: 'pilot',  name: 'SKY PILOT',     price: 2200,  shirt: 0x2a3a55, pants: 0xe8e8ea },
+  { id: 'royal',  name: 'ROYAL GOLD',    price: 3000,  shirt: 0xd8b21e, pants: 0x2a1c08 },
+  { id: 'chrome', name: 'CHROME RUNNER', price: 4500,  shirt: 0xb8bcc4, pants: 0x14161a },
+  { id: 'dragon', name: 'CRIMSON DRAGON', price: 6500, shirt: 0xc41e1e, pants: 0x14161a },
+  { id: 'ghost',  name: 'GOLD PHANTOM',  price: 10000, shirt: 0xd8b21e, pants: 0x101216 },
+  { id: 'shadow', name: 'SHADOW SKIN',   price: 0,     shirt: 0x16161c, pants: 0x5e1420, questReward: true },
 ];
 function upgLvl(id) { return prog.upg[id] || 0; }
 function upgCost(u) { return u.base * (upgLvl(u.id) + 1); }
@@ -5226,6 +5343,7 @@ function renderWardrobe() {
         prog.bank -= o.price;
         prog.wardrobe[o.id] = true;
         addFeed(`👔 New outfit: ${o.name}`);
+        celebrate(`NEW OUTFIT: ${o.name}`, '👔');
       }
       prog.outfit = o.id;
       saveProg();
@@ -5759,7 +5877,7 @@ function runSpin() {
       if (p.cans) energy.cans = Math.min(energyCap(), energy.cans + p.cans);
       document.getElementById('spinsum').textContent =
         p.cash ? `🎉 YOU WON $${p.cash} — ADDED TO YOUR WALLET!` : `🎉 YOU WON ${p.cans} ${EN_BRAND_U}S!`;
-      playCheer();
+      celebrate(p.cash ? `YOU WON $${p.cash}!` : `${p.cans} ENERGY DRINKS!`, '🎡');
       refreshSpinBtn();
     }
   })();
@@ -5862,7 +5980,7 @@ function addXP(n) {
   while (prog.level < 100 && prog.xp >= xpNeed(prog.level)) {
     prog.xp -= xpNeed(prog.level);
     prog.level++;
-    showBanner((prog.level - 1) % 10 === 0 ? `NEW RANK: ${rankName()} ★` : `LEVEL ${prog.level}`);
+    celebrate((prog.level - 1) % 10 === 0 ? `NEW RANK: ${rankName()}` : `LEVEL ${prog.level}!`, '⭐');
     addFeed(`⭐ Level up — ${prog.level} / 100 · ${rankName()}`);
     checkAchs();
     const unlock = UNLOCK_LADDER.find(u => u.level === prog.level);
@@ -8584,6 +8702,7 @@ window.__so = {
     return out.slice(0, 25);
   },
   wanted(n = 1) { heat.crimeCd = 0; addHeat(n, 'Debug'); },
+  kill(cash) { if (cash) game.money = cash; reviveSafeT = 0; game.streak = 5; hurtPlayer(9999); },
   giants() {
     const out = [];
     const v = new THREE.Vector3();
