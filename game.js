@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from './lib/jsm/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader } from './lib/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from './lib/jsm/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from './lib/jsm/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=53';
+import { CITIES } from './sponsors.js?v=54';
 
 // Clean-brand mode: the portal build (CrazyGames etc.) must carry no real
 // trademarks. window.CLEAN_BUILD is injected by the build script; ?clean=1
@@ -67,8 +67,20 @@ function makeRenderer() {
   document.body.appendChild(d);
   throw new Error('WebGL unavailable — help screen shown');
 }
+// Phones get a light build; a phone that just crash-looped gets SAFE MODE
+// (no optional 3D models at all) so it always recovers instead of dying.
+const CRASHED_LAST_BOOT = (() => {
+  try { return sessionStorage.getItem('so.booting') === '1'; } catch (e) { return false; }
+})();
+try {
+  sessionStorage.setItem('so.booting', '1');
+  setTimeout(() => { try { sessionStorage.removeItem('so.booting'); } catch (e) {} }, 12000);
+} catch (e) {}
+const LOWMEM = CRASHED_LAST_BOOT ||
+  matchMedia('(pointer: coarse)').matches || /iPhone|iPad|Android/i.test(navigator.userAgent);
+const SAFEMODE = CRASHED_LAST_BOOT;
 const renderer = makeRenderer();
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, SAFEMODE ? 1 : LOWMEM ? 1.5 : 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -82,7 +94,8 @@ const camera = new THREE.PerspectiveCamera(BASE_FOV, window.innerWidth / window.
 
 // post-processing: bloom makes the neon actually glow (MSAA target = clean edges)
 const composer = new EffectComposer(renderer,
-  new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, { samples: 4 }));
+  new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight,
+    { samples: LOWMEM ? 0 : 4 })); // 4x MSAA at retina size is an OOM killer on iPhone
 composer.addPass(new RenderPass(scene, camera));
 const bloomPass = new UnrealBloomPass(
   new THREE.Vector2(window.innerWidth, window.innerHeight), 0.55, 0.5, 0.82);
@@ -230,7 +243,7 @@ scene.add(hemi);
 const moon = new THREE.DirectionalLight(0x9fb8ff, 1.6);
 moon.position.set(-40, 70, -30);
 moon.castShadow = true;
-moon.shadow.mapSize.set(2048, 2048);
+moon.shadow.mapSize.set(LOWMEM ? 1024 : 2048, LOWMEM ? 1024 : 2048);
 moon.shadow.camera.left = -90; moon.shadow.camera.right = 90;
 moon.shadow.camera.top = 90;   moon.shadow.camera.bottom = -90;
 moon.shadow.camera.far = 260;
@@ -1691,6 +1704,10 @@ let dobermanTemplate = null;
 let skylineTemplate = null;
 const personTemplates = [];
 function loadRealAssets() {
+  if (SAFEMODE) {
+    addFeed('⚡ SAFE MODE — light graphics after a crash; reload once to try full quality');
+    return;
+  }
   gltfLoader.load('models/car_mercedes.glb', g => {
     mercTemplate = normalizeModel(g.scene, 'car', 4.8);
     spawnMercFleet();
@@ -1706,12 +1723,12 @@ function loadRealAssets() {
   }, undefined, () => {});
   // real textured skyline panoramas ring the modern cities
   if (!THEME.camels)
-    gltfLoader.load('models/city_buildings.glb', g => {
+    if (!LOWMEM) gltfLoader.load('models/city_buildings.glb', g => {
       skylineTemplate = normalizeModel(g.scene, 'car', 165);
       placeSkyline();
     }, undefined, () => {});
   // the real Burj Khalifa rises over Dubai (needle tower as fallback)
-  if (THEME.landmark && THEME.landmark.kind === 'burj')
+  if (THEME.landmark && THEME.landmark.kind === 'burj' && !LOWMEM)
     gltfLoader.load('models/burj_khalifa.glb', g => {
       stripBaseDiscs(g.scene);
       const root = normalizeModel(g.scene, 'person', 135);
@@ -1785,11 +1802,12 @@ function loadRealAssets() {
           dir: 1, side: (i % 2 ? 1 : -1) * (ROAD_HALF + 1.8), v: -80 + i * 60, speed: 6 },
       });
   // ---- the sky is alive: flocks of real animated birds over the rooftops ----
-  for (let i = 0; i < 2; i++) {
+  for (let i = 0; i < (LOWMEM ? 1 : 2); i++) {
     loadGlider('models/bird_parrot.glb', { size: 0.9, alt: 18 + i * 6, r: 42 + i * 22,
       cx: -30 + i * 60, cz: 20 - i * 60, speed: 5, bob: 1.2, off: Math.PI / 2 });
-    loadGlider('models/bird_stork.glb', { size: 1.5, alt: 28 + i * 7, r: 58 + i * 26,
-      cx: 20 - i * 50, cz: -30 + i * 70, speed: 6.5, bob: 1.5, off: Math.PI / 2 });
+    if (!LOWMEM)
+      loadGlider('models/bird_stork.glb', { size: 1.5, alt: 28 + i * 7, r: 58 + i * 26,
+        cx: 20 - i * 50, cz: -30 + i * 70, speed: 6.5, bob: 1.5, off: Math.PI / 2 });
   }
   // flamingos glide low along the waterfront
   if (THEME.waterfront === 'east')
@@ -2773,7 +2791,7 @@ function buildCity(city) {
 
   // ---- ground: whole road network painted into one texture ----
   {
-    const T = 4096, sc = T / (CITY_HALF * 2);
+    const T = LOWMEM ? 2048 : 4096, sc = T / (CITY_HALF * 2);
     const cv = document.createElement('canvas');
     cv.width = cv.height = T;
     const g = cv.getContext('2d');
