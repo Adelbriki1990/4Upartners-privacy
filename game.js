@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=42';
+import { CITIES } from './sponsors.js?v=43';
 
 // ---------------------------------------------------------------------------
 // Renderer / scene / camera
@@ -1618,7 +1618,6 @@ function normalizeModel(root, kind, target) {
 }
 let mercTemplate = null;
 let camelTemplate = null;
-let arabicTemplate = null;
 let policeTemplate = null;
 let dobermanTemplate = null;
 let skylineTemplate = null;
@@ -1666,12 +1665,15 @@ function loadRealAssets() {
   // Real animated characters. These skinned models don't all survive
   // SkeletonUtils.clone, so each instance parses its own browser-cached
   // copy of the file.
+  // androids in colored streetwear walk the avenues (the military patrol
+  // that used to sprint everywhere never fit a delivery city)
+  const XBOT_TINTS = [0x4a86d8, 0x35a061, 0xd8823a, 0x9455d8];
   for (let i = 0; i < 4; i++)
-    loadWalker('models/person_soldier.glb', {
-      height: 1.8, faceOffset: Math.PI, clip: /^walk|run/i,
+    loadWalker('models/person_xbot.glb', {
+      height: 1.75, clip: /^walk/i, tint: XBOT_TINTS[i],
       walker: { s: STREETS[(i * 2 + 1) % STREETS.length], alongX: i % 2 === 0,
         dir: Math.random() < 0.5 ? 1 : -1, side: (i % 3 - 1 || 1) * (ROAD_HALF + 2.0),
-        v: -100 + Math.random() * 200, speed: 1.5 },
+        v: -100 + Math.random() * 200, speed: 1.4 },
     });
   // charming delivery bots carrying pizza boxes on their routes
   for (let i = 0; i < 3; i++)
@@ -1783,11 +1785,8 @@ function loadRealAssets() {
       camelTemplate = { root, clips };
       upgradeCamels();
     }, undefined, () => {});
-  if (THEME.dress === 'arabic')
-    gltfLoader.load('models/person_arabic.glb', g => {
-      arabicTemplate = { root: normalizeModel(g.scene, 'person', 1.78), clips: g.animations || [] };
-      placeArabicMen();
-    }, undefined, () => {});
+  // (the arabic-man model was retired — it never posed cleanly; the robed
+  // procedural locals in desert cities carry the look instead)
 }
 function boneBounds(root) {
   const box = new THREE.Box3();
@@ -1843,31 +1842,6 @@ function upgradeCamels() {
     }
   }
   addFeed('🐪 Camel caravans crossing the medina');
-}
-let arabicPlaced = false;
-function placeArabicMen() {
-  if (arabicPlaced || !arabicTemplate) return;
-  arabicPlaced = true;
-  const spots = [[9.0, 22, -Math.PI / 2], [-9.0, -34, Math.PI / 2], [51.0, -9, Math.PI / 2],
-    [-9.0, 66, Math.PI / 2], [69.0, 34, -Math.PI / 2], [-51.0, -70, Math.PI / 2]];
-  for (const [x, z, ry] of spots) {
-    const p = SkeletonUtils.clone(arabicTemplate.root);
-    // push the spot out of any building/prop collider so he never stands
-    // half-inside a wall
-    const pos = new THREE.Vector3(x, 0, z);
-    resolveCollisions(pos, 1.8, 0.6);
-    p.position.set(pos.x, 0, pos.z);
-    p.rotation.y = ry;
-    scene.add(p);
-    const picks = pickClips(arabicTemplate.clips);
-    if (picks.any) {
-      const mixer = new THREE.AnimationMixer(p);
-      mixer.clipAction(picks.any).play();
-      modelMixers.push(mixer);
-    } else {
-      modelBobbers.push({ obj: p, phase: Math.random() * 6, baseY: 0, baseRot: ry });
-    }
-  }
 }
 const realWalkers = []; // animated characters walking the sidewalk lanes
 // Generic loader for animated characters that must not be cloned: each
@@ -1932,7 +1906,14 @@ function onWalkerLoaded(g, opts) {
       Number.isFinite(boneY) ? boneY : 0);
     if (trueY <= 0.001) return; // bad parse — drop it
     root.scale.setScalar(opts.height / trueY);
-    root.traverse(o => { if (o.isMesh) o.castShadow = true; });
+    root.traverse(o => {
+      if (!o.isMesh) return;
+      o.castShadow = true;
+      if (opts.tint && o.material && o.material.color) {
+        o.material = o.material.clone();
+        o.material.color.multiply(new THREE.Color(opts.tint));
+      }
+    });
     scene.add(root);
     const clips = g.animations || [];
     const clip = clips.find(c => opts.clip.test(c.name)) || clips[0];
@@ -1944,7 +1925,8 @@ function onWalkerLoaded(g, opts) {
     }
     modelMixers.push(mixer);
     if (opts.attach) opts.attach(root);
-    if (opts.walker) realWalkers.push({ obj: root, off: opts.faceOffset || 0, ...opts.walker });
+    if (opts.walker) realWalkers.push({ obj: root, off: opts.faceOffset || 0, jit: 0,
+      ...opts.walker, side: opts.walker.side + (Math.random() - 0.5) * 1.2 });
     else if (opts.place) {
       root.position.set(opts.place.pos[0], opts.place.pos[1], opts.place.pos[2]);
       root.rotation.y = opts.place.ry + (opts.faceOffset || 0);
@@ -6190,11 +6172,29 @@ function updateVenues(dt) {
   for (const w of realWalkers) {
     w.v += w.speed * w.dir * dt;
     if (w.v > 126 || w.v < -126) w.dir *= -1;
+    // sidestep other walkers and pedestrians instead of walking through them
+    const wx = w.alongX ? w.v : w.s + w.side + w.jit;
+    const wz = w.alongX ? w.s + w.side + w.jit : w.v;
+    let push = 0;
+    for (const o of realWalkers) {
+      if (o === w) continue;
+      const op = o.obj.position;
+      const d = Math.hypot(wx - op.x, wz - op.z);
+      if (d < 1.1) push += ((w.alongX ? wz - op.z : wx - op.x) >= 0 ? 1 : -1) * (1.1 - d) || (1.1 - d);
+    }
+    for (const p of peds) {
+      const pp = p.rig.group.position;
+      const d = Math.hypot(wx - pp.x, wz - pp.z);
+      if (d < 0.9) push += ((w.alongX ? wz - pp.z : wx - pp.x) >= 0 ? 1 : -1) * (0.9 - d) || (0.9 - d);
+    }
+    if (push !== 0) w.jit += Math.sign(push) * 1.8 * dt;
+    else w.jit -= Math.sign(w.jit) * Math.min(Math.abs(w.jit), 0.6 * dt);
+    w.jit = Math.max(-1.6, Math.min(1.6, w.jit));
     if (w.alongX) {
-      w.obj.position.set(w.v, 0, w.s + w.side);
+      w.obj.position.set(w.v, 0, w.s + w.side + w.jit);
       w.obj.rotation.y = (w.dir > 0 ? Math.PI / 2 : -Math.PI / 2) + w.off;
     } else {
-      w.obj.position.set(w.s + w.side, 0, w.v);
+      w.obj.position.set(w.s + w.side + w.jit, 0, w.v);
       w.obj.rotation.y = (w.dir > 0 ? 0 : Math.PI) + w.off;
     }
   }
