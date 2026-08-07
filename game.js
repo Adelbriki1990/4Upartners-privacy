@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from './lib/jsm/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader } from './lib/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from './lib/jsm/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from './lib/jsm/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=57';
+import { CITIES } from './sponsors.js?v=58';
 
 // Clean-brand mode: the portal build (CrazyGames etc.) must carry no real
 // trademarks. window.CLEAN_BUILD is injected by the build script; ?clean=1
@@ -6718,6 +6718,7 @@ const BRAND_SLOTS = [
   { file: 'subway', name: 'SUBWAY' },
 ];
 function applyBrandLogos() {
+  if (CLEAN) return; // portal build: fictional names only, no logo lookups
   let slot = 0;
   for (const b of BRAND_SLOTS) {
     const img = new Image();
@@ -7266,7 +7267,7 @@ const redbullTex = CLEAN ? cleanCanTex() : new THREE.TextureLoader().load('ads/r
 // optional real bottle photo — upload ads/redbull_bottle.png and pickups
 // switch from the 3D can to the actual bottle image
 let bottleTex = null;
-new THREE.TextureLoader().load('ads/redbull_bottle.png', t => {
+if (!CLEAN) new THREE.TextureLoader().load('ads/redbull_bottle.png', t => {
   t.colorSpace = THREE.SRGBColorSpace;
   bottleTex = t;
   for (const c of canPickups) applyBottleSprite(c.mesh);
