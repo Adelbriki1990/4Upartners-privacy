@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from './lib/jsm/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader } from './lib/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from './lib/jsm/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from './lib/jsm/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=56';
+import { CITIES } from './sponsors.js?v=57';
 
 // Clean-brand mode: the portal build (CrazyGames etc.) must carry no real
 // trademarks. window.CLEAN_BUILD is injected by the build script; ?clean=1
@@ -25,6 +25,33 @@ async function cgInit() {
   try { await window.CrazyGames.SDK.init(); } catch (e) { /* offline preview */ }
 }
 cgInit();
+// Rewarded video: the player CHOOSES to watch, we grant the prize.
+// Outside the portal build (no ad network) the buttons stay hidden.
+function showRewardedAd(onReward) {
+  if (!(window.CrazyGames && window.CrazyGames.SDK && window.CrazyGames.SDK.ad)) {
+    onReward(); // preview build without the network — grant directly
+    return;
+  }
+  const prevGain = typeof MASTER !== 'undefined' && MASTER ? MASTER.gain.value : null;
+  try {
+    window.CrazyGames.SDK.ad.requestAd('rewarded', {
+      adStarted: () => { if (prevGain !== null) MASTER.gain.value = 0; },
+      adFinished: () => { if (prevGain !== null) MASTER.gain.value = prevGain; onReward(); },
+      adError: () => { if (prevGain !== null) MASTER.gain.value = prevGain; addFeed('📺 No ad available right now'); },
+    });
+  } catch (e) { onReward(); }
+}
+function showMidgameAd() {
+  if (!CLEAN || !(window.CrazyGames && window.CrazyGames.SDK && window.CrazyGames.SDK.ad)) return;
+  const prevGain = typeof MASTER !== 'undefined' && MASTER ? MASTER.gain.value : null;
+  try {
+    window.CrazyGames.SDK.ad.requestAd('midgame', {
+      adStarted: () => { if (prevGain !== null) MASTER.gain.value = 0; },
+      adFinished: () => { if (prevGain !== null) MASTER.gain.value = prevGain; },
+      adError: () => { if (prevGain !== null) MASTER.gain.value = prevGain; },
+    });
+  } catch (e) { /* ads are optional */ }
+}
 function cgGame(ev) {
   try {
     if (CLEAN && window.CrazyGames && window.CrazyGames.SDK && window.CrazyGames.SDK.game) {
@@ -4905,6 +4932,7 @@ function hurtPlayer(dmg) {
 function playerDie() {
   player.dead = true;
   cgGame('stop');
+  setTimeout(showMidgameAd, 1200);
   firing = false;
   slowmo = 1.6;
   shake = 0.9;
@@ -5563,6 +5591,18 @@ function shareGame() {
 }
 document.getElementById('sharebtn').addEventListener('click', e => { e.stopPropagation(); shareGame(); });
 document.getElementById('goshare').addEventListener('click', e => { e.stopPropagation(); shareGame(); });
+if (CLEAN) document.getElementById('goad').style.display = '';
+document.getElementById('goad').addEventListener('click', e => {
+  e.stopPropagation();
+  showRewardedAd(() => {
+    prog.bank += 200;
+    saveProg();
+    showBanner('📺 AD REWARD +$200');
+    addFeed('📺 Thanks for watching — +$200 banked');
+    document.getElementById('goad').style.display = 'none';
+    setTimeout(() => { if (CLEAN) document.getElementById('goad').style.display = ''; }, 60000);
+  });
+});
 document.getElementById('clipshare').addEventListener('click', shareClip);
 document.getElementById('clipsave').addEventListener('click', downloadClip);
 document.getElementById('clipclose').addEventListener('click', closeClipPanel);
@@ -5625,7 +5665,19 @@ const SPIN_PRIZES = [
 ];
 const spinCv = document.getElementById('spinwheel');
 const spinCtx = spinCv.getContext('2d');
-let spinAngle = 0, spinning = false;
+let spinAngle = 0, spinning = false, bonusSpin = false;
+function adSpinsToday() {
+  try {
+    const d = JSON.parse(localStorage.getItem('streetops.spinad')) || {};
+    return d.day === new Date().toDateString() ? d.n || 0 : 0;
+  } catch (e) { return 0; }
+}
+function noteAdSpin() {
+  try {
+    localStorage.setItem('streetops.spinad',
+      JSON.stringify({ day: new Date().toDateString(), n: adSpinsToday() + 1 }));
+  } catch (e) {}
+}
 function spinDoneToday() {
   try { return JSON.parse(localStorage.getItem('streetops.spin')).day === new Date().toDateString(); }
   catch { return false; }
@@ -5677,9 +5729,13 @@ function refreshSpinBtn() {
   const done = spinDoneToday();
   btn.textContent = done ? '✅ COME BACK TOMORROW' : 'SPIN!';
   btn.classList.toggle('done', done);
+  // portal build: trade an ad view for up to 2 extra spins a day
+  document.getElementById('spinad').style.display =
+    CLEAN && done && adSpinsToday() < 2 ? '' : 'none';
 }
 function runSpin() {
-  if (spinning || spinDoneToday()) return;
+  if (spinning || (spinDoneToday() && !bonusSpin)) return;
+  bonusSpin = false;
   spinning = true;
   const target = Math.floor(Math.random() * SPIN_PRIZES.length);
   const seg = Math.PI * 2 / SPIN_PRIZES.length;
@@ -5729,6 +5785,17 @@ document.getElementById('spinbtn').addEventListener('click', e => {
   document.getElementById('spin').style.display = 'flex';
 });
 document.getElementById('spingo').addEventListener('click', e => { e.stopPropagation(); runSpin(); });
+document.getElementById('spinad').addEventListener('click', e => {
+  e.stopPropagation();
+  if (spinning || adSpinsToday() >= 2) return;
+  showRewardedAd(() => {
+    noteAdSpin();
+    bonusSpin = true;
+    document.getElementById('spinsum').textContent = '📺 BONUS SPIN UNLOCKED — SPIN AGAIN!';
+    refreshSpinBtn();
+    runSpin();
+  });
+});
 document.getElementById('spinclose').addEventListener('click', () => {
   if (!spinning) document.getElementById('spin').style.display = 'none';
 });
