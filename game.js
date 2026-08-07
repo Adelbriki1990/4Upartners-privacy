@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from './lib/jsm/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader } from './lib/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from './lib/jsm/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from './lib/jsm/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=59';
+import { CITIES } from './sponsors.js?v=60';
 
 // Clean-brand mode: the portal build (CrazyGames etc.) must carry no real
 // trademarks. window.CLEAN_BUILD is injected by the build script; ?clean=1
@@ -17,46 +17,87 @@ import { CITIES } from './sponsors.js?v=59';
 const CLEAN = !!window.CLEAN_BUILD || new URLSearchParams(location.search).has('clean');
 const EN_BRAND = CLEAN ? 'Bolt Energy' : 'Red Bull';
 const EN_BRAND_U = CLEAN ? 'BOLT ENERGY' : 'RED BULL';
-// CrazyGames SDK hooks (portal build only) — all guarded, never fatal
-async function cgInit() {
-  if (!CLEAN) return;
-  for (let i = 0; i < 20 && !(window.CrazyGames && window.CrazyGames.SDK); i++)
-    await new Promise(r => setTimeout(r, 500));
-  try { await window.CrazyGames.SDK.init(); } catch (e) { /* offline preview */ }
+
+// ---------------------------------------------------------------------------
+// Portal adapter — the same game ships to several sites, each with its own ad
+// SDK. window.PORTAL_SDK is injected by the build script ('crazygames', 'poki',
+// 'gd'); empty means no ad network (own site, itch.io, Y8) and every ad button
+// stays hidden. ?portal=<name> previews a portal build locally.
+// ---------------------------------------------------------------------------
+const PORTAL = window.PORTAL_SDK || new URLSearchParams(location.search).get('portal') || '';
+const ADS = !!PORTAL; // is there a real ad network behind the buttons?
+function muteForAd() {
+  const g = typeof MASTER !== 'undefined' && MASTER ? MASTER.gain.value : null;
+  if (g !== null) MASTER.gain.value = 0;
+  return () => { if (g !== null) MASTER.gain.value = g; };
 }
-cgInit();
-// Rewarded video: the player CHOOSES to watch, we grant the prize.
-// Outside the portal build (no ad network) the buttons stay hidden.
-function showRewardedAd(onReward) {
-  if (!(window.CrazyGames && window.CrazyGames.SDK && window.CrazyGames.SDK.ad)) {
-    onReward(); // preview build without the network — grant directly
-    return;
-  }
-  const prevGain = typeof MASTER !== 'undefined' && MASTER ? MASTER.gain.value : null;
+async function portalInit() {
+  if (!ADS) return;
+  // give the platform script time to land before we call into it
+  const ready = () => (PORTAL === 'crazygames' && window.CrazyGames && window.CrazyGames.SDK)
+    || (PORTAL === 'poki' && window.PokiSDK) || (PORTAL === 'gd' && window.gdsdk);
+  for (let i = 0; i < 20 && !ready(); i++) await new Promise(r => setTimeout(r, 500));
   try {
-    window.CrazyGames.SDK.ad.requestAd('rewarded', {
-      adStarted: () => { if (prevGain !== null) MASTER.gain.value = 0; },
-      adFinished: () => { if (prevGain !== null) MASTER.gain.value = prevGain; onReward(); },
-      adError: () => { if (prevGain !== null) MASTER.gain.value = prevGain; addFeed('📺 No ad available right now'); },
-    });
-  } catch (e) { onReward(); }
+    if (PORTAL === 'crazygames') await window.CrazyGames.SDK.init();
+    else if (PORTAL === 'poki') {
+      await window.PokiSDK.init();
+      window.PokiSDK.gameLoadingFinished();
+    }
+  } catch (e) { /* offline preview — the game runs fine without the network */ }
+}
+portalInit();
+// Rewarded video: the player CHOOSES to watch, we grant the prize.
+function showRewardedAd(onReward) {
+  const unmute = muteForAd();
+  const ok = () => { unmute(); onReward(); };
+  const fail = () => { unmute(); addFeed('📺 No ad available right now'); };
+  try {
+    if (PORTAL === 'crazygames' && window.CrazyGames?.SDK?.ad) {
+      window.CrazyGames.SDK.ad.requestAd('rewarded',
+        { adStarted: () => {}, adFinished: ok, adError: fail });
+      return;
+    }
+    if (PORTAL === 'poki' && window.PokiSDK) {
+      window.PokiSDK.rewardedBreak().then(w => (w ? ok() : fail())).catch(fail);
+      return;
+    }
+    if (PORTAL === 'gd' && window.gdsdk) {
+      window.gdsdk.showAd('rewarded').then(ok).catch(fail);
+      return;
+    }
+  } catch (e) { /* fall through to the preview path */ }
+  ok(); // no network attached (local preview) — grant directly so the flow is testable
 }
 function showMidgameAd() {
-  if (!CLEAN || !(window.CrazyGames && window.CrazyGames.SDK && window.CrazyGames.SDK.ad)) return;
-  const prevGain = typeof MASTER !== 'undefined' && MASTER ? MASTER.gain.value : null;
+  if (!ADS) return;
+  const unmute = muteForAd();
   try {
-    window.CrazyGames.SDK.ad.requestAd('midgame', {
-      adStarted: () => { if (prevGain !== null) MASTER.gain.value = 0; },
-      adFinished: () => { if (prevGain !== null) MASTER.gain.value = prevGain; },
-      adError: () => { if (prevGain !== null) MASTER.gain.value = prevGain; },
-    });
+    if (PORTAL === 'crazygames' && window.CrazyGames?.SDK?.ad) {
+      window.CrazyGames.SDK.ad.requestAd('midgame',
+        { adStarted: () => {}, adFinished: unmute, adError: unmute });
+      return;
+    }
+    if (PORTAL === 'poki' && window.PokiSDK) {
+      window.PokiSDK.commercialBreak().then(unmute).catch(unmute);
+      return;
+    }
+    if (PORTAL === 'gd' && window.gdsdk) {
+      window.gdsdk.showAd().then(unmute).catch(unmute);
+      return;
+    }
   } catch (e) { /* ads are optional */ }
+  unmute();
 }
+// Every portal wants to know when real gameplay is running (ad pacing, metrics)
 function cgGame(ev) {
+  if (!ADS) return;
   try {
-    if (CLEAN && window.CrazyGames && window.CrazyGames.SDK && window.CrazyGames.SDK.game) {
+    if (PORTAL === 'crazygames' && window.CrazyGames?.SDK?.game) {
       if (ev === 'start') window.CrazyGames.SDK.game.gameplayStart();
       else window.CrazyGames.SDK.game.gameplayStop();
+    } else if (PORTAL === 'poki' && window.PokiSDK) {
+      if (ev === 'start') window.PokiSDK.gameplayStart();
+      else window.PokiSDK.gameplayStop();
     }
   } catch (e) { /* sdk optional */ }
 }
@@ -4974,7 +5015,7 @@ function playerDie() {
   recordScore();
   const rv = document.getElementById('gorevive');
   rv.style.display = revivedThisRun ? 'none' : '';
-  rv.textContent = CLEAN ? '📺 WATCH AD → CONTINUE YOUR RUN' : '💪 SECOND CHANCE → CONTINUE YOUR RUN';
+  rv.textContent = ADS ? '📺 WATCH AD → CONTINUE YOUR RUN' : '💪 SECOND CHANCE → CONTINUE YOUR RUN';
   const cost = reviveCost();
   const buy = document.getElementById('gobuy');
   buy.style.display = game.money >= cost ? '' : 'none';
@@ -5709,7 +5750,7 @@ function shareGame() {
 }
 document.getElementById('sharebtn').addEventListener('click', e => { e.stopPropagation(); shareGame(); });
 document.getElementById('goshare').addEventListener('click', e => { e.stopPropagation(); shareGame(); });
-if (CLEAN) document.getElementById('goad').style.display = '';
+if (ADS) document.getElementById('goad').style.display = '';
 document.getElementById('goad').addEventListener('click', e => {
   e.stopPropagation();
   showRewardedAd(() => {
@@ -5718,7 +5759,7 @@ document.getElementById('goad').addEventListener('click', e => {
     showBanner('📺 AD REWARD +$200');
     addFeed('📺 Thanks for watching — +$200 banked');
     document.getElementById('goad').style.display = 'none';
-    setTimeout(() => { if (CLEAN) document.getElementById('goad').style.display = ''; }, 60000);
+    setTimeout(() => { if (ADS) document.getElementById('goad').style.display = ''; }, 60000);
   });
 });
 document.getElementById('clipshare').addEventListener('click', shareClip);
@@ -5849,7 +5890,7 @@ function refreshSpinBtn() {
   btn.classList.toggle('done', done);
   // portal build: trade an ad view for up to 2 extra spins a day
   document.getElementById('spinad').style.display =
-    CLEAN && done && adSpinsToday() < 2 ? '' : 'none';
+    ADS && done && adSpinsToday() < 2 ? '' : 'none';
 }
 function runSpin() {
   if (spinning || (spinDoneToday() && !bonusSpin)) return;

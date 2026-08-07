@@ -620,12 +620,23 @@ if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js').ca
 </script>
 
 <script>
-// CrazyGames build: the platform SDK loads only when this build is flagged clean
-if (window.CLEAN_BUILD) {
-  var cgs = document.createElement('script');
-  cgs.src = 'https://sdk.crazygames.com/crazygames-sdk-v3.js';
-  document.head.appendChild(cgs);
-}
+// Portal builds: load only the ad SDK this package was built for.
+// window.PORTAL_SDK is injected by build_portals.sh ('crazygames'|'poki'|'gd').
+(function () {
+  var p = window.PORTAL_SDK || '';
+  if (!p) return;
+  var src = '';
+  if (p === 'crazygames') src = 'https://sdk.crazygames.com/crazygames-sdk-v3.js';
+  else if (p === 'poki') src = 'https://game-cdn.poki.com/scripts/v2/poki-sdk.js';
+  else if (p === 'gd') {
+    window.GD_OPTIONS = { gameId: window.GD_GAME_ID || '', advertisementSettings: { autoplay: false } };
+    src = 'https://html5.api.gamedistribution.com/main.min.js';
+  }
+  if (!src) return;
+  var s = document.createElement('script');
+  s.src = src;
+  document.head.appendChild(s);
+})();
 </script>
 <script>
 // boot watchdog: if the game module fails to start (old iOS, bad cache),
@@ -646,6 +657,6 @@ setTimeout(function () {
   document.body.appendChild(d);
 }, 9000);
 </script>
-<script type="module" src="game.js?v=59"></script>
+<script type="module" src="game.js?v=60"></script>
 </body>
 </html>
