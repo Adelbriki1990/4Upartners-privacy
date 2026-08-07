@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=45';
+import { CITIES } from './sponsors.js?v=46';
 
 // ---------------------------------------------------------------------------
 // Renderer / scene / camera
@@ -72,6 +72,7 @@ const THEMES = {
     waterfront: 'east', // corniche, palms, yachts along +x
   },
   sahara: {
+    noGuns: true, // family-friendly: no firearms in the Arabic cities
     sky: 0x1a140c, fog: 0.009, hemi: [0x8a6f4a, 0x3a2c18, 1.5],
     moonColor: 0xd8c8a8, lamp: 0xffb35c,
     wall: { h: 36, s: 30, l: 46 }, windowHues: [38, 42, 34, 46, 40, 36],
@@ -95,6 +96,7 @@ const THEMES = {
     taxis: true,
   },
   dubai: {
+    noGuns: true, // family-friendly: no firearms in the Arabic cities
     sky: 0x121826, fog: 0.0075, hemi: [0x6a7a95, 0x3a2c18, 1.6],
     moonColor: 0xcdd8ff, lamp: 0xffe0b0,
     wall: { h: 40, s: 18, l: 38 }, windowHues: [200, 205, 45, 210, 48, 195],
@@ -108,6 +110,7 @@ const THEMES = {
     luxCars: true,
   },
   doha: {
+    noGuns: true, // family-friendly: no firearms in the Arabic cities
     sky: 0x131722, fog: 0.008, hemi: [0x64708a, 0x2f2718, 1.55],
     moonColor: 0xc8d4f0, lamp: 0xffcf8a,
     wall: { h: 42, s: 20, l: 40 }, windowHues: [190, 200, 45, 210, 35, 205],
@@ -1523,6 +1526,7 @@ function registerVehicle(g, x, z, rotY, type) {
   scene.add(g);
   const stats = VEH_STATS[type];
   const veh = { group: g, yaw: rotY, speed: 0, type, stats, health: 100, smokeT: 0,
+    fuel: 70 + Math.random() * 30,
     box: addCollider(carBox(g.position, rotY, stats.size)) };
   vehicles.push(veh);
   return veh;
@@ -3215,6 +3219,14 @@ function buildCity(city) {
   for (const l of lampLights) l.intensity = 20 * NF;
   for (const m of dayGlowMats) m.mat.opacity = m.base * NF;
 
+  document.getElementById('ammo').style.display = THEME.noGuns ? 'none' : '';
+  document.getElementById('crosshair').style.display = THEME.noGuns ? 'none' : '';
+  for (const gid of ['btnFire', 'btnAim']) {
+    const gel = document.getElementById(gid);
+    if (gel) gel.style.opacity = THEME.noGuns ? '0.15' : '';
+    if (gel && THEME.noGuns) gel.style.pointerEvents = 'none';
+  }
+  buildFuelStations();
   buildClub();
   buildVenues();
   buildRaceCourse();
@@ -3882,7 +3894,7 @@ document.addEventListener('mousedown', e => {
   if (!locked) return;
   if (cine.active) { if (cine.t > 0.5) finishCinematic(); return; }
   if (driving) return;
-  if (e.button === 0) { firing = true; pendingShot = true; }
+  if (e.button === 0 && !(THEME && THEME.noGuns)) { firing = true; pendingShot = true; }
   if (e.button === 2) aiming = true;
 });
 document.addEventListener('mouseup', e => {
@@ -3967,7 +3979,7 @@ if (isTouch) {
     el.addEventListener('touchstart', e => { e.preventDefault(); el.classList.add('on'); down(); }, { passive: false });
     el.addEventListener('touchend', e => { e.preventDefault(); el.classList.remove('on'); if (up) up(); }, { passive: false });
   };
-  hold('btnFire', () => { firing = true; pendingShot = true; }, () => { firing = false; });
+  hold('btnFire', () => { if (THEME && THEME.noGuns) return; firing = true; pendingShot = true; }, () => { firing = false; });
   hold('btnAim', () => { aiming = !aiming; document.getElementById('btnAim').classList.toggle('on', aiming); }, () => {
     document.getElementById('btnAim').classList.toggle('on', aiming); });
   hold('btnJump', () => { keys['Space'] = true; }, () => { keys['Space'] = false; });
@@ -4454,7 +4466,7 @@ function toggleDrive() {
   if (driving) {
     const v = driving;
     driving = null;
-    gun.visible = true;
+    gun.visible = !(THEME && THEME.noGuns);
     const right = new THREE.Vector3(Math.cos(v.yaw), 0, -Math.sin(v.yaw));
     player.pos.copy(v.group.position).addScaledVector(right, 2.4);
     player.pos.y = 0;
@@ -4506,7 +4518,8 @@ function updateDriving(dt) {
   const boost = energy.boostT > 0 ? 1.25 : 1;
   const wrecked = v.health <= 0;
   const touchAccel = -touchMove.y; // joystick up = throttle, down = reverse
-  const accel = wrecked ? 0
+  const noFuel = st.engine && v.fuel <= 0;
+  const accel = wrecked || noFuel ? 0
     : keys['KeyW'] ? st.accel * boost
     : keys['KeyS'] ? -st.accel * 0.65
     : touchAccel > 0.15 ? st.accel * boost * touchAccel
@@ -4517,6 +4530,44 @@ function updateDriving(dt) {
   // real brakes on Space
   if (keys['Space']) v.speed -= Math.sign(v.speed) * Math.min(Math.abs(v.speed), 26 * dt);
   v.speed = Math.max(st.maxR, Math.min(st.maxF * boost, v.speed));
+  if (st.engine) {
+    v.fuel = Math.max(0, v.fuel - (0.15 + Math.abs(v.speed) / st.maxF * 1.1) * dt * (accel ? 1 : 0.3));
+    if (v.fuel < 20 && !v.fuelWarned) {
+      v.fuelWarned = true;
+      say('Low fuel. Find a petrol station.');
+      const fs = FUEL_STATIONS[0] || { x: 0, z: 0 };
+      phoneNotify('⛽ LOW FUEL', 'Refuel at a petrol station — orange on the map', fs.x, fs.z);
+    }
+    if (v.fuel > 40) v.fuelWarned = false;
+    if (v.fuel <= 0 && !v.fuelDead) {
+      v.fuelDead = true;
+      showBanner('⛽ OUT OF FUEL — roll it to a petrol station!');
+    }
+    if (v.fuel > 1) v.fuelDead = false;
+    // refuel while parked at a station: 10 fuel costs $1
+    let atPump = false;
+    for (const fs of FUEL_STATIONS) {
+      if (Math.abs(v.group.position.x - fs.x) < 9 && Math.abs(v.group.position.z - fs.z) < 9
+          && Math.abs(v.speed) < 1 && v.fuel < 100) {
+        const wallet = game.money + prog.bank;
+        if (wallet <= 0.05) break;
+        const add = Math.min(16 * dt, 100 - v.fuel, wallet * 10);
+        v.fuel += add;
+        const cost = add * 0.1;
+        const fromMoney = Math.min(cost, game.money);
+        game.money -= fromMoney;
+        prog.bank -= cost - fromMoney;
+        atPump = true;
+        if (!v.refueling) {
+          v.refueling = true;
+          showBanner('⛽ Refuelling — stay parked');
+          playClick(1100, 0.12);
+        }
+        break;
+      }
+    }
+    if (!atPump && v.refueling) { v.refueling = false; saveProg(); }
+  }
   const steer = (keys['KeyA'] ? 1 : 0) - (keys['KeyD'] ? 1 : 0)
     - (Math.abs(touchMove.x) > 0.15 ? touchMove.x : 0);
   v.yaw += steer * Math.min(Math.abs(v.speed) / 6, 1) * st.turn * dt * Math.sign(v.speed || 1);
@@ -4670,6 +4721,7 @@ function updateDriving(dt) {
     engineNodes.g.gain.value = 0.09 + Math.min(0.09, Math.abs(v.speed) * 0.003);
   }
   speedoEl.textContent = st.label + ' · ' + Math.round(Math.abs(v.speed) * 3.6) + ' KM/H'
+    + (st.engine ? (v.refueling ? ' · ⛽ REFUELLING…' : ` · ⛽${Math.round(v.fuel)}%`) : '')
     + (v.health <= 0 ? ' · 💥 WRECKED' : v.health < 60 ? ` · ⚠ ${Math.round(v.health)}%` : '');
 
   const targetFov = BASE_FOV + Math.min(Math.abs(v.speed) * 0.5, 14);
@@ -4706,7 +4758,7 @@ function playerDie() {
   }
   saveProg();
   if (newRec) setTimeout(() => showBanner('🏆 NEW PERSONAL RECORD'), 300);
-  if (driving) { engineStop(); speedoEl.style.display = 'none'; driving = null; gun.visible = true; }
+  if (driving) { engineStop(); speedoEl.style.display = 'none'; driving = null; gun.visible = !(THEME && THEME.noGuns); }
   canvas.style.filter = 'grayscale(0.85) brightness(0.75)';
   document.querySelector('#gameover .stats').innerHTML = `<b>${playerName()}</b><br>` + (mode === 'delivery'
     ? `Deliveries completed: <b>${game.deliveries}</b><br>Cash earned: <b>$${game.money}</b><br>Eliminations: <b>${game.kills}</b>`
@@ -4791,6 +4843,7 @@ function spawnRide() {
   const v = registerVehicle(buildCarMesh(colors[Math.floor(Math.random() * colors.length)], t),
     p.x, p.z, axis === 'x' ? 0 : Math.PI / 2, t);
   v.owned = true;
+  v.fuel = 100;
   myRide = v;
   showBanner(`${v.stats.label} DELIVERED 🔑`);
   addFeed(`🚗 Your ${v.stats.label} just pulled up — press E next to it`);
@@ -5658,6 +5711,49 @@ function startWave() {
 // Street racing — drive through the 🏁 arch to start a checkpoint sprint
 // around the whole city; beat the par time for a bigger payout
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Petrol stations — park under the canopy to refuel ($1 per 10 fuel)
+// ---------------------------------------------------------------------------
+const FUEL_STATIONS = [];
+function buildFuelStations() {
+  FUEL_STATIONS.length = 0;
+  const mPost = new THREE.MeshStandardMaterial({ color: 0xd8dade, roughness: 0.4, metalness: 0.5 });
+  const mRoofF = new THREE.MeshStandardMaterial({ color: 0xe84a2a, roughness: 0.5 });
+  const mPad = new THREE.MeshStandardMaterial({ color: 0x4a4e55, roughness: 0.95 });
+  const mPump = new THREE.MeshStandardMaterial({ color: 0xc42a20, roughness: 0.5 });
+  const mPumpTop = new THREE.MeshStandardMaterial({ color: 0xf0f2f4, roughness: 0.4,
+    emissive: 0xf0f2f4, emissiveIntensity: 0.25 });
+  for (const [x, z, ry] of [[90, -70.5, 0], [-90, 70.5, Math.PI]]) {
+    const g = new THREE.Group();
+    const pad = new THREE.Mesh(new THREE.BoxGeometry(12, 0.14, 8), mPad);
+    pad.position.y = 0.07;
+    g.add(pad);
+    for (const [dx, dz] of [[-5, -3], [5, -3], [-5, 3], [5, 3]]) {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 4.4, 8), mPost);
+      post.position.set(dx, 2.2, dz);
+      g.add(post);
+    }
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(12.6, 0.5, 8.6), mRoofF);
+    roof.position.y = 4.6;
+    roof.castShadow = true;
+    g.add(roof);
+    for (const dx of [-2.2, 2.2]) {
+      const pump = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.3, 0.55), mPump);
+      pump.position.set(dx, 0.75, 0);
+      pump.castShadow = true;
+      g.add(pump);
+      const top = new THREE.Mesh(new THREE.BoxGeometry(0.82, 0.32, 0.57), mPumpTop);
+      top.position.set(dx, 1.5, 0);
+      g.add(top);
+    }
+    g.position.set(x, 0, z);
+    g.rotation.y = ry;
+    scene.add(g);
+    marquee('VOLT FUEL', '#ff8a2a', x, z + (ry === 0 ? -4.4 : 4.4), ry, 7, 5.6);
+    FUEL_STATIONS.push({ x, z });
+  }
+}
+
 const race = { active: false, cp: 0, t: 0, cooldown: 0 };
 const RACE_START = { x: 60, z: 30 };
 const RACE_CPS = [
@@ -6575,7 +6671,7 @@ function newOrder() {
 let earlyAmbush = false;
 function updateDelivery(dt) {
   // scripted first-minute action: robbers jump the new driver ~25s in
-  if (!earlyAmbush && game.time > 25 && !player.dead && !cine.active) {
+  if (!THEME.noGuns && !earlyAmbush && game.time > 25 && !player.dead && !cine.active) {
     earlyAmbush = true;
     for (let i = 0; i < 2; i++) {
       const p = streetPointNear(player.pos, 18, 32);
@@ -6631,7 +6727,7 @@ function updateDelivery(dt) {
       say('Picked up. Deliver to the customer.');
       showBanner(order.vip ? `Picked up — ⏱ beat the clock!` : 'Picked up — go deliver!');
       playClick(1900, 0.25);
-      if (Math.random() < Math.min(0.35 + prog.level * 0.008, 0.85)) {
+      if (!THEME.noGuns && Math.random() < Math.min(0.35 + prog.level * 0.008, 0.85)) {
         const n = 2 + Math.floor(Math.random() * 2) + Math.min(Math.floor(prog.level / 12), 3);
         for (let i = 0; i < n; i++) {
           const p = streetPointNear(player.pos, 25, 45);
@@ -6977,6 +7073,12 @@ function drawMinimap() {
     mmCtx.fillStyle = '#ffd23f';
     mmCtx.fillRect(p[0] - 2.5, p[1] - 2.5, 5, 5);
   }
+  // petrol stations glow orange on the nav app
+  mmCtx.fillStyle = '#ff8a2a';
+  for (const fs of FUEL_STATIONS) {
+    const p = P(fs.x, fs.z);
+    mmCtx.fillRect(p[0] - 3, p[1] - 3, 6, 6);
+  }
   // the driver: fixed chevron, always pointing up
   mmCtx.save();
   mmCtx.translate(S / 2, H * 0.66);
@@ -7017,7 +7119,7 @@ function startCinematic() {
 }
 function finishCinematic() {
   cine.active = false;
-  gun.visible = true;
+  gun.visible = !(THEME && THEME.noGuns);
   cineEl.classList.remove('on');
   cineEl.style.display = 'none';
   hudEl.style.display = 'block';
@@ -7170,6 +7272,7 @@ function selectedCity() { return CITIES.find(c => c.id === selectedId) || CITIES
       for (const el of wrap.children) el.classList.remove('sel');
       card.classList.add('sel');
       refreshPreview(); // uniform matches the selected city's app brand
+      refreshModeAvail();
       refreshMenuText();
       // menu backdrop shows the real city — swap it by reloading into the selection
       if (CITY && CITY.id !== city.id) setTimeout(() => location.reload(), 180);
@@ -7199,10 +7302,25 @@ function selectedCity() { return CITIES.find(c => c.id === selectedId) || CITIES
       (prog.bank > 0 ? ` · LIFETIME EARNINGS $${prog.bank}` : '') +
       (nu ? ` · NEXT UNLOCK: ${nu.what} (LVL ${nu.level})` : '');
   }
+  // combat mode is not offered in the no-guns (Arabic) cities
+  function refreshModeAvail() {
+    const wavesBtn = document.querySelector('[data-mode="waves"]');
+    const banned = THEMES[selectedId] && THEMES[selectedId].noGuns;
+    if (wavesBtn) wavesBtn.style.display = banned ? 'none' : '';
+    if (banned && mode === 'waves') {
+      mode = 'delivery';
+      localStorage.setItem('streetops.mode', mode);
+      document.querySelectorAll('.modebtn').forEach(b =>
+        b.classList.toggle('sel', b.dataset.mode === 'delivery'));
+    }
+  }
+  window.refreshModeAvail = refreshModeAvail;
+  refreshModeAvail();
   // game mode buttons
   document.querySelectorAll('.modebtn').forEach(btn => {
     btn.classList.toggle('sel', btn.dataset.mode === mode);
     btn.addEventListener('click', e => {
+      if (!btn.dataset.mode) return;
       e.stopPropagation();
       mode = btn.dataset.mode;
       localStorage.setItem('streetops.mode', mode);
