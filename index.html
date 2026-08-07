@@ -236,6 +236,16 @@
   /* ---------- rotate prompt (phones held upright) ----------
      A first-person driving game needs the road ahead in view; portrait
      leaves no room for it or the controls, so we ask for landscape. */
+  /* Long panels (the shop is 11 cars + 12 outfits + upgrades) scroll, which
+     pushed their only close control far below the fold — and it read
+     "(B)", a key phones do not have. This one never scrolls away. */
+  .xclose { position: fixed; top: max(10px, env(safe-area-inset-top)); right: 12px; z-index: 8;
+    width: 46px; height: 46px; border-radius: 50%; display: flex; align-items: center;
+    justify-content: center; font-size: 21px; font-weight: 700; color: #e8eef5;
+    background: rgba(10,16,26,.92); border: 1px solid rgba(255,255,255,.32);
+    cursor: pointer; pointer-events: auto; }
+  .xclose:hover { border-color: #7fd0ff; color: #7fd0ff; }
+
   #quitask { display: none; z-index: 120; }
   #quitbtns { margin-top: 22px; display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
   #quityes { border-color: #ff8a8a; color: #ff8a8a; }
@@ -663,10 +673,11 @@
 </div>
 
 <div id="shop" class="overlay" style="display:none">
+  <div class="xclose" id="x-shop">✕</div>
   <h1 style="font-size:32px">DRIVER SHOP</h1>
   <div id="wallet">WALLET $0</div>
   <div id="shopitems"></div>
-  <div style="margin-top:20px;font-size:15px;letter-spacing:3px;color:#7fd0ff;font-weight:700">🚗 GARAGE — BUY &amp; OWN CARS · CALL YOURS WITH <b style="color:#ffd479">G</b></div>
+  <div id="garagehint" style="margin-top:20px;font-size:15px;letter-spacing:3px;color:#7fd0ff;font-weight:700">🚗 GARAGE — BUY &amp; OWN CARS · CALL YOURS WITH <b style="color:#ffd479">G</b></div>
   <div id="garageitems"></div>
   <div style="margin-top:20px;font-size:15px;letter-spacing:3px;color:#ffd479;font-weight:700">👔 WARDROBE — DRESS YOUR DRIVER</div>
   <div id="wardrobeitems"></div>
@@ -674,6 +685,7 @@
 </div>
 
 <div id="spin" class="overlay" style="display:none">
+  <div class="xclose" id="x-spin">✕</div>
   <h1 style="font-size:30px">🎡 DAILY SPIN</h1>
   <div id="spinsum" style="margin-top:6px;color:#9fb2c4;font-size:14px;letter-spacing:2px">ONE FREE SPIN EVERY DAY — WIN UP TO $500</div>
   <canvas id="spinwheel" width="320" height="320" style="margin-top:16px"></canvas>
@@ -683,6 +695,7 @@
 </div>
 
 <div id="travel" class="overlay" style="display:none">
+  <div class="xclose" id="x-travel">✕</div>
   <h1 style="font-size:30px">✈️ CITY AIRPORT</h1>
   <div style="margin-top:6px;color:#9fb2c4;font-size:14px;letter-spacing:2px">ONE-WAY TICKET $100 · YOUR CASH IS BANKED BEFORE TAKEOFF</div>
   <div id="travelbtns"></div>
@@ -690,6 +703,7 @@
 </div>
 
 <div id="achs" class="overlay" style="display:none">
+  <div class="xclose" id="x-achs">✕</div>
   <h1 style="font-size:30px">🏅 CAREER GOALS</h1>
   <div id="achsum" style="margin-top:6px;color:#9fb2c4;font-size:14px;letter-spacing:2px"></div>
   <div id="achitems"></div>
@@ -697,6 +711,7 @@
 </div>
 
 <div id="clip" class="overlay" style="display:none">
+  <div class="xclose" id="x-clip">✕</div>
   <h1 style="font-size:26px">🎬 YOUR CLIP</h1>
   <video id="clipvideo" controls playsinline style="width:min(640px,92vw);margin-top:14px;border:1px solid #3a4c5e;border-radius:8px;background:#000"></video>
   <div style="display:flex;gap:12px;margin-top:18px;flex-wrap:wrap;justify-content:center">
@@ -707,12 +722,14 @@
 </div>
 
 <div id="board" class="overlay" style="display:none">
+  <div class="xclose" id="x-board">✕</div>
   <h1 style="font-size:30px">🏆 LEADERBOARD</h1>
   <div id="boarditems"></div>
   <div class="go" id="boardclose">CLOSE</div>
 </div>
 
 <div id="cafe" class="overlay" style="display:none">
+  <div class="xclose" id="x-cafe">✕</div>
   <h1 id="cafename" style="font-size:30px">CAFE</h1>
   <div id="cafewallet" style="margin-top:8px;font-size:20px;font-weight:800;color:#7dff8a;letter-spacing:2px">$0</div>
   <div id="cafeitems"></div>
@@ -815,6 +832,6 @@ setTimeout(function () {
   document.body.appendChild(d);
 }, 9000);
 </script>
-<script type="module" src="game.js?v=66"></script>
+<script type="module" src="game.js?v=67"></script>
 </body>
 </html>
