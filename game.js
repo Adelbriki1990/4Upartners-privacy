@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=50';
+import { CITIES } from './sponsors.js?v=51';
 
 // ---------------------------------------------------------------------------
 // Renderer / scene / camera
@@ -1023,6 +1023,16 @@ function makeFacadeCanvases(wall, hue, style) {
   return { mapCv, emiCv };
 }
 let FACADES = [];
+const FACADE_STYLES = {}; // per-style pools so districts can look different
+// Four distinct districts per city: glass financial towers NE, low warm
+// old town NW, mixed market SE, residential blocks with balconies SW.
+function districtOf(x, z) {
+  const strong = THEME.hMax > 26 ? 1 : 0.45; // flat desert cities vary less
+  if (x >= 0 && z >= 0) return { style: 'curtain', hMul: 1 + 0.85 * strong };
+  if (x < 0 && z >= 0) return { style: THEME.styles.adobe ? 'adobe' : 'brick', hMul: 1 - 0.45 * strong };
+  if (x >= 0 && z < 0) return { style: 'punched', hMul: 1 };
+  return { style: 'brick', hMul: 1 - 0.3 * strong };
+}
 
 const SHOP_NAMES = ['LE ROYAL CAFÉ', 'GRAND GALLERIA', 'CROWN PIZZA', 'VELVET BARBER', 'PLATINUM GYM', 'LUXE MOBILE', 'DIAMOND BISTRO', 'IVORY PHARMACY'];
 function makeStorefrontCanvas() {
@@ -1150,8 +1160,10 @@ function facadeMat(fac, spanW, spanH, ei) {
   EMI_MATS.push({ mat: m, base: ei });
   return m;
 }
-function towerSection(x, yBase, z, w, d, h, fac) {
-  fac = fac || FACADES[Math.floor(Math.random() * FACADES.length)];
+function towerSection(x, yBase, z, w, d, h, fac, style) {
+  const pool = style && FACADE_STYLES[style] && FACADE_STYLES[style].length && Math.random() < 0.75
+    ? FACADE_STYLES[style] : FACADES;
+  fac = fac || pool[Math.floor(Math.random() * pool.length)];
   const ei = 0.6 + Math.random() * 0.45;
   const mx = facadeMat(fac, d, h, ei); // x-facing walls span d metres
   const mz = facadeMat(fac, w, h, ei); // z-facing walls span w metres
@@ -1222,7 +1234,7 @@ function addRoofClutter(x, yTop, z, w, d) {
 
 // face = { ax: 'x'|'z', dir: -1|1 } — which wall fronts the street
 const shadowSpots = [];
-function addBuilding(x, z, w, d, h, face) {
+function addBuilding(x, z, w, d, h, face, style) {
   const SF_H = 4.2;
   const sfCv = STOREFRONTS[Math.floor(Math.random() * STOREFRONTS.length)];
   const sfM = (span) => {
@@ -1247,7 +1259,7 @@ function addBuilding(x, z, w, d, h, face) {
   let fac = null;
   for (let s = 0; s < sections; s++) {
     const sh = s === sections - 1 ? remaining : remaining * (0.55 + Math.random() * 0.15);
-    fac = towerSection(x, yBase, z, cw, cd, sh, fac);
+    fac = towerSection(x, yBase, z, cw, cd, sh, fac, style);
     yBase += sh; remaining -= sh;
     if (s < sections - 1) { cw *= 0.72 + Math.random() * 0.12; cd *= 0.72 + Math.random() * 0.12; }
   }
@@ -2245,6 +2257,7 @@ function makeCharacter(cfg, opts = {}) {
     color: new THREE.Color().setHSL(cfg.shirtHue, 0.5, 0.32 + (cfg.shirtHue % 0.3)), roughness: 0.85 });
   const pants = new THREE.MeshStandardMaterial({
     color: new THREE.Color().setHSL(cfg.pantsHue, 0.25, 0.16 + (cfg.pantsHue % 0.2)), roughness: 0.9 });
+  if (cfg.pantsColor !== undefined && cfg.pantsColor !== null) pants.color.set(cfg.pantsColor);
   const hairM = new THREE.MeshStandardMaterial({ color: cfg.hairColor, roughness: 0.95 });
   const mDarkC = new THREE.MeshStandardMaterial({ color: 0x181a1e, roughness: 0.8 });
 
@@ -2692,14 +2705,17 @@ function buildCity(city) {
   if (cloudGrp) cloudGrp.visible = NF < 0.6;
 
   FACADES = [];
-  for (let i = 0; i < 9; i++) {
+  for (const k in FACADE_STYLES) FACADE_STYLES[k] = [];
+  for (let i = 0; i < 12; i++) {
     const hue = THEME.windowHues[i % THEME.windowHues.length];
     const r = Math.random();
     const st = THEME.styles;
     const style = r < st.curtain ? 'curtain'
       : r < st.curtain + st.brick ? 'brick'
       : r < st.curtain + st.brick + (st.adobe || 0) ? 'adobe' : 'punched';
-    FACADES.push(makeFacadeCanvases(THEME.wall, hue, style));
+    const fac = makeFacadeCanvases(THEME.wall, hue, style);
+    FACADES.push(fac);
+    (FACADE_STYLES[style] = FACADE_STYLES[style] || []).push(fac);
   }
   STOREFRONTS = [0, 1, 2, 3, 4, 5].map(makeStorefrontCanvas);
 
@@ -2814,11 +2830,13 @@ function buildCity(city) {
         const cx = x0 + lotW * qx + lotW / 2 + (Math.random() - 0.5) * 2;
         const cz = z0 + lotD * qz + lotD / 2 + (Math.random() - 0.5) * 2;
         const centerBoost = 1 + Math.max(0, 1 - Math.hypot(cx, cz) / 240) * 0.7;
-        const h = (THEME.hMin + Math.random() * (THEME.hMax - THEME.hMin)) * centerBoost;
+        const dist = districtOf(cx, cz);
+        const h = Math.max(THEME.hMin * 0.8,
+          (THEME.hMin + Math.random() * (THEME.hMax - THEME.hMin)) * centerBoost * dist.hMul);
         const face = Math.random() < 0.5
           ? { ax: 'x', dir: qx === 0 ? -1 : 1 }
           : { ax: 'z', dir: qz === 0 ? -1 : 1 };
-        addBuilding(cx, cz, w, d, h, face);
+        addBuilding(cx, cz, w, d, h, face, dist.style);
       }
     }
 
@@ -4553,7 +4571,7 @@ function updateDriving(dt) {
   v.speed -= v.speed * 0.55 * dt;
   // real brakes on Space
   if (keys['Space']) v.speed -= Math.sign(v.speed) * Math.min(Math.abs(v.speed), 26 * dt);
-  v.speed = Math.max(st.maxR, Math.min(st.maxF * boost, v.speed));
+  v.speed = Math.max(st.maxR, Math.min(st.maxF * boost * (1 + 0.05 * upgLvl('engine')), v.speed));
   if (st.engine) {
     v.fuel = Math.max(0, v.fuel - (0.15 + Math.abs(v.speed) / st.maxF * 1.1) * dt * (accel ? 1 : 0.3));
     if (v.fuel < 20 && !v.fuelWarned) {
@@ -4829,6 +4847,8 @@ const prog = (() => {
 })();
 prog.upg = prog.upg || {};
 prog.garage = prog.garage || {};
+prog.wardrobe = prog.wardrobe || { street: true };
+prog.outfit = prog.outfit || 'street';
 prog.stats = prog.stats || {};
 prog.achs = prog.achs || {};
 prog.stats.cities = prog.stats.cities || {};
@@ -5008,6 +5028,16 @@ const UPGRADES = [
   { id: 'bag',  icon: '🎒', name: 'BIGGER BAG',    desc: '+1 Red Bull capacity',         base: 150, max: 3 },
   { id: 'vest', icon: '🦺', name: 'COURIER VEST',  desc: '-6% damage taken per level',   base: 140, max: 5 },
   { id: 'weap', icon: '🔧', name: 'WEAPON TUNING', desc: '+8% weapon damage per level',  base: 160, max: 5 },
+  { id: 'engine', icon: '🏎', name: 'ENGINE TUNING', desc: '+5% vehicle top speed per level', base: 250, max: 5 },
+  { id: 'rep',  icon: '⭐', name: 'STREET REPUTATION', desc: '+7% delivery pay per level', base: 220, max: 5 },
+];
+// wardrobe — dress your driver, seen in the menu preview and on the scooter
+const OUTFITS = [
+  { id: 'street', name: 'STREET KIT',    price: 0,    shirt: null,     pants: null },
+  { id: 'sport',  name: 'SPORT SET',     price: 300,  shirt: 0x35a061, pants: 0xf0f2f4 },
+  { id: 'biz',    name: 'BUSINESS SUIT', price: 800,  shirt: 0x1c2a48, pants: 0x10141c },
+  { id: 'racer',  name: 'NEON RACER',    price: 1500, shirt: 0x11c8e8, pants: 0x10141c },
+  { id: 'royal',  name: 'ROYAL GOLD',    price: 3000, shirt: 0xd8b21e, pants: 0x2a1c08 },
 ];
 function upgLvl(id) { return prog.upg[id] || 0; }
 function upgCost(u) { return u.base * (upgLvl(u.id) + 1); }
@@ -5043,6 +5073,40 @@ function renderShop() {
     box.appendChild(row);
   }
   renderGarage();
+  renderWardrobe();
+}
+function renderWardrobe() {
+  const box = document.getElementById('wardrobeitems');
+  box.innerHTML = '';
+  for (const o of OUTFITS) {
+    const owned = !!prog.wardrobe[o.id];
+    const worn = prog.outfit === o.id;
+    const row = document.createElement('div');
+    row.className = 'shopitem' + (owned ? ' done' : '');
+    row.innerHTML = `<div class="ic">👔</div><div class="info">` +
+      `<div class="nm">${o.name}${worn ? ' · <span style="color:#7dff8a">WEARING</span>' : ''}</div>` +
+      `<div class="ds">${o.price ? 'Fresh look for the streets' : 'The classic courier fit'}</div></div>`;
+    const btn = document.createElement('button');
+    btn.className = 'buybtn';
+    btn.textContent = worn ? 'WORN' : owned ? 'WEAR' : `BUY $${o.price}`;
+    btn.disabled = worn || (!owned && prog.bank < o.price);
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      if (!owned) {
+        if (prog.bank < o.price) return;
+        prog.bank -= o.price;
+        prog.wardrobe[o.id] = true;
+        addFeed(`👔 New outfit: ${o.name}`);
+      }
+      prog.outfit = o.id;
+      saveProg();
+      playClick(2000, 0.25);
+      refreshPreview();
+      renderShop();
+    });
+    row.appendChild(btn);
+    box.appendChild(row);
+  }
 }
 function toggleShop() {
   if (!started || player.dead || cine.active) return;
@@ -7117,7 +7181,8 @@ function newOrder() {
   scene.add(order.customer.group);
   order.reward = Math.round((12 + Math.hypot(to.x - from.x, to.z - from.z) * 0.15)
     * (1 + prog.level * 0.02)
-    * (1 + Math.min(game.deliveries * 0.04, 1))); // rush hour: the shift pays more the longer you ride
+    * (1 + Math.min(game.deliveries * 0.04, 1))
+    * (1 + 0.07 * upgLvl('rep'))); // street rep: famous drivers charge more
   // every third order is a VIP rush: 2.5x pay, deadline after pickup
   order.vip = game.deliveries > 0 && game.deliveries % 3 === 2;
   order.timeLeft = 0;
@@ -7699,6 +7764,8 @@ function lookFromProfile() {
 function driverLook() {
   const l = lookFromProfile();
   l.uniform = new THREE.Color(selectedCity().sponsors[0].colorA).getHex();
+  const o = OUTFITS.find(o => o.id === prog.outfit);
+  if (o && o.shirt !== null) { l.uniform = o.shirt; l.pantsColor = o.pants; }
   return l;
 }
 // seated, headless copy of the player's avatar shown on scooters/bicycles
