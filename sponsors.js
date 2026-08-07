@@ -91,3 +91,21 @@ export const CITIES = [
     ],
   },
 ];
+
+// Clean-brand mode for portal builds: no real trademarks anywhere.
+const CLEAN_SP = (typeof window !== 'undefined') &&
+  (!!window.CLEAN_BUILD || new URLSearchParams(window.location.search).has('clean'));
+if (CLEAN_SP) {
+  const SWAP = {
+    'RED BULL':  { name: 'BOLT ENERGY',   tagline: 'Charge your run' },
+    'SNOONU':    { name: 'ZOOM EATS',     tagline: 'Delivered in minutes' },
+    'BMW':       { name: 'AURORA MOTORS', tagline: 'Drive the future' },
+    'COCA-COLA': { name: 'COSMO COLA',    tagline: 'Taste the sparkle' },
+  };
+  for (const city of CITIES)
+    for (const sp of city.sponsors) {
+      const sub = SWAP[sp.name];
+      if (sub) { sp.name = sub.name; sp.tagline = sub.tagline; }
+      sp.logo = null; // text billboards only — no uploaded logo art
+    }
+}

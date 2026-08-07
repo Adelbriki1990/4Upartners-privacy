@@ -9,7 +9,30 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=51';
+import { CITIES } from './sponsors.js?v=52';
+
+// Clean-brand mode: the portal build (CrazyGames etc.) must carry no real
+// trademarks. window.CLEAN_BUILD is injected by the build script; ?clean=1
+// previews the same thing on the normal deployment.
+const CLEAN = !!window.CLEAN_BUILD || new URLSearchParams(location.search).has('clean');
+const EN_BRAND = CLEAN ? 'Bolt Energy' : 'Red Bull';
+const EN_BRAND_U = CLEAN ? 'BOLT ENERGY' : 'RED BULL';
+// CrazyGames SDK hooks (portal build only) — all guarded, never fatal
+async function cgInit() {
+  if (!CLEAN) return;
+  for (let i = 0; i < 20 && !(window.CrazyGames && window.CrazyGames.SDK); i++)
+    await new Promise(r => setTimeout(r, 500));
+  try { await window.CrazyGames.SDK.init(); } catch (e) { /* offline preview */ }
+}
+cgInit();
+function cgGame(ev) {
+  try {
+    if (CLEAN && window.CrazyGames && window.CrazyGames.SDK && window.CrazyGames.SDK.game) {
+      if (ev === 'start') window.CrazyGames.SDK.game.gameplayStart();
+      else window.CrazyGames.SDK.game.gameplayStop();
+    }
+  } catch (e) { /* sdk optional */ }
+}
 
 // ---------------------------------------------------------------------------
 // Renderer / scene / camera
@@ -1611,7 +1634,7 @@ function buildBicycleMesh() {
 // ---------------------------------------------------------------------------
 // Real 3D assets (models/*.glb): hero cars + real characters
 // ---------------------------------------------------------------------------
-VEH_STATS.merc = { label: 'E50 AMG', maxF: 40, maxR: -9, accel: 18, turn: 1.55, camH: 1.3,
+VEH_STATS.merc = { label: CLEAN ? 'E50 EXECUTIVE' : 'E50 AMG', maxF: 40, maxR: -9, accel: 18, turn: 1.55, camH: 1.3,
   size: [2.0, 4.8], engine: true, freq: 58, radius: 1.5, kill: 2.4 };
 VEH_STATS.police = { label: 'POLICE INTERCEPTOR', maxF: 52, maxR: -10, accel: 28, turn: 1.8, camH: 1.05,
   size: [2.0, 4.6], engine: true, freq: 92, radius: 1.4, kill: 2.2 };
@@ -2040,7 +2063,7 @@ function spawnMercFleet() {
       converted++;
     }
   }
-  addFeed('🏎 E50 AMG fleet spotted around the city');
+  addFeed(CLEAN ? '🏎 E50 EXECUTIVE fleet spotted around the city' : '🏎 E50 AMG fleet spotted around the city');
 }
 // Hero cars — every real car model uploaded to models/ becomes a drivable
 // showpiece parked around the city (plus feed announcements)
@@ -4048,7 +4071,7 @@ menuEl.addEventListener('click', () => {
     locked = true;
     menuEl.style.display = 'none';
     pausedEl.style.display = 'none';
-    if (!started) { started = true; startCinematic(); }
+    if (!started) { started = true; cgGame('start'); startCinematic(); }
     else if (!cine.active) hudEl.style.display = 'block';
     if (AC && AC.state === 'suspended') AC.resume();
   } else {
@@ -4066,7 +4089,7 @@ document.addEventListener('pointerlockchange', () => {
   if (locked) {
     menuEl.style.display = 'none';
     pausedEl.style.display = 'none';
-    if (!started) { started = true; startCinematic(); }
+    if (!started) { started = true; cgGame('start'); startCinematic(); }
     else if (!cine.active) hudEl.style.display = 'block';
     if (AC && AC.state === 'suspended') AC.resume();
   } else if (started && !player.dead && !shopOpen && !cafeOpen
@@ -4807,6 +4830,7 @@ function hurtPlayer(dmg) {
 }
 function playerDie() {
   player.dead = true;
+  cgGame('stop');
   firing = false;
   slowmo = 1.6;
   shake = 0.9;
@@ -5025,7 +5049,7 @@ function renderAchs() {
 const UPGRADES = [
   { id: 'fit',  icon: '🏋', name: 'GYM TRAINING',  desc: '+8% sprint speed per level',   base: 120, max: 5 },
   { id: 'meal', icon: '🍔', name: 'GYM MEAL PLAN', desc: '+10 max health per level',     base: 100, max: 5 },
-  { id: 'bag',  icon: '🎒', name: 'BIGGER BAG',    desc: '+1 Red Bull capacity',         base: 150, max: 3 },
+  { id: 'bag',  icon: '🎒', name: 'BIGGER BAG',    desc: '+1 energy can capacity',         base: 150, max: 3 },
   { id: 'vest', icon: '🦺', name: 'COURIER VEST',  desc: '-6% damage taken per level',   base: 140, max: 5 },
   { id: 'weap', icon: '🔧', name: 'WEAPON TUNING', desc: '+8% weapon damage per level',  base: 160, max: 5 },
   { id: 'engine', icon: '🏎', name: 'ENGINE TUNING', desc: '+5% vehicle top speed per level', base: 250, max: 5 },
@@ -5601,7 +5625,7 @@ function runSpin() {
       if (p.cash) { prog.bank += p.cash; saveProg(); }
       if (p.cans) energy.cans = Math.min(energyCap(), energy.cans + p.cans);
       document.getElementById('spinsum').textContent =
-        p.cash ? `🎉 YOU WON $${p.cash} — ADDED TO YOUR WALLET!` : `🎉 YOU WON ${p.cans} RED BULLS!`;
+        p.cash ? `🎉 YOU WON $${p.cash} — ADDED TO YOUR WALLET!` : `🎉 YOU WON ${p.cans} ${EN_BRAND_U}S!`;
       playCheer();
       refreshSpinBtn();
     }
@@ -5643,8 +5667,8 @@ const TUT_STEPS = [
   () => 'Follow the <b>yellow order marker</b> — pick up the order at the restaurant',
   () => 'Got it! Now <b>deliver the order</b> to the waiting customer — follow the marker',
   () => `🎉 <b>FIRST DELIVERY COMPLETE!</b> +$40 bonus · ${isTouch
-    ? 'Tap 🚗 near a vehicle to drive · ⚡ Red Bull · 🛒 upgrades'
-    : '<b>E</b> drive · <b>Q</b> Red Bull · <b>F</b> eat · <b>B</b> shop'}`,
+    ? 'Tap 🚗 near a vehicle to drive · ⚡ energy cans · 🛒 upgrades'
+    : '<b>E</b> drive · <b>Q</b> energy can · <b>F</b> eat · <b>B</b> shop'}`,
 ];
 function updateTutorial(dt) {
   if (tut.step >= 4) return;
@@ -5717,7 +5741,7 @@ const MISSION_DEFS = [
   { id: 'earn150', txt: 'Earn $150 in fares', n: 150, ev: 'cash', reward: 50 },
   { id: 'rob6', txt: 'Stop 6 robbers', n: 6, ev: 'kill', reward: 55 },
   { id: 'dist2k', txt: 'Travel 2,000 m', n: 2000, ev: 'dist', reward: 40 },
-  { id: 'boost3', txt: 'Drink 3 Red Bulls', n: 3, ev: 'drink', reward: 35 },
+  { id: 'boost3', txt: 'Drink 3 ' + EN_BRAND + 's', n: 3, ev: 'drink', reward: 35 },
   { id: 'vip2', txt: 'Complete 2 VIP orders', n: 2, ev: 'vip', reward: 70 },
 ];
 const missions = (() => {
@@ -6042,7 +6066,7 @@ function questText() {
   switch (prog.quest) {
     case 0: return '📜 A hooded stranger waits near the park…';
     case 1: return '📜 CH.1 — Deliver the mystery package to the fountain';
-    case 2: return '📜 CH.2 — The DJ at the club wants 2 Red Bulls';
+    case 2: return '📜 CH.2 — The DJ at the club wants 2 energy cans';
     case 3: return '📜 CH.3 — Beat the rival: WIN a street race';
     case 4: return `📜 CH.4 — Find the 5 GOLDEN BOXES (${quest.got}/5)`;
     case 5: return '📜 CH.5 — Return to the stranger at the park';
@@ -6152,7 +6176,7 @@ function djInteract() {
       '📜 Chapter 3 — win a street race']);
     questAdvance(3);
   } else {
-    questSay(['🎧 DJ: “Bring me 2 RED BULLS and we talk.”',
+    questSay(['🎧 DJ: “Bring me 2 ' + EN_BRAND_U + 'S and we talk.”',
       '⚡ Grab cans on the street or buy at a café']);
   }
 }
@@ -6969,7 +6993,20 @@ const energy = { cans: 1, boostT: 0, drinkT: 0 };
 const BOOST_DUR = 8;
 const canPickups = [];
 // real Red Bull label from ads/ (uploaded logo), graceful if missing
-const redbullTex = new THREE.TextureLoader().load('ads/redbull.png',
+function cleanCanTex() {
+  const cv = document.createElement('canvas');
+  cv.width = 64; cv.height = 128;
+  const g = cv.getContext('2d');
+  const grad = g.createLinearGradient(0, 0, 64, 0);
+  grad.addColorStop(0, '#1a3a8a'); grad.addColorStop(0.5, '#3a6ad8'); grad.addColorStop(1, '#122a66');
+  g.fillStyle = grad; g.fillRect(0, 0, 64, 128);
+  g.fillStyle = '#ffd23f'; g.font = '900 64px Arial'; g.textAlign = 'center';
+  g.fillText('⚡', 32, 84);
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+const redbullTex = CLEAN ? cleanCanTex() : new THREE.TextureLoader().load('ads/redbull.png',
   t => { t.colorSpace = THREE.SRGBColorSpace; });
 // optional real bottle photo — upload ads/redbull_bottle.png and pickups
 // switch from the 3D can to the actual bottle image
@@ -7033,7 +7070,7 @@ function drinkEnergy() {
   energy.boostT = BOOST_DUR;
   energy.drinkT = 0.9;
   playGulp();
-  addFeed('⚡ RED BULL — speed boost!');
+  addFeed('⚡ ' + EN_BRAND_U + ' — speed boost!');
   progressMission('drink', 1);
 }
 function playGulp() {
@@ -7061,7 +7098,7 @@ function updateEnergy(dt) {
         Math.hypot(c.mesh.position.x - player.pos.x, c.mesh.position.z - player.pos.z) < 1.8) {
       energy.cans++;
       playClick(2100, 0.25);
-      addFeed('Red Bull picked up — press Q to drink');
+      addFeed(EN_BRAND + ' picked up — press Q to drink');
       scene.remove(c.mesh);
       canPickups.splice(canPickups.indexOf(c), 1);
       setTimeout(spawnCanPickup, 100);
