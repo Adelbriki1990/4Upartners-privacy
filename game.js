@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=49';
+import { CITIES } from './sponsors.js?v=50';
 
 // ---------------------------------------------------------------------------
 // Renderer / scene / camera
@@ -1024,7 +1024,7 @@ function makeFacadeCanvases(wall, hue, style) {
 }
 let FACADES = [];
 
-const SHOP_NAMES = ['CAFE NOIR', 'CITY MARKET', '24H PIZZA', 'THE BARBER', 'GYM ONE', 'PHONE HUB', 'LUCKY DINER', 'NIGHT PHARMACY'];
+const SHOP_NAMES = ['LE ROYAL CAFÉ', 'GRAND GALLERIA', 'CROWN PIZZA', 'VELVET BARBER', 'PLATINUM GYM', 'LUXE MOBILE', 'DIAMOND BISTRO', 'IVORY PHARMACY'];
 function makeStorefrontCanvas() {
   const W = 1024, H = 128;
   const cv = document.createElement('canvas');
@@ -1991,11 +1991,30 @@ function spawnMercFleet() {
     wrap.userData.wheelNodes = collectWheelNodes(m);
     registerVehicle(wrap, x, z, ry, 'merc');
   }
-  // and put a few E50s into moving traffic
+  // parked procedural sedans get upgraded to the real car too — the
+  // boxy ones read cheap next to it
+  let parked = 0;
+  for (const v of vehicles) {
+    if (parked >= 6) break;
+    if ((v.type === 'car' || v.type === 'luxury') && Math.random() < 0.5) {
+      const g3 = new THREE.Group();
+      const m3 = SkeletonUtils.clone(mercTemplate);
+      m3.rotation.y = MERC_ORIENT;
+      g3.add(m3);
+      g3.userData.wheelNodes = collectWheelNodes(m3);
+      g3.position.copy(v.group.position);
+      g3.rotation.y = v.yaw;
+      scene.remove(v.group);
+      v.group = g3;
+      scene.add(g3);
+      parked++;
+    }
+  }
+  // and put more E50s into moving traffic
   let converted = 0;
   for (const c of traffic) {
-    if (converted >= 3) break;
-    if (Math.random() < 0.45) {
+    if (converted >= 8) break;
+    if (Math.random() < 0.6) {
       const g2 = new THREE.Group();
       const m2 = SkeletonUtils.clone(mercTemplate);
       m2.rotation.y = MERC_ORIENT;
@@ -6657,7 +6676,7 @@ function buildVenues() {
   // --- CAFÉ TERRACE (west Central Ave) ---
   {
     const x = -11.5, z = 15;
-    marquee('CAFE NOIR', '#ffd479', x + 0.3, z, Math.PI / 2, 6);
+    marquee('LE ROYAL CAFÉ', '#ffd479', x + 0.3, z, Math.PI / 2, 6);
     for (let i = 0; i < 3; i++) {
       const tx = x + 2.2, tz = z - 4 + i * 4;
       const top = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.05, 12),
