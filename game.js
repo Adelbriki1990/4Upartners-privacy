@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from './lib/jsm/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader } from './lib/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from './lib/jsm/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from './lib/jsm/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=52';
+import { CITIES } from './sponsors.js?v=53';
 
 // Clean-brand mode: the portal build (CrazyGames etc.) must carry no real
 // trademarks. window.CLEAN_BUILD is injected by the build script; ?clean=1
@@ -38,7 +38,36 @@ function cgGame(ev) {
 // Renderer / scene / camera
 // ---------------------------------------------------------------------------
 const canvas = document.getElementById('c');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+// Some iPhones refuse the first WebGL context (low memory, Lockdown Mode,
+// old iOS). Try progressively simpler settings, and if 3D is blocked
+// completely, explain exactly how to unblock it instead of dying silently.
+function makeRenderer() {
+  for (const opts of [
+    { antialias: true },
+    { antialias: false },
+    { antialias: false, powerPreference: 'low-power' },
+  ]) {
+    try { return new THREE.WebGLRenderer({ canvas, ...opts }); }
+    catch (e) { /* try simpler settings */ }
+  }
+  let gl1 = false;
+  try { gl1 = !!document.createElement('canvas').getContext('webgl'); } catch (e) {}
+  const d = document.createElement('div');
+  d.style.cssText = 'position:fixed;inset:0;z-index:200;display:flex;flex-direction:column;' +
+    'align-items:center;justify-content:center;background:#0a0f18;color:#e8eef5;' +
+    'font:600 16px Arial;text-align:center;padding:28px;gap:14px;line-height:1.5';
+  d.innerHTML = gl1
+    ? '<div style="font-size:44px">📱</div>' +
+      '<div>This game needs <b>iOS 15 or newer</b> for its 3D graphics (WebGL2).</div>' +
+      '<div style="color:#9fb2c4;font-size:13px">iPhone Settings → General → Software Update</div>'
+    : '<div style="font-size:44px">🔒</div>' +
+      '<div><b>3D graphics are blocked on this device.</b></div>' +
+      '<div style="color:#cfd8e2;font-size:14px">If you use <b>Lockdown Mode</b>: tap the <b>ᴀA</b> button in the Safari address bar → <b>Website Settings</b> → turn OFF Lockdown Mode for this site → reload.</div>' +
+      '<div style="color:#9fb2c4;font-size:13px">Otherwise update iOS, or try another browser/device.</div>';
+  document.body.appendChild(d);
+  throw new Error('WebGL unavailable — help screen shown');
+}
+const renderer = makeRenderer();
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
@@ -48,7 +77,7 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.25;
 
 const scene = new THREE.Scene();
-const BASE_FOV = 75, ADS_FOV = 52;
+const BASE_FOV = 75, ADS_FOV = 42; // aim = real 1.8x zoom
 const camera = new THREE.PerspectiveCamera(BASE_FOV, window.innerWidth / window.innerHeight, 0.08, 500);
 
 // post-processing: bloom makes the neon actually glow (MSAA target = clean edges)
@@ -3939,7 +3968,7 @@ document.addEventListener('keydown', e => {
   if (e.code === 'Digit2') switchWeapon(1);
   if (e.code === 'Digit3') switchWeapon(2);
   if (e.code === 'KeyQ' && locked) drinkEnergy();
-  if (e.code === 'KeyC' && driving) camMode = camMode === 'chase' ? 'hood' : 'chase';
+  if (e.code === 'KeyC' && driving) cycleCam();
   if (e.code === 'KeyB' && (locked || shopOpen)) toggleShop();
   if (e.code === 'KeyF') {
     if (locked && actSpot && !cafeOpen && !nearRest) actSpot.cb();
@@ -3947,6 +3976,7 @@ document.addEventListener('keydown', e => {
   }
   if (e.code === 'KeyV' && locked) toggleRecord();
   if (e.code === 'KeyG' && locked) spawnRide();
+  if (e.code === 'KeyX' && locked) launchDrone();
   if (e.code === 'KeyM' && locked) {
     musicOn = !musicOn;
     addFeed(musicOn ? '♪ Music on' : '♪ Music off');
@@ -4053,6 +4083,8 @@ if (isTouch) {
   hold('btnShop', () => toggleShop(), null);
   hold('btnRec', () => toggleRecord(), null);
   hold('btnRide', () => spawnRide(), null);
+  hold('btnDrone', () => launchDrone(), null);
+  hold('btnCam', () => { if (driving) cycleCam(); }, null);
 }
 
 const menuEl = document.getElementById('menu');
@@ -4514,7 +4546,12 @@ function updateEnemy(en, dt) {
 // Driving
 // ---------------------------------------------------------------------------
 let driving = null;
-let camMode = 'chase'; // 'chase' | 'hood' while driving (C to toggle)
+const CAM_MODES = ['chase', 'far', 'hood', 'top'];
+let camMode = 'chase'; // C or the 📷 button cycles all four
+function cycleCam() {
+  camMode = CAM_MODES[(CAM_MODES.indexOf(camMode) + 1) % CAM_MODES.length];
+  showBanner('📷 ' + { chase: 'CHASE CAM', far: 'FAR CAM', hood: 'DRIVER CAM', top: 'TOP CAM' }[camMode]);
+}
 const drivehintEl = document.getElementById('drivehint');
 const speedoEl = document.getElementById('speedo');
 
@@ -4770,7 +4807,13 @@ function updateDriving(dt) {
     }
 
   player.pos.set(v.group.position.x, 0, v.group.position.z);
-  if (camMode === 'hood') {
+  if (camMode === 'top') {
+    // bird's-eye: straight down, road ahead pointing up the screen
+    camera.up.set(Math.sin(player.yaw), 0, Math.cos(player.yaw));
+    camera.position.set(v.group.position.x, 34, v.group.position.z);
+    camera.lookAt(v.group.position.x, 0, v.group.position.z);
+  } else if (camMode === 'hood') {
+    camera.up.set(0, 1, 0);
     camera.position.set(
       v.group.position.x + fwd.x * 0.1,
       st.camH,
@@ -4781,12 +4824,15 @@ function updateDriving(dt) {
       player.yaw,
       (Math.random() - 0.5) * shake * 0.05);
   } else {
+    camera.up.set(0, 1, 0);
     // third-person chase camera: behind the car, mouse orbits, walls pull it in
-    const dist = 6.2 + st.size[1] * 0.4;
+    const far = camMode === 'far';
+    const dist = (6.2 + st.size[1] * 0.4) * (far ? 1.9 : 1);
     const orbit = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw));
     const from = v.group.position.clone().setY(1.5);
     const want = from.clone().addScaledVector(orbit, -dist);
-    want.y = Math.min(6, Math.max(1.6, 2.8 - player.pitch * 4));
+    want.y = far ? Math.min(11, Math.max(4, 6.5 - player.pitch * 4))
+      : Math.min(6, Math.max(1.6, 2.8 - player.pitch * 4));
     const toCam = want.clone().sub(from);
     const L = toCam.length();
     toCam.normalize();
@@ -5922,6 +5968,76 @@ function buildCarWash() {
   scene.add(g);
   marquee('SPARKLE WASH', '#41c9ff', x, z - 4.4, 0, 7, 5.4);
   WASH_STATIONS.push({ x, z });
+}
+
+// --- delivery drone: send the package by air over the traffic (45% fee) ---
+const drone = { active: false, obj: null, rotors: [], tx: 0, tz: 0 };
+function buildDroneMesh() {
+  const g = new THREE.Group();
+  const mBody = new THREE.MeshStandardMaterial({ color: 0x22262c, roughness: 0.4, metalness: 0.6 });
+  const mArm = new THREE.MeshStandardMaterial({ color: 0x3a4048, roughness: 0.5, metalness: 0.5 });
+  const mRotor = new THREE.MeshStandardMaterial({ color: 0x9fb2c4, roughness: 0.3,
+    transparent: true, opacity: 0.55 });
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.2, 0.55), mBody);
+  g.add(body);
+  drone.rotors = [];
+  for (const [dx, dz] of [[-0.45, -0.45], [0.45, -0.45], [-0.45, 0.45], [0.45, 0.45]]) {
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.05, 0.08), mArm);
+    arm.position.set(dx * 0.55, 0.05, dz * 0.55);
+    arm.rotation.y = Math.atan2(dz, dx);
+    g.add(arm);
+    const rotor = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.02, 0.07), mRotor);
+    rotor.position.set(dx, 0.14, dz);
+    g.add(rotor);
+    drone.rotors.push(rotor);
+  }
+  const box = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.28, 0.4),
+    new THREE.MeshStandardMaterial({ color: 0xd8352a, roughness: 0.7 }));
+  box.position.y = -0.3;
+  g.add(box);
+  const led = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 6),
+    new THREE.MeshBasicMaterial({ color: 0x35e06a }));
+  led.position.y = 0.14;
+  g.add(led);
+  return g;
+}
+function launchDrone() {
+  if (drone.active) return;
+  if (!(order.active && order.stage === 'dropoff')) {
+    addFeed('🚁 The drone can only carry a picked-up order');
+    playClick(320, 0.15);
+    return;
+  }
+  drone.active = true;
+  drone.tx = order.tx; drone.tz = order.tz;
+  order.reward = Math.round(order.reward * 0.55); // the drone takes its cut
+  order.droneDone = false;
+  drone.obj = buildDroneMesh();
+  drone.obj.position.set(player.pos.x, 2.2, player.pos.z);
+  scene.add(drone.obj);
+  showBanner('🚁 DRONE LAUNCHED — flying over the traffic (45% fee)');
+  say('Drone launched. Package en route.');
+  addFeed('🚁 Drone took the package — it skips every traffic jam');
+  playClick(1500, 0.2);
+}
+function updateDrone(dt) {
+  if (!drone.active || !drone.obj) return;
+  for (const r of drone.rotors) r.rotation.y += dt * 40;
+  const p = drone.obj.position;
+  const dx = drone.tx - p.x, dz = drone.tz - p.z;
+  const d = Math.hypot(dx, dz);
+  const cruise = d > 14 ? 26 : 3.5; // climb high mid-route, descend at the end
+  p.y += (cruise - p.y) * Math.min(1, dt * 1.2);
+  const sp = 24 * dt;
+  if (d > 1) { p.x += (dx / d) * Math.min(sp, d); p.z += (dz / d) * Math.min(sp, d); }
+  drone.obj.rotation.y = Math.atan2(dx, dz);
+  drone.obj.rotation.x = d > 8 ? 0.18 : 0;
+  if (d < 2.5 && p.y < 5) {
+    order.droneDone = true; // updateDelivery completes and pays the reduced fare
+    scene.remove(drone.obj);
+    drone.obj = null;
+    drone.active = false;
+  }
 }
 
 // --- taxi side-hustle: pick up waving passengers while driving ---
@@ -7216,6 +7332,9 @@ function newOrder() {
   order.customer = makeCivilian();
   order.customer.group.position.set(to.x, 0, to.z);
   scene.add(order.customer.group);
+  order.assignT = game.time;
+  order.dist0 = Math.hypot(from.x - player.pos.x, from.z - player.pos.z)
+    + Math.hypot(to.x - from.x, to.z - from.z);
   order.reward = Math.round((12 + Math.hypot(to.x - from.x, to.z - from.z) * 0.15)
     * (1 + prog.level * 0.02)
     * (1 + Math.min(game.deliveries * 0.04, 1))
@@ -7227,6 +7346,7 @@ function newOrder() {
   // fragile orders: 1.8x pay, but a hard crash while carrying halves it
   order.fragile = !order.vip && Math.random() < 0.25;
   order.dropped = false;
+  order.droneDone = false;
   if (order.fragile) order.reward = Math.round(order.reward * 1.8);
   setBeacon(from.x, from.z, order.vip ? 0xffd23f : 0x41d8ff, '🍕');
   phoneNotify(order.vip ? '📳 VIP ORDER' : order.fragile ? '📳 FRAGILE ORDER' : '📳 NEW ORDER',
@@ -7288,7 +7408,7 @@ function updateDelivery(dt) {
       order.customer.arms[1].rotation.z = Math.sin(game.time * 6) * 0.4 - 0.2;
     }
   }
-  if (d < 4.5) {
+  if (d < 4.5 || (order.stage === 'dropoff' && order.droneDone)) {
     if (order.stage === 'pickup') {
       order.stage = 'dropoff';
       if (order.vip)
@@ -7317,7 +7437,13 @@ function updateDelivery(dt) {
       order.active = false;
       order.cooldown = 3;
       const mult2 = 1 + Math.min(game.streak * 0.1, 1);
-      const pay = Math.round(order.reward * mult2);
+      let pay = Math.round(order.reward * mult2);
+      // the faster the run, the fatter the pay: beat 8 m/s average for +30%
+      const elapsed = Math.max(1, game.time - (order.assignT || 0));
+      if (order.dist0 && order.dist0 / elapsed > 8) {
+        pay = Math.round(pay * 1.3);
+        setTimeout(() => showBanner('⚡ SPEED BONUS +30% — fast driver!'), 1400);
+      }
       game.money += pay;
       game.deliveries++;
       game.streak++;
@@ -8207,6 +8333,7 @@ function tick() {
   updateRecording(dt);
   updateRace(dt);
   updateTaxi(dt);
+  updateDrone(dt);
   updateFishing(dt);
   updateQuest(dt);
   updateInteractions();
@@ -8286,6 +8413,8 @@ window.__so = {
     return myRide ? [myRide.type, myRide.group.position.x, myRide.group.position.z] : null;
   },
   get race() { return { active: race.active, cp: race.cp, t: race.t }; },
+  get cam() { return camMode; },
+  navt() { const t = navTarget(); return t ? { x: t.x, z: t.z } : null; },
   get taxi() { return { state: taxi.state, px: taxi.px, pz: taxi.pz, tx: taxi.tx, tz: taxi.tz, reward: taxi.reward }; },
   hail() { taxi.cd = 0; },
   boss() {
