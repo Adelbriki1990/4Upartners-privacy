@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from './lib/jsm/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader } from './lib/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from './lib/jsm/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from './lib/jsm/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=65';
+import { CITIES } from './sponsors.js?v=66';
 
 // Clean-brand mode: the portal build (CrazyGames etc.) must carry no real
 // trademarks. window.CLEAN_BUILD is injected by the build script; ?clean=1
@@ -4233,7 +4233,29 @@ if (isTouch) {
   hold('btnRide', () => spawnRide(), null);
   hold('btnDrone', () => launchDrone(), null);
   hold('btnCam', () => { if (driving) cycleCam(); }, null);
+  hold('btnHome', () => askQuit(), null);
 }
+// Leaving mid-shift is a real decision, so it asks once rather than dumping
+// the player out on a mis-tap.
+function askQuit() {
+  if (!started || player.dead) return;
+  document.getElementById('quitask').style.display = 'flex';
+  document.getElementById('hud').style.display = 'none';
+  locked = false;
+  if (!isTouch) document.exitPointerLock();
+}
+document.getElementById('quitask').addEventListener('click', e => e.stopPropagation());
+document.getElementById('quitno').addEventListener('click', e => {
+  e.stopPropagation();
+  document.getElementById('quitask').style.display = 'none';
+  document.getElementById('hud').style.display = 'block';
+  if (isTouch) locked = true;
+  else canvas.requestPointerLock();
+});
+document.getElementById('quityes').addEventListener('click', e => {
+  e.stopPropagation();
+  location.reload();
+});
 
 const menuEl = document.getElementById('menu');
 const pausedEl = document.getElementById('paused');
@@ -4854,18 +4876,14 @@ function updateDriving(dt) {
       // crash: damage, sparks, crunch, shake
       v.health = Math.max(0, v.health - (impact - 5) * 3.2);
       playCrash(Math.min(1, impact / 30));
-      if (impact > 15) addHeat(1, 'Reckless crash');
+      if (impact > 11) addHeat(1, 'Reckless crash');
+      noteReckless(impact);
       if (prog.quest === 8 && order.active && impact > 8 && prog.q8clean) {
         prog.q8clean = 0;
         showBanner('📜 Crash! The clean-hands count resets…');
         refreshQuestbar();
       }
-      if (impact > 10 && order.active && order.stage === 'dropoff' && order.fragile && !order.dropped) {
-        order.dropped = true;
-        order.reward = Math.round(order.reward / 2);
-        showBanner('📦 Package damaged — payout halved!');
-        addFeed('📦 The fragile order got crushed in that crash');
-      }
+      damageOrder((impact - 5) * 2.4, 'crash');
       const nose = v.group.position.clone().addScaledVector(fwd, Math.sign(preSpeed) * st.size[1] / 2);
       nose.y = 0.7;
       spawnImpact(nose);
@@ -4912,7 +4930,9 @@ function updateDriving(dt) {
         c.v += Math.sign(c.alongX ? dx : dz) * 2.5;
         placeTrafficCar(c);
         v.speed *= -0.25;
-        if (impact > 10) addHeat(1, 'Crashed into traffic');
+        damageOrder((impact - 2) * 2.6, 'hit a car');
+        if (impact > 8) addHeat(1, 'Crashed into traffic');
+        noteReckless(impact);
         if (v.health <= 0 && !v.wrecked) {
           v.wrecked = true;
           engineStop();
@@ -5020,6 +5040,7 @@ function updateDriving(dt) {
 const vignetteEl = document.getElementById('vignette');
 function hurtPlayer(dmg) {
   if (player.dead || game.time < reviveSafeT) return;
+  damageOrder(dmg * 0.35, 'you got hit'); // robbers shooting at the bag ruin it too
   player.health -= dmg * (1 - 0.06 * upgLvl('vest'));
   player.lastHurt = game.time;
   shake = Math.min(shake + 0.45, 0.8);
@@ -5135,6 +5156,8 @@ function restartRun() {
   for (let i = enemies.length - 1; i >= 0; i--) { scene.remove(enemies[i].rig.group); enemies.splice(i, 1); }
   order.active = false;
   order.cooldown = 2;
+  reckless.hits.length = 0;
+  document.getElementById('ph-cond').style.display = 'none';
   cgGame('start');
   hudEl.style.display = 'block';
   if (isTouch) locked = true;
@@ -7755,6 +7778,8 @@ function newOrder() {
   order.fragile = !order.vip && Math.random() < 0.25;
   order.dropped = false;
   order.droneDone = false;
+  order.condition = 100;   // every knock while carrying eats into the payout
+  order.warned = 0;
   if (order.fragile) order.reward = Math.round(order.reward * 1.8);
   setBeacon(from.x, from.z, order.vip ? 0xffd23f : 0x41d8ff, '🍕');
   phoneNotify(order.vip ? '📳 VIP ORDER' : order.fragile ? '📳 FRAGILE ORDER' : '📳 NEW ORDER',
@@ -7765,6 +7790,52 @@ function newOrder() {
     : order.fragile ? `🥡 Fragile order from ${order.name} — no crashing!`
     : `Order from ${order.name}`);
   playClick(1700, 0.2);
+}
+// The order arrives at the customer in whatever shape you drove it there in.
+// Crashes, gunfire and hard knocks spoil it; the payout follows the condition,
+// and a ruined order costs you its value instead of paying it.
+const ORDER_RUINED = 20; // at or below this the customer refuses delivery
+// A patrol car ignores one bump. Three real crashes inside half a minute is
+// a driver they pull over.
+const reckless = { hits: [], };
+function noteReckless(impact) {
+  if (impact < 5) return;
+  reckless.hits.push(game.time);
+  while (reckless.hits.length && game.time - reckless.hits[0] > 30) reckless.hits.shift();
+  if (reckless.hits.length >= 3) {
+    reckless.hits.length = 0;
+    addHeat(1, 'Dangerous driving');
+    say('Traffic police are watching you.');
+  }
+}
+function damageOrder(amount, why) {
+  if (!order.active || order.stage !== 'dropoff' || order.droneDone) return;
+  if (order.condition === undefined) order.condition = 100;
+  const before = order.condition;
+  order.condition = Math.max(0, order.condition - amount * (order.fragile ? 2 : 1));
+  if (order.condition === before) return;
+  // one warning per threshold crossed, not one per bump
+  for (const [mark, msg] of [[70, '📦 The order took a knock'],
+    [45, '📦 The order is getting wrecked — drive carefully!'],
+    [ORDER_RUINED, '📦 The order is ruined — you will owe the customer!']]) {
+    if (before > mark && order.condition <= mark && order.warned < mark) {
+      order.warned = mark;
+      addFeed(`${msg}${why ? ' — ' + why : ''}`);
+      showBanner(order.condition <= ORDER_RUINED ? '📦 ORDER RUINED' : '📦 ORDER DAMAGED');
+      playClick(300, 0.2);
+      break;
+    }
+  }
+}
+function refreshCondition() {
+  const el = document.getElementById('ph-cond');
+  if (!order.active || order.stage !== 'dropoff') { el.style.display = 'none'; return; }
+  const c = Math.round(order.condition === undefined ? 100 : order.condition);
+  el.style.display = 'block';
+  el.classList.toggle('warn', c <= 60 && c > ORDER_RUINED);
+  el.classList.toggle('bad', c <= ORDER_RUINED);
+  document.getElementById('ph-condv').textContent = c + '%';
+  document.getElementById('ph-condfill').style.width = c + '%';
 }
 let earlyAmbush = false;
 function updateDelivery(dt) {
@@ -7789,20 +7860,37 @@ function updateDelivery(dt) {
   orderTaskEl.textContent = (order.vip ? '⭐ VIP — ' : order.fragile ? '🥡 FRAGILE — ' : '') + (order.stage === 'pickup'
     ? `Pick up: ${order.name} — ${locationName(order.fx, order.fz)}`
     : `Deliver to customer — ${locationName(order.tx, order.tz)}`);
-  if (order.vip && order.stage === 'dropoff' && order.timeLeft > 0) {
+  // every order is on the clock now, not just the VIP ones
+  if (order.stage === 'dropoff' && order.timeLeft > 0) {
     order.timeLeft -= dt;
     if (order.timeLeft <= 0) {
-      order.vip = false;
-      order.reward = Math.round(order.reward / 2.5);
-      addFeed('⏱ VIP deadline missed — normal pay');
-      setBeacon(order.tx, order.tz, 0x7dff8a, '📦');
+      order.late = true;
+      if (order.vip) {
+        order.vip = false;
+        order.reward = Math.round(order.reward / 2.5);
+        addFeed('⏱ VIP deadline missed — normal pay');
+        setBeacon(order.tx, order.tz, 0x7dff8a, '📦');
+      } else {
+        addFeed('⏱ You are late — the customer pays 40% less');
+        showBanner('⏱ LATE DELIVERY');
+      }
+      playClick(300, 0.25);
+    } else if (order.timeLeft < 8 && !order.hurried) {
+      order.hurried = true;
+      say('Hurry. The customer is waiting.');
+      addFeed('⏱ Almost out of time — hurry!');
     }
   }
   const mult = 1 + Math.min(game.streak * 0.1, 1);
-  orderDistEl.textContent = Math.round(d) + ' m' +
-    (order.vip && order.stage === 'dropoff' ? ` · ⏱ ${Math.max(0, Math.ceil(order.timeLeft))}s` : '');
-  orderPayEl.textContent = `Payout: $${Math.round(order.reward * mult)}` +
-    (game.streak > 0 ? ` (streak ×${mult.toFixed(1)})` : '');
+  orderDistEl.textContent = Math.round(d) + ' m' + (order.stage === 'dropoff'
+    ? (order.late ? ' · ⏱ LATE' : ` · ⏱ ${Math.max(0, Math.ceil(order.timeLeft))}s`) : '');
+  const condNow = order.condition === undefined ? 100 : order.condition;
+  const gross = Math.round(order.reward * mult);
+  orderPayEl.textContent = order.stage === 'dropoff' && condNow < 100
+    ? (condNow <= ORDER_RUINED ? `Payout: −$${order.reward} (RUINED)`
+      : `Payout: $${Math.round(gross * condNow / 100)} (${Math.round(condNow)}% condition)`)
+    : `Payout: $${gross}` + (game.streak > 0 ? ` (streak ×${mult.toFixed(1)})` : '');
+  refreshCondition();
   if (beacon) {
     beacon.ring.rotation.z += dt * 2;
     beacon.cyl.material.opacity = 0.16 + Math.sin(game.time * 3) * 0.06;
@@ -7819,8 +7907,14 @@ function updateDelivery(dt) {
   if (d < 4.5 || (order.stage === 'dropoff' && order.droneDone)) {
     if (order.stage === 'pickup') {
       order.stage = 'dropoff';
-      if (order.vip)
-        order.timeLeft = 14 + Math.hypot(order.tx - player.pos.x, order.tz - player.pos.z) * 0.55;
+      {
+        const legs = Math.hypot(order.tx - player.pos.x, order.tz - player.pos.z);
+        // VIP gets a tight window; a normal order gets a fair one you can
+        // still miss by wandering, crashing or shopping mid-run
+        order.timeLeft = order.vip ? 14 + legs * 0.55 : 26 + legs * 0.95;
+        order.late = false;
+        order.hurried = false;
+      }
       setBeacon(order.tx, order.tz, order.vip ? 0xffd23f : 0x7dff8a, '📦');
       say('Picked up. Deliver to the customer.');
       showBanner(order.vip ? `Picked up — ⏱ beat the clock!` : 'Picked up — go deliver!');
@@ -7844,6 +7938,7 @@ function updateDelivery(dt) {
     } else {
       order.active = false;
       order.cooldown = 3;
+      const cond = order.condition === undefined ? 100 : Math.round(order.condition);
       const mult2 = 1 + Math.min(game.streak * 0.1, 1);
       let pay = Math.round(order.reward * mult2);
       // the faster the run, the fatter the pay: beat 8 m/s average for +30%
@@ -7852,12 +7947,30 @@ function updateDelivery(dt) {
         pay = Math.round(pay * 1.3);
         setTimeout(() => showBanner('⚡ SPEED BONUS +30% — fast driver!'), 1400);
       }
+      // the customer pays for what actually arrives. A ruined order is worse
+      // than no order: you refund its value out of your own pocket.
+      const value = order.reward;   // captured: a new order overwrites it soon
+      const ruined = cond <= ORDER_RUINED;
+      if (order.late) pay = Math.round(pay * 0.6);
+      if (ruined) pay = -value;
+      else pay = Math.round(pay * cond / 100);
+      if (!ruined && cond >= 98) {
+        pay = Math.round(pay * 1.1);
+        setTimeout(() => showBanner('✨ PERFECT CONDITION +10% TIP'), 1000);
+      } else if (!ruined) {
+        setTimeout(() => addFeed(`📦 Delivered at ${cond}% — paid ${cond}% of $${value}`), 400);
+      }
+      if (ruined) {
+        showBanner(`📦 ORDER RUINED — YOU OWE $${value}`);
+        addFeed(`📦 The customer refused it. You refunded $${value}.`);
+        game.streak = 0;
+      } else game.streak++;
       game.money += pay;
       game.deliveries++;
-      game.streak++;
-      prog.bank += pay;
+      document.getElementById('ph-cond').style.display = 'none';
+      prog.bank = Math.max(0, prog.bank + pay); // a refund can empty the wallet, not overdraw it
       prog.stats.deliv = (prog.stats.deliv || 0) + 1;
-      prog.stats.earned = (prog.stats.earned || 0) + pay;
+      if (pay > 0) prog.stats.earned = (prog.stats.earned || 0) + pay;
       if (prog.quest === 8) {
         prog.q8clean = (prog.q8clean || 0) + 1;
         if (prog.q8clean >= 5) {
@@ -7870,14 +7983,16 @@ function updateDelivery(dt) {
         playCheer();
         setTimeout(() => { showBanner('🔥 RUSH HOUR — payouts increased!'); }, 1800);
       }
-      addXP(16 + pay / 2);
+      addXP(Math.max(4, 16 + pay / 2)); // a bad drop still teaches you something
       recordScore();
       if (energy.cans < energyCap()) energy.cans++;
       for (const w2 of WEAPONS) w2.reserve = Math.max(w2.reserve, w2.magSize * 4);
       player.health = Math.min(maxHealth(), player.health + 25);
       if (beacon) beacon.group.visible = false;
-      showBanner(`Delivered! +$${pay}${game.streak > 1 ? ` · STREAK ×${mult2.toFixed(1)}` : ''}`);
-      addFeed(`${playerName()} handed the order to the guest — +$${pay}`);
+      if (!ruined) {
+        showBanner(`Delivered! +$${pay}${game.streak > 1 ? ` · STREAK ×${mult2.toFixed(1)}` : ''}`);
+        addFeed(`${playerName()} handed the order to the guest — +$${pay}`);
+      }
       if (order.customer) {
         const done = order.customer;
         order.customer = null;
@@ -8853,6 +8968,10 @@ window.__so = {
     return out.slice(0, 25);
   },
   wanted(n = 1) { heat.crimeCd = 0; addHeat(n, 'Debug'); },
+  hurt(n = 30) { hurtPlayer(n); },
+  crash(impact = 12) { damageOrder((impact - 5) * 2.4, 'debug'); noteReckless(impact); },
+  get cond() { return order.active ? order.condition : null; },
+  get late() { return { late: !!order.late, left: +(order.timeLeft || 0).toFixed(1) }; },
   kill(cash) { if (cash) game.money = cash; reviveSafeT = 0; game.streak = 5; hurtPlayer(9999); },
   giants() {
     const out = [];
