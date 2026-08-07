@@ -286,6 +286,11 @@
   <div id="stars" style="display:none;position:absolute;top:56px;left:50%;transform:translateX(-50%);
     color:#ffd479;font-size:22px;letter-spacing:6px;text-shadow:0 0 12px rgba(255,180,60,.8)"></div>
   <div id="tutbar"><span class="step"></span><span class="txt"></span></div>
+  <div id="recdot" style="display:none;position:absolute;top:22px;left:24px;align-items:center;gap:8px;
+    color:#ff5555;font-size:13px;letter-spacing:2px;font-weight:700">
+    <span style="width:10px;height:10px;border-radius:50%;background:#ff3333;animation:pulse 1s infinite"></span>
+    REC <span id="rectime">0s</span>
+  </div>
   <div id="speedo">0 KM/H</div>
   <div id="vignette"></div>
   <div id="crosshair"><span class="t"></span><span class="b"></span><span class="l"></span><span class="r"></span></div>
@@ -327,6 +332,7 @@
     <div class="tbtn sm" id="btnAct">🚗</div>
     <div class="tbtn sm" id="btnQ">⚡</div>
     <div class="tbtn sm" id="btnShop">🛒</div>
+    <div class="tbtn sm" id="btnRec" style="right:284px;bottom:40px">🎬</div>
   </div>
 </div>
 
@@ -359,6 +365,7 @@
     <div class="modebtn" data-mode="delivery">🛵 DELIVERY SHIFT</div>
     <div class="modebtn" data-mode="waves">🔫 COMBAT WAVES</div>
     <div class="modebtn" id="lbbtn">🏆 LEADERBOARD</div>
+    <div class="modebtn" id="sharebtn">📣 SHARE &amp; EARN $100</div>
   </div>
   <div id="progressline" style="margin-top:14px;color:#ffd479;font-size:13px;letter-spacing:2px;"></div>
   <details id="keyhelp"><summary>⌨ KEYBOARD CONTROLS</summary>
@@ -378,6 +385,7 @@
     <div><b>M</b></div><div>Music on / off</div>
     <div><b>B</b></div><div>Driver shop (spend your cash)</div>
     <div><b>F</b></div><div>Eat at a restaurant</div>
+    <div><b>V</b></div><div>Record a clip to share</div>
   </div>
   </details>
   <div class="go" id="deployline">CLICK ANYWHERE TO DEPLOY</div>
@@ -388,6 +396,16 @@
   <div id="wallet">WALLET $0</div>
   <div id="shopitems"></div>
   <div class="go" id="shopclose">CLOSE SHOP (B)</div>
+</div>
+
+<div id="clip" class="overlay" style="display:none">
+  <h1 style="font-size:26px">🎬 YOUR CLIP</h1>
+  <video id="clipvideo" controls playsinline style="width:min(640px,92vw);margin-top:14px;border:1px solid #3a4c5e;border-radius:8px;background:#000"></video>
+  <div style="display:flex;gap:12px;margin-top:18px;flex-wrap:wrap;justify-content:center">
+    <div class="modebtn sel" id="clipshare">📣 SHARE (+$100)</div>
+    <div class="modebtn" id="clipsave">💾 SAVE</div>
+    <div class="modebtn" id="clipclose">CLOSE</div>
+  </div>
 </div>
 
 <div id="board" class="overlay" style="display:none">
@@ -414,6 +432,7 @@
     Waves survived: <b id="go-wave">0</b><br>
     Eliminations: <b id="go-kills">0</b>
   </div>
+  <div class="modebtn sel" id="goshare" style="margin-top:18px">📣 SHARE MY RUN (+$100)</div>
   <div class="go">CLICK TO REDEPLOY</div>
 </div>
 
@@ -423,6 +442,6 @@
   "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.1/examples/jsm/"
 } }
 </script>
-<script type="module" src="game.js?v=34"></script>
+<script type="module" src="game.js?v=35"></script>
 </body>
 </html>

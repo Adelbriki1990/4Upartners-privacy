@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=34';
+import { CITIES } from './sponsors.js?v=35';
 
 // ---------------------------------------------------------------------------
 // Renderer / scene / camera
@@ -3547,6 +3547,7 @@ document.addEventListener('keydown', e => {
   if (e.code === 'KeyC' && driving) camMode = camMode === 'chase' ? 'hood' : 'chase';
   if (e.code === 'KeyB' && (locked || shopOpen)) toggleShop();
   if (e.code === 'KeyF' && (locked || cafeOpen)) toggleCafe();
+  if (e.code === 'KeyV' && locked) toggleRecord();
   if (e.code === 'KeyM' && locked) {
     musicOn = !musicOn;
     addFeed(musicOn ? '♪ Music on' : '♪ Music off');
@@ -3651,6 +3652,7 @@ if (isTouch) {
   hold('btnAct', () => toggleDrive(), null);
   hold('btnQ', () => drinkEnergy(), null);
   hold('btnShop', () => toggleShop(), null);
+  hold('btnRec', () => toggleRecord(), null);
 }
 
 const menuEl = document.getElementById('menu');
@@ -3690,7 +3692,8 @@ document.addEventListener('pointerlockchange', () => {
     if (!started) { started = true; startCinematic(); }
     else if (!cine.active) hudEl.style.display = 'block';
     if (AC && AC.state === 'suspended') AC.resume();
-  } else if (started && !player.dead && !shopOpen && !cafeOpen) {
+  } else if (started && !player.dead && !shopOpen && !cafeOpen
+      && document.getElementById('clip').style.display === 'none') {
     pausedEl.style.display = 'flex';
     firing = false; aiming = false;
     for (const k in keys) keys[k] = false;
@@ -4664,6 +4667,128 @@ function updateHeat(dt) {
     starsEl.style.display = 'block';
   }
 }
+
+// ---------------------------------------------------------------------------
+// Clip recording — press V (or tap 🎬) to record gameplay off the canvas,
+// preview it, then share it straight to WhatsApp/TikTok or download it
+// ---------------------------------------------------------------------------
+let recorder = null, recChunks = [], recording = false, recTimer = 0;
+const REC_MAX = 30; // seconds
+function toggleRecord() {
+  if (!started || cine.active) return;
+  if (!window.MediaRecorder || !canvas.captureStream) {
+    addFeed('🎬 Recording not supported in this browser');
+    return;
+  }
+  if (!recording) {
+    try {
+      const stream = canvas.captureStream(30);
+      if (AC && MASTER) { // include the game audio in the clip
+        const dest = AC.createMediaStreamDestination();
+        MASTER.connect(dest);
+        for (const t of dest.stream.getAudioTracks()) stream.addTrack(t);
+      }
+      const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
+        ? 'video/webm;codecs=vp9' : 'video/webm';
+      recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 5e6 });
+    } catch {
+      addFeed('🎬 Recording not supported in this browser');
+      return;
+    }
+    recChunks = [];
+    recorder.ondataavailable = e => { if (e.data.size) recChunks.push(e.data); };
+    recorder.onstop = showClipPanel;
+    recorder.start(1000);
+    recording = true;
+    recTimer = 0;
+    document.getElementById('recdot').style.display = 'flex';
+    addFeed(`🎬 Recording (max ${REC_MAX}s) — ${isTouch ? 'tap 🎬' : 'press V'} to stop`);
+  } else {
+    recording = false;
+    document.getElementById('recdot').style.display = 'none';
+    try { recorder.stop(); } catch {}
+  }
+}
+function updateRecording(dt) {
+  if (!recording) return;
+  recTimer += dt;
+  document.getElementById('rectime').textContent = Math.floor(recTimer) + 's';
+  if (recTimer >= REC_MAX) toggleRecord();
+}
+let clipBlob = null;
+function showClipPanel() {
+  clipBlob = new Blob(recChunks, { type: 'video/webm' });
+  recChunks = [];
+  const vid = document.getElementById('clipvideo');
+  vid.src = URL.createObjectURL(clipBlob);
+  document.getElementById('clip').style.display = 'flex';
+  if (!isTouch) document.exitPointerLock();
+}
+function closeClipPanel() {
+  document.getElementById('clip').style.display = 'none';
+  const vid = document.getElementById('clipvideo');
+  vid.pause();
+  if (vid.src) { URL.revokeObjectURL(vid.src); vid.removeAttribute('src'); }
+  clipBlob = null;
+  if (!isTouch && started && !player.dead) requestLock();
+}
+async function shareClip() {
+  if (!clipBlob) return;
+  const file = new File([clipBlob], 'streetops-clip.webm', { type: 'video/webm' });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: 'STREET OPS',
+        text: `My delivery run in STREET OPS 🛵🔥 Play free: ${location.origin}${location.pathname}` });
+      grantShareReward();
+      return;
+    } catch {}
+  }
+  downloadClip(); // no share sheet on this device: save the file instead
+}
+function downloadClip() {
+  if (!clipBlob) return;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(clipBlob);
+  a.download = 'streetops-clip.webm';
+  a.click();
+  addFeed('🎬 Clip saved — post it anywhere!');
+}
+
+// ---------------------------------------------------------------------------
+// Share & earn — sharing the game pays in-game cash (capped per day)
+// ---------------------------------------------------------------------------
+function grantShareReward() {
+  const today = new Date().toDateString();
+  let d;
+  try { d = JSON.parse(localStorage.getItem('streetops.shares')) || {}; } catch { d = {}; }
+  if (d.day !== today) { d.day = today; d.n = 0; }
+  if (d.n >= 3) { addFeed('📣 Thanks for sharing! Daily bonus comes back tomorrow'); return; }
+  d.n++;
+  localStorage.setItem('streetops.shares', JSON.stringify(d));
+  game.money += 100;
+  prog.bank += 100;
+  saveProg();
+  showBanner('SHARE BONUS +$100');
+  addFeed(`📣 Share bonus +$100 (${d.n}/3 today)`);
+  playClick(2200, 0.3);
+}
+function shareGame() {
+  const text = `I'm a level ${prog.level} driver in STREET OPS 🛵 — deliveries, police chases, 7 cities. Play free in your browser: ${location.origin}${location.pathname}`;
+  if (navigator.share) {
+    navigator.share({ title: 'STREET OPS', text, url: location.origin + location.pathname })
+      .then(grantShareReward).catch(() => {});
+  } else if (navigator.clipboard) {
+    navigator.clipboard.writeText(text).then(() => {
+      addFeed('🔗 Invite copied — paste it to a friend!');
+      grantShareReward();
+    }).catch(() => {});
+  }
+}
+document.getElementById('sharebtn').addEventListener('click', e => { e.stopPropagation(); shareGame(); });
+document.getElementById('goshare').addEventListener('click', e => { e.stopPropagation(); shareGame(); });
+document.getElementById('clipshare').addEventListener('click', shareClip);
+document.getElementById('clipsave').addEventListener('click', downloadClip);
+document.getElementById('clipclose').addEventListener('click', closeClipPanel);
 
 // ---------------------------------------------------------------------------
 // Leaderboard — named top-10 by best shift (local; LB_REMOTE enables sync
@@ -6290,6 +6415,7 @@ function tick() {
   updateTutorial(dt);
   updateHeat(dt);
   updateAmbient(dt);
+  updateRecording(dt);
   carryBox.visible = mode === 'delivery' && order.active && order.stage === 'dropoff'
     && !driving && !player.dead && !cine.active;
   // parked cars you damaged keep smoking where they stand
