@@ -66,7 +66,31 @@
     display: inline-block; transition: all .15s; }
   #keyhelp summary:hover { border-color: #7fd0ff; color: #b8d8f0; }
   #keyhelp[open] summary { border-color: #7fd0ff; }
-  @media (max-width: 980px) { #menu h1 { font-size: 40px; letter-spacing: 8px; } #keyhelp { display: none; } }
+  /* the one button that always starts the game — fixed so it can never
+     scroll out of reach on a phone */
+  #startbtn { position: fixed; left: 50%; bottom: max(18px, env(safe-area-inset-bottom)); transform: translateX(-50%);
+    z-index: 45; padding: 14px 44px; border-radius: 34px; cursor: pointer;
+    font-size: 19px; font-weight: 800; letter-spacing: 3px; color: #08131c;
+    background: linear-gradient(180deg, #8fe0ff, #41c9ff);
+    box-shadow: 0 4px 26px rgba(65,201,255,.55), 0 2px 8px rgba(0,0,0,.5);
+    animation: pulse 1.6s infinite; }
+  @media (max-width: 980px) {
+    #menu h1 { font-size: 34px; letter-spacing: 6px; }
+    #keyhelp { display: none; }
+    #tagline { font-size: 10px; letter-spacing: 3px; }
+    /* compact one-row city strip so the screen isn't wall-to-wall cards */
+    #cities { flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start;
+      max-width: 96vw; padding: 4px 8px; gap: 8px; -webkit-overflow-scrolling: touch; }
+    .citycard { flex: 0 0 auto; width: 148px; padding: 8px 10px; }
+    .citycard h3 { font-size: 12px; }
+    .citycard p { font-size: 9.5px; }
+    .citycard .sp { font-size: 8px; }
+    #modes { flex-wrap: wrap; justify-content: center; gap: 8px; }
+    .modebtn { font-size: 11px; padding: 8px 12px; }
+    #profile { transform: scale(.85); margin-top: 4px; }
+    #deployline { display: none; }
+    #menu { padding-bottom: 84px; }
+  }
   #gameover { display: none; }
   #gameover h1 { color: #ff5f5f; -webkit-text-fill-color: currentColor; }
   #gameover .stats { margin-top: 20px; font-size: 22px; color: #cfe0ee; line-height: 1.8; }
@@ -217,10 +241,19 @@
   /* landscape phones: keep the left column clear of the joystick and the
      ammo block clear of the action buttons */
   @media (max-height: 500px) {
-    #phone { width: 106px; padding: 5px 4px 6px; border-radius: 15px; }
-    #ph-nav b { font-size: 8.5px; }
-    #ph-nav span { font-size: 8px; }
-    #location { width: 106px; top: 224px; font-size: 8px; }
+    #phone { width: 92px; padding: 4px 3px 5px; border-radius: 13px; opacity: .95; }
+    #phonetop { font-size: 6.5px; padding: 0 4px 3px; }
+    #ph-nav b { font-size: 8px; }
+    #ph-nav span { display: none; }
+    #phonenotif { padding: 4px 5px; gap: 5px; margin-top: 4px; }
+    #phonenotif b { font-size: 8px; }
+    #phonenotif span { font-size: 7.5px; }
+    #radar { width: 34px; height: 34px; }
+    #location { display: none; }
+    #healthwrap { left: 178px; bottom: 10px; width: 132px; }
+    #healthbar, #healthfill { max-width: 132px; }
+    #lvl { font-size: 10px; }
+    #healthwrap .label { font-size: 9px; margin-bottom: 2px; }
     #orderpanel { top: 56px; left: 122px; width: 168px; padding: 7px 10px; }
     #orderpanel .dist { font-size: 14px; }
     #missions { display: none !important; }
@@ -455,6 +488,7 @@
   </div>
   </details>
   <div class="go" id="deployline">CLICK ANYWHERE TO DEPLOY</div>
+  <div id="startbtn">▶ START GAME</div>
 </div>
 
 <div id="shop" class="overlay" style="display:none">
@@ -547,6 +581,6 @@ if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js').ca
   "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.1/examples/jsm/"
 } }
 </script>
-<script type="module" src="game.js?v=46"></script>
+<script type="module" src="game.js?v=47"></script>
 </body>
 </html>
