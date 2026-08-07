@@ -112,7 +112,7 @@
   #topbar b { color: #7fd0ff; font-size: 19px; }
   #topbar b.cash { color: #7dff8a; }
 
-  #orderpanel { position: absolute; left: 20px; top: 235px; width: 230px; display: none;
+  #orderpanel { position: absolute; left: 20px; top: 368px; width: 230px; display: none;
     background: rgba(8,12,18,.72); border: 1px solid rgba(255,255,255,.18); border-left: 4px solid #41d8ff;
     border-radius: 8px; padding: 12px 14px; color: #dfe9f2; }
   #orderpanel .app { font-size: 11px; letter-spacing: 2px; color: #7fd0ff; text-transform: uppercase; margin-bottom: 6px; }
@@ -206,9 +206,10 @@
     #missions { display: none !important; }
     #topbar { gap: 16px; font-size: 12px; }
     #ammo .mag { font-size: 30px; }
-    #minimap { width: 110px; height: 110px; }
-    #location { width: 110px; top: 138px; font-size: 8.5px; }
-    #orderpanel { top: 172px; width: 178px; padding: 8px 10px; }
+    #phone { width: 128px; padding: 6px 5px 7px; border-radius: 18px; }
+    #ph-nav b { font-size: 9.5px; }
+    #location { width: 128px; top: 268px; font-size: 8.5px; }
+    #orderpanel { top: 296px; width: 178px; padding: 8px 10px; }
     #orderpanel .dist { font-size: 15px; }
     #healthwrap { width: 170px; }
     #healthbar, #healthfill { max-width: 170px; }
@@ -216,8 +217,10 @@
   /* landscape phones: keep the left column clear of the joystick and the
      ammo block clear of the action buttons */
   @media (max-height: 500px) {
-    #minimap { width: 90px; height: 90px; }
-    #location { width: 90px; top: 114px; font-size: 8px; }
+    #phone { width: 106px; padding: 5px 4px 6px; border-radius: 15px; }
+    #ph-nav b { font-size: 8.5px; }
+    #ph-nav span { font-size: 8px; }
+    #location { width: 106px; top: 224px; font-size: 8px; }
     #orderpanel { top: 56px; left: 122px; width: 168px; padding: 7px 10px; }
     #orderpanel .dist { font-size: 14px; }
     #missions { display: none !important; }
@@ -249,9 +252,34 @@
     background: rgba(20,40,26,.5); cursor: pointer; font-size: 13px; letter-spacing: 1px; white-space: nowrap; }
   .buybtn:disabled { border-color: #4a5560; color: #6a7580; cursor: default; background: transparent; }
 
-  /* ---------- minimap / driving ---------- */
-  #minimap { position: absolute; top: 20px; left: 20px; border: 1px solid rgba(255,255,255,.25); border-radius: 6px; }
-  #location { position: absolute; top: 196px; left: 20px; width: 170px; text-align: center;
+  /* ---------- driver phone (Waze-style nav) ---------- */
+  #phone { position: absolute; top: 16px; left: 16px; width: 174px;
+    background: linear-gradient(180deg, #101319, #0b0d12); border: 3px solid #23262d; border-radius: 24px;
+    padding: 8px 7px 9px; box-shadow: 0 8px 26px rgba(0,0,0,.6), inset 0 0 0 1.5px #000; }
+  #phonetop { display: flex; justify-content: space-between; align-items: center;
+    font-size: 8.5px; color: #cfd8e2; padding: 0 6px 5px; letter-spacing: .6px; }
+  #phonetop span:nth-child(2) { color: #7fd0ff; font-weight: 700; }
+  #minimap { display: block; width: 100%; height: auto; border-radius: 13px; border: 1px solid #1c2027; }
+  #ph-nav { display: flex; flex-direction: column; padding: 6px 5px 0; }
+  #ph-nav b { color: #7dff8a; font-size: 11px; letter-spacing: .4px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #ph-nav span { color: #9fb2c4; font-size: 9.5px; margin-top: 1px; }
+  #phonenotif { display: none; align-items: center; gap: 8px; margin-top: 7px;
+    background: #131b28; border: 1px solid #31435a; border-radius: 13px; padding: 6px 8px; }
+  #phonenotif b { display: block; color: #ffd479; font-size: 10px; letter-spacing: 1px; }
+  #phonenotif span { color: #cfd8e2; font-size: 9px; line-height: 1.25; display: block; margin-top: 2px; }
+  @keyframes phShake { 0%,100% { transform: translateX(0); } 20% { transform: translateX(-4px) rotate(-1.2deg); }
+    40% { transform: translateX(4px) rotate(1.2deg); } 60% { transform: translateX(-3px); } 80% { transform: translateX(3px); } }
+  #phone.ring { animation: phShake .45s ease-in-out 3; }
+
+  /* ---------- npc speech bubbles ---------- */
+  #npcbubble { position: absolute; display: none; transform: translate(-50%, -130%);
+    background: #f8f9fb; color: #1a2230; font-size: 12.5px; font-weight: 600; line-height: 1.3;
+    max-width: 200px; padding: 8px 12px; border-radius: 14px; text-align: center;
+    box-shadow: 0 3px 12px rgba(0,0,0,.4); pointer-events: none; }
+  #npcbubble::after { content: ''; position: absolute; left: 50%; bottom: -7px; transform: translateX(-50%);
+    border-left: 7px solid transparent; border-right: 7px solid transparent; border-top: 8px solid #f8f9fb; }
+  #location { position: absolute; top: 330px; left: 20px; width: 174px; text-align: center;
     background: rgba(8,12,18,.72); border: 1px solid rgba(255,255,255,.18); border-radius: 6px;
     color: #cfe0ee; font-size: 10.5px; letter-spacing: 1px; padding: 5px 6px; }
   #drivehint { position: absolute; left: 50%; top: 64%; transform: translateX(-50%); display: none;
@@ -300,7 +328,15 @@
 <canvas id="c"></canvas>
 
 <div id="hud">
-  <canvas id="minimap" width="170" height="170"></canvas>
+  <div id="phone">
+    <div id="phonetop"><span id="ph-time">12:00</span><span>DRIVER APP</span><span>📶 🔋</span></div>
+    <canvas id="minimap" width="220" height="250"></canvas>
+    <div id="ph-nav"><b id="ph-dest">NO ACTIVE ORDER</b><span id="ph-eta">waiting for orders…</span></div>
+    <div id="phonenotif">
+      <canvas id="radar" width="56" height="56"></canvas>
+      <div id="ph-notif-txt"><b>📳 NEW ORDER</b><span id="ph-notif-sub"></span></div>
+    </div>
+  </div>
   <div id="location">📍 —</div>
   <div id="drivehint">PRESS E TO DRIVE</div>
   <div id="cafehint">🍕 PRESS F TO EAT HERE</div>
@@ -325,6 +361,7 @@
   </div>
   <div id="racehud" style="position:absolute;top:58px;left:50%;transform:translateX(-50%);display:none;
     color:#ffd23f;font-size:19px;font-weight:800;letter-spacing:3px;text-shadow:0 1px 5px #000"></div>
+  <div id="npcbubble"></div>
   <div id="missions"></div>
   <div id="orderpanel">
     <div class="app" id="order-app">DELIVERY APP</div>
@@ -499,6 +536,6 @@ if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js').ca
   "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.1/examples/jsm/"
 } }
 </script>
-<script type="module" src="game.js?v=43"></script>
+<script type="module" src="game.js?v=44"></script>
 </body>
 </html>
