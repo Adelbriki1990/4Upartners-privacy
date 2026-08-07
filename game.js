@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from './lib/jsm/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader } from './lib/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from './lib/jsm/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from './lib/jsm/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=66';
+import { CITIES } from './sponsors.js?v=67';
 
 // Clean-brand mode: the portal build (CrazyGames etc.) must carry no real
 // trademarks. window.CLEAN_BUILD is injected by the build script; ?clean=1
@@ -4163,6 +4163,13 @@ const touchMove = { x: 0, y: 0, hard: false };
 let joyTouchId = null, lookTouchId = null, lastLook = null;
 if (isTouch) {
   document.body.classList.add('touch'); // switches the HUD to its lean layout
+  // keyboard shortcuts in panel labels mean nothing without a keyboard
+  for (const [id, txt] of [['shopclose', 'CLOSE SHOP'], ['cafeclose', 'LEAVE']]) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = txt;
+  }
+  const gar = document.getElementById('garagehint');
+  if (gar) gar.textContent = '🚗 GARAGE — BUY & OWN CARS · CALL YOURS WITH THE 🚗 BUTTON';
   const ui = document.getElementById('touchui');
   ui.style.display = 'block';
   checkOrientation(); // a phone may already be upright before the first frame
@@ -4304,6 +4311,20 @@ document.addEventListener('pointerlockchange', () => {
   }
 });
 document.getElementById('shopclose').addEventListener('click', () => { if (shopOpen) toggleShop(); });
+// Corner ✕ on every panel: the in-flow close labels sit under long lists and
+// named keys ("(B)") that a phone does not have.
+for (const [id, close] of [
+  ['x-shop', () => { if (shopOpen) toggleShop(); }],
+  ['x-spin', () => document.getElementById('spinclose').click()],
+  ['x-travel', () => document.getElementById('travelclose').click()],
+  ['x-achs', () => document.getElementById('achclose').click()],
+  ['x-clip', () => document.getElementById('clipclose').click()],
+  ['x-board', () => document.getElementById('boardclose').click()],
+  ['x-cafe', () => document.getElementById('cafeclose').click()],
+]) {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('click', e => { e.stopPropagation(); close(); });
+}
 
 function resolveCollisions(pos, height, radius = RADIUS) {
   let hit = false;
