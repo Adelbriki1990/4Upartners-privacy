@@ -48,7 +48,7 @@ export const CITIES = [
   },
   {
     id: 'nyc',
-    name: 'NEW YORK',
+    name: 'EMPIRE CITY',
     blurb: 'Towering skyline, yellow cabs, a deco giant above it all.',
     accent: '#ffd23f',
     sponsors: [
@@ -59,7 +59,7 @@ export const CITIES = [
   },
   {
     id: 'dubai',
-    name: 'DUBAI',
+    name: 'GOLDEN GULF',
     blurb: 'Supertall glass over the gulf. Gold, palms and hypercars.',
     accent: '#ffd700',
     sponsors: [
@@ -70,8 +70,8 @@ export const CITIES = [
   },
   {
     id: 'doha',
-    name: 'DOHA',
-    blurb: 'West Bay towers on the corniche. The pearl of the gulf.',
+    name: 'PEARL BAY',
+    blurb: 'Glass towers on the corniche. The pearl of the gulf.',
     accent: '#e05a7a',
     sponsors: [
       { name: 'SNOONU',    tagline: 'Delivered in minutes',   colorA: '#e01f43', colorB: '#5c0d1e', logo: 'ads/snoonu.png' },
