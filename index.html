@@ -210,6 +210,17 @@
   .citycard .sp { margin-top: 10px; font-size: 10.5px; letter-spacing: 1px; color: #7d8fa2; text-transform: uppercase; }
 
   /* ---------- touch controls (phones / tablets) ---------- */
+  /* ---------- rotate prompt (phones held upright) ----------
+     A first-person driving game needs the road ahead in view; portrait
+     leaves no room for it or the controls, so we ask for landscape. */
+  #rotate { display: none; position: fixed; inset: 0; z-index: 200;
+    flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+    background: linear-gradient(180deg, #070c14, #0d1522); color: #e8eef5; text-align: center; padding: 24px; }
+  #rotate .ph { font-size: 84px; animation: rot 2.2s ease-in-out infinite; }
+  #rotate h3 { font-size: 24px; letter-spacing: 4px; font-weight: 800; color: #7fd0ff; }
+  #rotate p { font-size: 14px; letter-spacing: 2px; color: #9fb2c4; max-width: 320px; line-height: 1.6; }
+  @keyframes rot { 0%, 32% { transform: rotate(0deg); } 62%, 100% { transform: rotate(-90deg); } }
+
   #touchui { display: none; position: absolute; inset: 0; pointer-events: none; }
   #joy { position: absolute; left: 26px; bottom: 90px; width: 120px; height: 120px;
     border: 2px solid rgba(255,255,255,.35); border-radius: 50%; background: rgba(10,16,24,.3); pointer-events: none; }
@@ -460,6 +471,12 @@
   </div>
 </div>
 
+<div id="rotate">
+  <div class="ph">📱</div>
+  <h3>ROTATE YOUR PHONE</h3>
+  <p>STREET OPS is played sideways — turn your phone to see the road and your controls.</p>
+</div>
+
 <div id="cine">
   <div class="bar top"></div>
   <div class="bar bottom"></div>
@@ -665,6 +682,6 @@ setTimeout(function () {
   document.body.appendChild(d);
 }, 9000);
 </script>
-<script type="module" src="game.js?v=61"></script>
+<script type="module" src="game.js?v=62"></script>
 </body>
 </html>
