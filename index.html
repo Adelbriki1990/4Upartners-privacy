@@ -2,8 +2,15 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
 <title>Street Ops — 3D Urban Combat</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="STREET OPS">
+<meta name="theme-color" content="#0a0f18">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='6' fill='none' stroke='%237fd0ff' stroke-width='1.5'/%3E%3Cpath d='M8 0v5M8 11v5M0 8h5M11 8h5' stroke='%237fd0ff' stroke-width='1.5'/%3E%3C/svg%3E">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -33,6 +40,14 @@
   .citycard { padding: 12px 16px; width: 236px; }
   #modes { margin-top: 18px; }
   @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+
+  /* ---------- iOS install hint ---------- */
+  #ioshint { display: none; position: fixed; left: 50%; top: calc(10px + env(safe-area-inset-top));
+    transform: translateX(-50%); z-index: 60; align-items: center; gap: 10px; max-width: 92vw;
+    background: rgba(12,20,32,.96); border: 1px solid #3a4c5e; border-radius: 12px;
+    padding: 10px 14px; color: #e8eef5; font-size: 13px; box-shadow: 0 4px 24px rgba(0,0,0,.55); }
+  #ioshint b { color: #ffd479; }
+  #ioshint button { background: none; border: none; color: #7fd0ff; font-size: 16px; cursor: pointer; padding: 2px 6px; }
 
   /* ---------- home menu presentation ---------- */
   #menu h1 { font-size: 60px; letter-spacing: 14px;
@@ -436,12 +451,34 @@
   <div class="go">CLICK TO REDEPLOY</div>
 </div>
 
+<div id="ioshint">
+  <span>📱 PLAY AS AN APP: in Safari tap <b>Share ⬆️</b> then <b>ADD TO HOME SCREEN</b></span>
+  <button id="ioshintclose">✕</button>
+</div>
+
+<script>
+if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js').catch(function () {}); }
+(function () {
+  var iOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+  var standalone = navigator.standalone === true ||
+    matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches;
+  if (!iOS || standalone || localStorage.getItem('streetops.ioshint')) return;
+  var el = document.getElementById('ioshint');
+  el.style.display = 'flex';
+  document.getElementById('ioshintclose').addEventListener('click', function (ev) {
+    ev.stopPropagation();
+    localStorage.setItem('streetops.ioshint', '1');
+    el.style.display = 'none';
+  });
+})();
+</script>
+
 <script type="importmap">
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.min.js",
   "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.1/examples/jsm/"
 } }
 </script>
-<script type="module" src="game.js?v=35"></script>
+<script type="module" src="game.js?v=36"></script>
 </body>
 </html>
