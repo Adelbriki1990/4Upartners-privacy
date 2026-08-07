@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=36';
+import { CITIES } from './sponsors.js?v=37';
 
 // ---------------------------------------------------------------------------
 // Renderer / scene / camera
@@ -154,13 +154,13 @@ function nightFactorAt(h) {
 }
 let NF = 1; // current night factor
 const DAY = {
-  neon:   { sky: 0x8d9aab, fogMul: 0.55 },   // overcast rainy day
-  marina: { sky: 0x9dbcdd, fogMul: 0.4 },    // clear blue
-  sahara: { sky: 0xd8b98a, fogMul: 0.6 },    // sandy haze
-  harbor: { sky: 0x9aa4ac, fogMul: 0.6 },
-  nyc:    { sky: 0x9db4d8, fogMul: 0.45 },   // crisp east-coast blue
-  dubai:  { sky: 0xa8cbe8, fogMul: 0.35 },   // blazing clear gulf sky
-  doha:   { sky: 0xaacde6, fogMul: 0.35 },   // bright corniche morning
+  neon:   { sky: 0xa4b8cf, fogMul: 0.5 },    // bright broken clouds
+  marina: { sky: 0xa7c9e8, fogMul: 0.4 },    // clear blue
+  sahara: { sky: 0xe2c69a, fogMul: 0.55 },   // sandy haze
+  harbor: { sky: 0xacbdcc, fogMul: 0.55 },
+  nyc:    { sky: 0xa9c2e2, fogMul: 0.45 },   // crisp east-coast blue
+  dubai:  { sky: 0xb2d4f0, fogMul: 0.35 },   // blazing clear gulf sky
+  doha:   { sky: 0xb4d6ee, fogMul: 0.35 },   // bright corniche morning
 };
 const lampLights = [];   // point lights that dim at day
 const dayGlowMats = []; // additive glow cones that must vanish in daylight
@@ -212,6 +212,49 @@ let MOON_BASE = 1.6;
   scene.add(moonSprite);
 }
 
+// daytime sky: a blazing sun sprite + soft cumulus puffs around the horizon
+let sunSprite = null, cloudGrp = null;
+{
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 256;
+  const g = cv.getContext('2d');
+  const grad = g.createRadialGradient(128, 128, 10, 128, 128, 128);
+  grad.addColorStop(0, 'rgba(255,252,240,1)');
+  grad.addColorStop(0.18, 'rgba(255,244,200,.95)');
+  grad.addColorStop(0.45, 'rgba(255,228,155,.35)');
+  grad.addColorStop(1, 'rgba(255,215,130,0)');
+  g.fillStyle = grad; g.fillRect(0, 0, 256, 256);
+  sunSprite = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: new THREE.CanvasTexture(cv), transparent: true, fog: false, depthWrite: false }));
+  sunSprite.scale.setScalar(95);
+  sunSprite.position.set(165, 195, -150);
+  scene.add(sunSprite);
+
+  const ccv = document.createElement('canvas');
+  ccv.width = 256; ccv.height = 128;
+  const cg = ccv.getContext('2d');
+  for (let i = 0; i < 26; i++) {
+    const x = 34 + Math.random() * 188, y = 48 + Math.random() * 44, r = 14 + Math.random() * 26;
+    const pg = cg.createRadialGradient(x, y, 2, x, y, r);
+    pg.addColorStop(0, 'rgba(255,255,255,.78)');
+    pg.addColorStop(0.7, 'rgba(248,250,255,.28)');
+    pg.addColorStop(1, 'rgba(245,248,255,0)');
+    cg.fillStyle = pg; cg.beginPath(); cg.arc(x, y, r, 0, 6.29); cg.fill();
+  }
+  const ctex = new THREE.CanvasTexture(ccv);
+  cloudGrp = new THREE.Group();
+  for (let i = 0; i < 14; i++) {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: ctex, transparent: true, fog: false, depthWrite: false,
+      opacity: 0.45 + Math.random() * 0.35 }));
+    const a = Math.random() * Math.PI * 2, rr = 130 + Math.random() * 180;
+    sp.position.set(Math.cos(a) * rr, 115 + Math.random() * 95, Math.sin(a) * rr);
+    sp.scale.set(95 + Math.random() * 85, 26 + Math.random() * 18, 1);
+    cloudGrp.add(sp);
+  }
+  scene.add(cloudGrp);
+}
+
 // gradient sky dome (repainted per city/time in buildCity)
 let skyCtx = null, skyTex = null;
 {
@@ -228,7 +271,7 @@ let skyCtx = null, skyTex = null;
 }
 function paintSky() {
   const day = DAY[CITY.id] || DAY.neon;
-  const top = new THREE.Color(day.sky).multiplyScalar(0.72).lerp(new THREE.Color(0x03040a), NF);
+  const top = new THREE.Color(day.sky).multiplyScalar(0.88 - 0.16 * NF).lerp(new THREE.Color(0x03040a), NF);
   const mid = new THREE.Color(day.sky).lerp(new THREE.Color(THEME.sky), NF);
   const hor = mid.clone().lerp(new THREE.Color(THEME.lamp), 0.08 + 0.35 * NF); // city glow
   const grad = skyCtx.createLinearGradient(0, 0, 0, 512);
@@ -2042,10 +2085,10 @@ function makeCharacter(cfg, opts = {}) {
 
   // torso + hips (capsules, squashed for shoulders)
   const torso = new THREE.Mesh(new THREE.CapsuleGeometry(female ? 0.14 : 0.16, 0.34, 4, 10), shirt);
-  torso.scale.set(1.35, 1, 0.8);
+  torso.scale.set(1.14, 1, 0.72);
   torso.position.y = 1.16; g.add(torso);
   const hips = new THREE.Mesh(new THREE.CapsuleGeometry(female ? 0.135 : 0.145, 0.08, 4, 10), pants);
-  hips.scale.set(1.25, 1, 0.85);
+  hips.scale.set(1.08, 1, 0.78);
   hips.position.y = 0.85; g.add(hips);
 
   if (uniformed) {
@@ -2057,11 +2100,11 @@ function makeCharacter(cfg, opts = {}) {
     }
     const mPack = new THREE.MeshStandardMaterial({
       color: new THREE.Color(cfg.uniform).multiplyScalar(1.15), roughness: 0.55 });
-    const pack = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.46, 0.24), mPack);
-    pack.position.set(0, 1.18, -0.28); g.add(pack);
-    const packBand = new THREE.Mesh(new THREE.BoxGeometry(0.43, 0.09, 0.25),
+    const pack = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.42, 0.2), mPack);
+    pack.position.set(0, 1.18, -0.25); g.add(pack);
+    const packBand = new THREE.Mesh(new THREE.BoxGeometry(0.37, 0.09, 0.21),
       new THREE.MeshStandardMaterial({ color: 0xf0f2f4, roughness: 0.5 }));
-    packBand.position.set(0, 1.35, -0.28); g.add(packBand);
+    packBand.position.set(0, 1.35, -0.25); g.add(packBand);
   }
 
   if (opts.head !== false) {
@@ -2161,7 +2204,7 @@ function makeCharacter(cfg, opts = {}) {
   const arms = [];
   for (const sx of [-1, 1]) {
     const pivot = new THREE.Group();
-    pivot.position.set(sx * (female ? 0.235 : 0.27), 1.36, 0);
+    pivot.position.set(sx * (female ? 0.205 : 0.235), 1.36, 0);
     const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.05, 0.3, 4, 8), shirt);
     arm.position.y = -0.2;
     pivot.add(arm);
@@ -2467,13 +2510,16 @@ function buildCity(city) {
   paintSky();
   hemi.color.set(new THREE.Color(0xcfe0f0).lerp(new THREE.Color(THEME.hemi[0]), NF));
   hemi.groundColor.set(new THREE.Color(0x8a8478).lerp(new THREE.Color(THEME.hemi[1]), NF));
-  hemi.intensity = 2.1 + (THEME.hemi[2] - 2.1) * NF;
+  hemi.intensity = 2.7 + (THEME.hemi[2] - 2.7) * NF;
   moon.color.set(new THREE.Color(0xfff1d2).lerp(new THREE.Color(THEME.moonColor), NF));
-  MOON_BASE = 2.8 - (2.8 - 1.6) * NF;
+  MOON_BASE = 3.6 - (3.6 - 1.6) * NF;
   moon.intensity = MOON_BASE;
-  renderer.toneMappingExposure = 1.25 - (1 - NF) * 0.15;
+  renderer.toneMappingExposure = 1.25 - (1 - NF) * 0.05;
+  bloomPass.strength = 0.3 + 0.35 * NF; // day stays crisp, night neon glows
   if (starsObj) starsObj.visible = NF > 0.45;
   if (moonSprite) moonSprite.visible = NF > 0.45;
+  if (sunSprite) sunSprite.visible = NF < 0.45;
+  if (cloudGrp) cloudGrp.visible = NF < 0.6;
 
   FACADES = [];
   for (let i = 0; i < 9; i++) {
@@ -2905,7 +2951,12 @@ function buildCity(city) {
 
   // day/night dimming: window glow and street lamps fade out in daylight
   const glow = 0.12 + 0.88 * NF;
-  for (const e of EMI_MATS) e.mat.emissiveIntensity = e.base * glow;
+  // facades brighten in sunlight so daytime towers read concrete-and-glass,
+  // not the same near-black slabs as midnight
+  for (const e of EMI_MATS) {
+    e.mat.emissiveIntensity = e.base * glow;
+    e.mat.color.setScalar(1 + 0.5 * (1 - NF));
+  }
   for (const l of lampLights) l.intensity = 20 * NF;
   for (const m of dayGlowMats) m.mat.opacity = m.base * NF;
 
@@ -6051,6 +6102,18 @@ function makeRider() {
   c.group.position.set(0, 0.42, -0.3);
   c.legs[0].rotation.x = c.legs[1].rotation.x = -1.2;
   c.arms[0].rotation.x = c.arms[1].rotation.x = -0.85;
+  // full-face courier helmet in the brand color with a dark visor
+  const brand = new THREE.Color(selectedCity().sponsors[0].colorA);
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.055, 0.12, 8),
+    new THREE.MeshStandardMaterial({ color: 0x181a1e, roughness: 0.8 }));
+  neck.position.y = 1.5; c.group.add(neck);
+  const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.16, 14, 12),
+    new THREE.MeshStandardMaterial({ color: brand, roughness: 0.22, metalness: 0.15 }));
+  helmet.scale.set(0.95, 1.06, 1.0);
+  helmet.position.y = 1.63; c.group.add(helmet);
+  const visor = new THREE.Mesh(new THREE.BoxGeometry(0.19, 0.09, 0.05),
+    new THREE.MeshStandardMaterial({ color: 0x0c1016, roughness: 0.12, metalness: 0.5 }));
+  visor.position.set(0, 1.64, 0.13); c.group.add(visor);
   return c;
 }
 
@@ -6476,6 +6539,10 @@ tick();
 window.__so = {
   get cineT() { return cine.t; },
   tp(x, z, yaw = 0) { player.pos.set(x, 0, z); player.yaw = yaw; player.pitch = 0; },
+  veh(type) {
+    const v = vehicles.find(v => v.type === type && v.health > 0);
+    return v ? [v.group.position.x, v.group.position.z, v.yaw] : null;
+  },
   wanted(n = 1) { heat.crimeCd = 0; addHeat(n, 'Debug'); },
   giants() {
     const out = [];
