@@ -93,7 +93,30 @@
   }
   #gameover { display: none; }
   #gameover h1 { color: #ff5f5f; -webkit-text-fill-color: currentColor; }
-  #gameover .stats { margin-top: 20px; font-size: 22px; color: #cfe0ee; line-height: 1.8; }
+  #gameover .stats { margin-top: 14px; font-size: 13px; color: #9fb2c4; line-height: 1.7; }
+  /* the run at a glance, then one obvious row of choices — a dead end with
+     no way back was the whole complaint */
+  #gocards { display: flex; gap: 12px; margin-top: 18px; flex-wrap: wrap; justify-content: center; }
+  .gocard { min-width: 116px; padding: 12px 16px; border-radius: 12px;
+    background: rgba(12,20,32,.72); border: 1px solid rgba(120,160,200,.28); }
+  .gocard b { display: block; font-size: 26px; font-weight: 800; color: #ffd479; line-height: 1.15; }
+  .gocard span { font-size: 10px; letter-spacing: 2px; color: #8fa2b4; }
+  #gocontinue, #gomain, #goextra { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  #gocontinue { margin-top: 18px; }
+  #gomain { margin-top: 14px; }
+  #goextra { margin-top: 10px; }
+  #goagain { border-color: #41c9ff; color: #41c9ff; }
+  @media (max-width: 980px), (max-height: 560px) {
+    #gameover h1 { font-size: 26px; letter-spacing: 5px; }
+    #gocards { gap: 7px; margin-top: 10px; }
+    .gocard { min-width: 78px; padding: 6px 10px; }
+    .gocard b { font-size: 17px; }
+    .gocard span { font-size: 8px; letter-spacing: 1px; }
+    #gameover .stats { font-size: 10.5px; margin-top: 8px; }
+    #gocontinue { margin-top: 10px; }
+    #gomain, #goextra { margin-top: 7px; }
+    #gameover .modebtn { font-size: 11px; padding: 8px 14px; }
+  }
   #paused { display: none; }
 
   /* ---------- HUD ---------- */
@@ -674,16 +697,26 @@
 </div>
 
 <div id="gameover" class="overlay">
-  <h1>Mission Failed</h1>
-  <div class="stats">
-    Waves survived: <b id="go-wave">0</b><br>
-    Eliminations: <b id="go-kills">0</b>
+  <h1>Shift Over</h1>
+  <div id="gocards">
+    <div class="gocard"><b id="go-cash">$0</b><span>EARNED</span></div>
+    <div class="gocard"><b id="go-del">0</b><span>DELIVERIES</span></div>
+    <div class="gocard"><b id="go-lvl">1</b><span>LEVEL</span></div>
+    <div class="gocard"><b id="go-best">0</b><span>BEST EVER</span></div>
   </div>
-  <div class="modebtn sel" id="gorevive" style="margin-top:18px;border-color:#3ddc84;color:#3ddc84">📺 WATCH AD → CONTINUE YOUR RUN</div>
-  <div class="modebtn sel" id="gobuy" style="display:none;border-color:#ffd479;color:#ffd479">💵 PAY $500 → CONTINUE YOUR RUN</div>
-  <div class="modebtn sel" id="goshare">📣 SHARE MY RUN (+$100)</div>
-  <div class="modebtn" id="goad" style="display:none">📺 WATCH AD → +$200</div>
-  <div class="go">CLICK TO REDEPLOY</div>
+  <div class="stats"></div>
+  <div id="gocontinue">
+    <div class="modebtn sel" id="gorevive" style="border-color:#3ddc84;color:#3ddc84">📺 WATCH AD → CONTINUE YOUR RUN</div>
+    <div class="modebtn sel" id="gobuy" style="display:none;border-color:#ffd479;color:#ffd479">💵 PAY $300 → CONTINUE YOUR RUN</div>
+  </div>
+  <div id="gomain">
+    <div class="modebtn sel" id="goagain">🔁 PLAY AGAIN</div>
+    <div class="modebtn" id="gohome">🏠 HOME</div>
+  </div>
+  <div id="goextra">
+    <div class="modebtn" id="goshare">📣 SHARE MY RUN (+$100)</div>
+    <div class="modebtn" id="goad" style="display:none">📺 WATCH AD → +$200</div>
+  </div>
 </div>
 
 <div id="ioshint">
@@ -754,6 +787,6 @@ setTimeout(function () {
   document.body.appendChild(d);
 }, 9000);
 </script>
-<script type="module" src="game.js?v=64"></script>
+<script type="module" src="game.js?v=65"></script>
 </body>
 </html>
