@@ -629,7 +629,15 @@ if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js').ca
   if (p === 'crazygames') src = 'https://sdk.crazygames.com/crazygames-sdk-v3.js';
   else if (p === 'poki') src = 'https://game-cdn.poki.com/scripts/v2/poki-sdk.js';
   else if (p === 'gd') {
-    window.GD_OPTIONS = { gameId: window.GD_GAME_ID || '', advertisementSettings: { autoplay: false } };
+    // GameDistribution drives pause/resume from its own ad lifecycle events
+    window.GD_OPTIONS = {
+      gameId: window.GD_GAME_ID || '',
+      advertisementSettings: { autoplay: false },
+      onEvent: function (e) {
+        if (e && e.name === 'SDK_GAME_PAUSE' && window.__adPause) window.__adPause();
+        else if (e && e.name === 'SDK_GAME_START' && window.__adResume) window.__adResume();
+      },
+    };
     src = 'https://html5.api.gamedistribution.com/main.min.js';
   }
   if (!src) return;
@@ -657,6 +665,6 @@ setTimeout(function () {
   document.body.appendChild(d);
 }, 9000);
 </script>
-<script type="module" src="game.js?v=60"></script>
+<script type="module" src="game.js?v=61"></script>
 </body>
 </html>

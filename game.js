@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from './lib/jsm/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader } from './lib/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from './lib/jsm/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from './lib/jsm/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=60';
+import { CITIES } from './sponsors.js?v=61';
 
 // Clean-brand mode: the portal build (CrazyGames etc.) must carry no real
 // trademarks. window.CLEAN_BUILD is injected by the build script; ?clean=1
@@ -26,11 +26,26 @@ const EN_BRAND_U = CLEAN ? 'BOLT ENERGY' : 'RED BULL';
 // ---------------------------------------------------------------------------
 const PORTAL = window.PORTAL_SDK || new URLSearchParams(location.search).get('portal') || '';
 const ADS = !!PORTAL; // is there a real ad network behind the buttons?
-function muteForAd() {
-  const g = typeof MASTER !== 'undefined' && MASTER ? MASTER.gain.value : null;
-  if (g !== null) MASTER.gain.value = 0;
-  return () => { if (g !== null) MASTER.gain.value = g; };
+// Every portal requires the game to go quiet AND stop simulating while an ad
+// plays (GameDistribution's SDK drives this from its own events too, via the
+// window hooks below). Idempotent: two pause calls still restore once.
+let adPaused = false, adPrevGain = null;
+function pauseForAd() {
+  if (adPaused) return;
+  adPaused = true;
+  if (typeof MASTER !== 'undefined' && MASTER) {
+    adPrevGain = MASTER.gain.value;
+    MASTER.gain.value = 0;
+  }
 }
+function resumeAfterAd() {
+  if (!adPaused) return;
+  adPaused = false;
+  if (adPrevGain !== null && typeof MASTER !== 'undefined' && MASTER) MASTER.gain.value = adPrevGain;
+  adPrevGain = null;
+}
+window.__adPause = pauseForAd;
+window.__adResume = resumeAfterAd;
 async function portalInit() {
   if (!ADS) return;
   // give the platform script time to land before we call into it
@@ -48,9 +63,9 @@ async function portalInit() {
 portalInit();
 // Rewarded video: the player CHOOSES to watch, we grant the prize.
 function showRewardedAd(onReward) {
-  const unmute = muteForAd();
-  const ok = () => { unmute(); onReward(); };
-  const fail = () => { unmute(); addFeed('📺 No ad available right now'); };
+  pauseForAd();
+  const ok = () => { resumeAfterAd(); onReward(); };
+  const fail = () => { resumeAfterAd(); addFeed('📺 No ad available right now'); };
   try {
     if (PORTAL === 'crazygames' && window.CrazyGames?.SDK?.ad) {
       window.CrazyGames.SDK.ad.requestAd('rewarded',
@@ -70,23 +85,24 @@ function showRewardedAd(onReward) {
 }
 function showMidgameAd() {
   if (!ADS) return;
-  const unmute = muteForAd();
+  pauseForAd();
+  const done = resumeAfterAd;
   try {
     if (PORTAL === 'crazygames' && window.CrazyGames?.SDK?.ad) {
       window.CrazyGames.SDK.ad.requestAd('midgame',
-        { adStarted: () => {}, adFinished: unmute, adError: unmute });
+        { adStarted: () => {}, adFinished: done, adError: done });
       return;
     }
     if (PORTAL === 'poki' && window.PokiSDK) {
-      window.PokiSDK.commercialBreak().then(unmute).catch(unmute);
+      window.PokiSDK.commercialBreak().then(done).catch(done);
       return;
     }
     if (PORTAL === 'gd' && window.gdsdk) {
-      window.gdsdk.showAd().then(unmute).catch(unmute);
+      window.gdsdk.showAd().then(done).catch(done);
       return;
     }
   } catch (e) { /* ads are optional */ }
-  unmute();
+  done();
 }
 // Every portal wants to know when real gameplay is running (ad pacing, metrics)
 function cgGame(ev) {
@@ -8459,6 +8475,7 @@ function tick() {
     doRender();
     return;
   }
+  if (adPaused) { doRender(); return; } // an ad is on screen — freeze the world
   if (!locked && !player.dead) { doRender(); return; }
 
   if (cine.active) {
@@ -8775,7 +8792,7 @@ window.__so = {
       ocd: +order.cooldown.toFixed(2), gt: +game.time.toFixed(1),
       weather: weather.state, rain: weather.amount | 0, vehicles: vehicles.length,
       tut: tut.step, tutDisp: tutbarEl.style.display,
-      heat: heat.level, pursuers: pursuers.length,
+      heat: heat.level, pursuers: pursuers.length, adPaused, portal: PORTAL,
       pnear: pursuers.length ? Math.min(...pursuers.map(p =>
         Math.hypot(p.group.position.x - player.pos.x, p.group.position.z - player.pos.z))) | 0 : -1,
     };
