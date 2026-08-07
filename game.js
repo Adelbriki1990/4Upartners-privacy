@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=40';
+import { CITIES } from './sponsors.js?v=41';
 
 // ---------------------------------------------------------------------------
 // Renderer / scene / camera
@@ -1611,6 +1611,40 @@ function loadRealAssets() {
         walker: { s: STREETS[(i * 3) % STREETS.length], alongX: i % 2 === 0,
           dir: 1, side: (i % 2 ? 1 : -1) * (ROAD_HALF + 1.8), v: -80 + i * 60, speed: 6 },
       });
+  // ---- the sky is alive: flocks of real animated birds over the rooftops ----
+  for (let i = 0; i < 2; i++) {
+    loadGlider('models/bird_parrot.glb', { size: 0.9, alt: 18 + i * 6, r: 42 + i * 22,
+      cx: -30 + i * 60, cz: 20 - i * 60, speed: 5, bob: 1.2, off: Math.PI / 2 });
+    loadGlider('models/bird_stork.glb', { size: 1.5, alt: 28 + i * 7, r: 58 + i * 26,
+      cx: 20 - i * 50, cz: -30 + i * 70, speed: 6.5, bob: 1.5, off: Math.PI / 2 });
+  }
+  // flamingos glide low along the waterfront
+  if (THEME.waterfront === 'east')
+    for (let i = 0; i < 2; i++)
+      loadGlider('models/bird_flamingo.glb', { size: 1.1, alt: 13 + i * 4, r: 34,
+        cx: 105, cz: -40 + i * 80, speed: 4.5, bob: 1, off: Math.PI / 2 });
+  // a stunt plane loops high above every city
+  loadGlider('models/plane_stunt.glb', { size: 7, alt: 76, r: 112, speed: 16,
+    bob: 2.5, off: Math.PI / 2, bank: -0.22 });
+  // a shark patrols the bay, fin cutting the surface
+  if (THEME.waterfront === 'east')
+    loadGlider('models/shark.glb', { size: 3.4, alt: -0.35, r: 16, cx: 165, cz: 25,
+      speed: 2.2, off: Math.PI / 2 });
+  // ...and something unexplained circles the desert sky
+  if (THEME.camels)
+    loadGlider('models/ufo.glb', { size: 6, alt: 55, r: 70, speed: 4, bob: 3 });
+  // BrainStem robot busts moves on the live stage next to the samba dancer
+  loadWalker('models/robot_dancer.glb', {
+    height: 1.7, clip: /./, place: { pos: [-33.8, 0, 71], ry: Math.PI } });
+  // a second dancer works the club queue
+  loadWalker('models/person_dancer2.glb', {
+    height: 1.68, clip: /./, place: { pos: [-12.2, 0, -43], ry: Math.PI / 2 } });
+  // the city mascot jogs laps around the blocks
+  loadWalker('models/person_jogger.glb', {
+    height: 1.8, clip: /./,
+    walker: { s: STREETS[3], alongX: true, dir: 1, side: ROAD_HALF + 2.2,
+      v: -60 + Math.random() * 120, speed: 2.4 },
+  });
   // a fox lives in the park
   gltfLoader.load('models/fox.glb', g => {
     const root = g.scene;
@@ -1754,6 +1788,35 @@ function loadWalker(url, opts) {
       const l = new GLTFLoader();
       l.setMeshoptDecoder(MeshoptDecoder);
       l.parse(buf.slice(0), '', g => onWalkerLoaded(g, opts), () => {});
+    })
+    .catch(() => {});
+}
+// Circling movers — birds, aircraft, sharks: unskinned animated models that
+// patrol a circle at a given altitude via the modelWanderers update
+function loadGlider(url, o) {
+  (walkerFiles[url] = walkerFiles[url] || fetch(url).then(r => r.arrayBuffer()))
+    .then(buf => {
+      const l = new GLTFLoader();
+      l.setMeshoptDecoder(MeshoptDecoder);
+      l.parse(buf.slice(0), '', g => {
+        const root = g.scene;
+        const dim = new THREE.Box3().setFromObject(root).getSize(new THREE.Vector3());
+        const span = Math.max(dim.x, dim.y, dim.z, 0.001);
+        root.scale.setScalar(o.size / span);
+        root.traverse(m => { if (m.isMesh) m.castShadow = true; });
+        scene.add(root);
+        if (g.animations && g.animations.length) {
+          const mixer = new THREE.AnimationMixer(root);
+          const act = mixer.clipAction(g.animations[0]);
+          act.time = Math.random() * g.animations[0].duration;
+          act.play();
+          modelMixers.push(mixer);
+        }
+        modelWanderers.push({ obj: root, off: o.off || 0,
+          cx: o.cx || 0, cz: o.cz || 0, ang: Math.random() * 6.28,
+          r: o.r * (0.85 + Math.random() * 0.3), alt: o.alt || 0,
+          bob: o.bob, bank: o.bank, speed: o.speed });
+      }, () => {});
     })
     .catch(() => {});
 }
@@ -6019,8 +6082,10 @@ function updateVenues(dt) {
   for (const m of modelMixers) m.update(dt);
   for (const w of modelWanderers) {
     w.ang += dt * w.speed / w.r;
-    w.obj.position.set(w.cx + Math.cos(w.ang) * w.r, 0, w.cz + Math.sin(w.ang) * w.r);
+    const wy = (w.alt || 0) + (w.bob ? Math.sin(game.time * 0.8 + w.ang * 3) * w.bob : 0);
+    w.obj.position.set(w.cx + Math.cos(w.ang) * w.r, wy, w.cz + Math.sin(w.ang) * w.r);
     w.obj.rotation.y = Math.atan2(-Math.sin(w.ang), Math.cos(w.ang)) + (w.off || 0);
+    if (w.bank) w.obj.rotation.z = w.bank; // aircraft roll gently into the turn
   }
   for (const w of realWalkers) {
     w.v += w.speed * w.dir * dt;
@@ -7068,6 +7133,7 @@ window.__so = {
       peds: peds.length, traffic: traffic.length, nf: NF,
       pos: [player.pos.x, player.pos.z],
       camels: camels.length, realCamels: camels.filter(c => !c.rig.legs).length,
+      wanderers: modelWanderers.length, walkers: realWalkers.length,
       weather: weather.state, rain: weather.amount | 0, vehicles: vehicles.length,
       tut: tut.step, tutDisp: tutbarEl.style.display,
       heat: heat.level, pursuers: pursuers.length,
