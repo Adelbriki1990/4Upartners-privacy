@@ -238,8 +238,10 @@
     #healthwrap { width: 170px; }
     #healthbar, #healthfill { max-width: 170px; }
   }
-  /* portrait phones: keep the left info column and the health block apart */
-  @media (max-width: 980px) and (orientation: portrait) {
+  /* any small window (narrow OR short — phones and resized desktop
+     browsers alike): the health block moves bottom-right so the left
+     info column can never run into it */
+  @media (max-width: 980px), (max-height: 700px) {
     #healthwrap { left: auto; right: 14px; bottom: 14px; width: 150px; }
     #healthbar, #healthfill { max-width: 150px; }
     #lvl { font-size: 11px; }
