@@ -236,6 +236,10 @@
   #btnAct  { right: 122px; bottom: 176px; }
   #btnQ    { right: 200px; bottom: 120px; }
   #btnShop { right: 208px; bottom: 40px; }
+  #btnRec  { right: 284px; bottom: 40px; }
+  #btnRide { right: 284px; bottom: 104px; }
+  #btnDrone{ right: 348px; bottom: 40px; }
+  #btnCam  { right: 348px; bottom: 104px; }
   .tbtn.on { background: rgba(127,208,255,.45); }
   @media (max-width: 980px) {
     #missions { display: none !important; }
@@ -259,6 +263,74 @@
     #ammo { bottom: 96px; right: 14px; }
     #orderpanel { width: 172px; }
   }
+  /* ---------- lean HUD for touch devices ----------
+     Keyed to "has a touchscreen", not to a pixel size: big phones and
+     tablets report viewports well past the breakpoints below and were
+     getting the full desktop HUD *plus* the on-screen controls, which
+     buried the road under text. Anything a thumb can reach or the driver
+     phone already shows is dropped here. */
+  body.touch #orderpanel { display: none !important; } /* the phone shows this */
+  body.touch #missions,
+  body.touch #location { display: none !important; }
+  /* keep the reward feed — it is how a player sees "+$36" — but shrink it */
+  body.touch #feed { top: 36px; right: 12px; font-size: 10px; max-width: 42vw; }
+  body.touch #tb-wave,
+  body.touch #topbar div:nth-child(4),
+  body.touch #topbar div:nth-child(5) { display: none; }   /* hostiles/eliminations */
+  body.touch #topbar { top: 10px; gap: 18px; font-size: 11px; letter-spacing: 0; }
+  body.touch #topbar b { font-size: 14px; }
+  body.touch #questbar { top: 40px; font-size: 11px; padding: 4px 12px; max-width: 60vw; }
+  body.touch #tutbar { bottom: auto; top: 68px; max-width: min(380px, 62vw);
+    font-size: 12px; padding: 7px 14px; line-height: 1.35; }
+  body.touch #tutbar .step { font-size: 9px; margin-bottom: 2px; }
+  body.touch #phone { width: 104px; padding: 5px 4px 6px; border-radius: 15px; opacity: .92; }
+  body.touch #lvl { font-size: 10px; }
+  body.touch #healthwrap .label { display: none; }
+  body.touch #ammo .wname { display: none; }
+
+  /* Fixed zones so nothing ever lands under a thumb or on the road:
+       top-left    driver phone        bottom-left   joystick (alone)
+       top-centre  cash / delivered    bottom-centre health + level
+       top-right   reward feed         bottom-right  action buttons  */
+  body.touch #phone { position: absolute; left: 8px; top: 8px; }
+  body.touch #joy { left: 16px; bottom: 16px; width: 106px; height: 106px; }
+  body.touch #joyknob { left: 31px; top: 31px; width: 44px; height: 44px; }
+  body.touch #healthwrap { left: 138px; right: auto; bottom: 14px; width: 132px; }
+  body.touch #healthbar, body.touch #healthfill { max-width: 132px; }
+  body.touch #energy { right: 232px; bottom: 14px; }
+  body.touch #energy #cans { font-size: 14px; }
+  body.touch #boostbar { width: 76px; height: 4px; margin-top: 3px; }
+  body.touch #ammo { right: 232px; bottom: 58px; }
+  body.touch #ammo .mag { font-size: 20px; }
+  body.touch #ammo .res { font-size: 12px; }
+  body.touch #btnRec { display: none !important; }   /* clip recording is desktop-only */
+  /* the event banner is a shout on a 6-inch screen — same message, half the size */
+  body.touch #wavebanner { top: 26%; font-size: 18px; letter-spacing: 2px; max-width: 76vw; }
+  /* short screens (iPhone SE and friends): the phone panel is the tallest
+     thing on the left, so it shrinks rather than reaching into the joystick */
+  @media (max-height: 430px) {
+    body.touch #phone { width: 88px; padding: 4px 3px 5px; }
+    body.touch #minimap { height: 92px; object-fit: cover; }
+    body.touch #phonenotif b { font-size: 7.5px; }
+    body.touch #phonenotif span { font-size: 7px; }
+    body.touch #joy { width: 92px; height: 92px; }
+    body.touch #joyknob { left: 26px; top: 26px; width: 40px; height: 40px; }
+  }
+  /* the right-hand cluster: primary action in the corner, two tidy columns
+     beside it, nothing further left than 220px from the edge */
+  body.touch #btnFire { right: 14px; bottom: 14px; }
+  body.touch #btnAim  { right: 22px; bottom: 100px; }
+  body.touch #btnJump { right: 22px; bottom: 164px; }
+  body.touch #btnAct  { right: 100px; bottom: 14px; }
+  body.touch #btnCam  { right: 100px; bottom: 78px; }
+  body.touch #btnRide { right: 100px; bottom: 142px; }
+  body.touch #btnQ    { right: 164px; bottom: 14px; }
+  body.touch #btnDrone{ right: 164px; bottom: 78px; }
+  body.touch #btnShop { right: 164px; bottom: 142px; }
+  /* fading panels: shown, then quietly dismissed so the street stays clear */
+  .autofade { transition: opacity .6s ease; }
+  .autofade.gone { opacity: 0; pointer-events: none; }
+
   /* landscape phones: keep the left column clear of the joystick and the
      ammo block clear of the action buttons */
   @media (max-height: 500px) {
@@ -464,10 +536,10 @@
     <div class="tbtn sm" id="btnAct">🚗</div>
     <div class="tbtn sm" id="btnQ">⚡</div>
     <div class="tbtn sm" id="btnShop">🛒</div>
-    <div class="tbtn sm" id="btnRec" style="right:284px;bottom:40px">🎬</div>
-    <div class="tbtn sm" id="btnRide" style="right:284px;bottom:104px">🚗</div>
-    <div class="tbtn sm" id="btnDrone" style="right:348px;bottom:40px">🚁</div>
-    <div class="tbtn sm" id="btnCam" style="right:348px;bottom:104px">📷</div>
+    <div class="tbtn sm" id="btnRec">🎬</div>
+    <div class="tbtn sm" id="btnRide">🚗</div>
+    <div class="tbtn sm" id="btnDrone">🚁</div>
+    <div class="tbtn sm" id="btnCam">📷</div>
   </div>
 </div>
 
@@ -682,6 +754,6 @@ setTimeout(function () {
   document.body.appendChild(d);
 }, 9000);
 </script>
-<script type="module" src="game.js?v=62"></script>
+<script type="module" src="game.js?v=64"></script>
 </body>
 </html>
