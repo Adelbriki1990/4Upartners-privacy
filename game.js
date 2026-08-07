@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=33';
+import { CITIES } from './sponsors.js?v=34';
 
 // ---------------------------------------------------------------------------
 // Renderer / scene / camera
@@ -1821,12 +1821,11 @@ function spawnMercFleet() {
 // showpiece parked around the city (plus feed announcements)
 const HERO_CARS = [
   // BMW X7 removed: its export has a door welded open in every pose
-  { file: 'models/car_challenger.glb', key: 'hero_dodge', base: 'sports', len: 5.0, label: 'CHALLENGER V8',
-    rotY: Math.PI, spots: [[5.1, 84, 0], [-65.1, -20, Math.PI], [65.1, 14, 0]] },
+  // Challenger removed too — the export sat tilted and read badly
   { file: 'models/car_concept.glb', key: 'hero_concept', base: 'hyper', len: 4.7, label: 'CONCEPT X',
-    spots: [[125.1, 40, 0]] },
+    spots: [[125.1, 40, 0], [5.1, 84, 0], [-65.1, -20, Math.PI]] },
   { file: 'models/car_lambo.glb', key: 'hero_lambo', base: 'hyper', len: 4.6, label: 'TORO SV',
-    tint: 0xf07800, spots: [[-125.1, 62, 0], [65.1, 100, Math.PI]] },
+    tint: 0xf07800, spots: [[-125.1, 62, 0], [65.1, 100, Math.PI], [65.1, 14, 0]] },
 ];
 function loadHeroCars() {
   for (const hc of HERO_CARS) {
@@ -4778,7 +4777,7 @@ function addXP(n) {
 // ---------------------------------------------------------------------------
 const WEAPON_UNLOCK = [1, 3, 6];
 const VEH_UNLOCK = { sports: 8, phantom: 10, hyper: 12, police: 14,
-  hero_dodge: 8, hero_concept: 12, hero_lambo: 12 };
+  hero_concept: 12, hero_lambo: 12 };
 const UNLOCK_LADDER = [
   { level: 3, what: 'P9 SIDEARM' },
   { level: 6, what: 'VIPER SMG' },
