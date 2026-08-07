@@ -236,6 +236,10 @@
   /* ---------- rotate prompt (phones held upright) ----------
      A first-person driving game needs the road ahead in view; portrait
      leaves no room for it or the controls, so we ask for landscape. */
+  #quitask { display: none; z-index: 120; }
+  #quitbtns { margin-top: 22px; display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+  #quityes { border-color: #ff8a8a; color: #ff8a8a; }
+
   #rotate { display: none; position: fixed; inset: 0; z-index: 200;
     flex-direction: column; align-items: center; justify-content: center; gap: 18px;
     background: linear-gradient(180deg, #070c14, #0d1522); color: #e8eef5; text-align: center; padding: 24px; }
@@ -327,6 +331,8 @@
   body.touch #ammo .mag { font-size: 20px; }
   body.touch #ammo .res { font-size: 12px; }
   body.touch #btnRec { display: none !important; }   /* clip recording is desktop-only */
+  /* a phone has no Escape key — quitting needs a button you can see */
+  #btnHome { left: 118px; top: 10px; right: auto; bottom: auto; }
   /* the event banner is a shout on a 6-inch screen — same message, half the size */
   body.touch #wavebanner { top: 26%; font-size: 18px; letter-spacing: 2px; max-width: 76vw; }
   /* short screens (iPhone SE and friends): the phone panel is the tallest
@@ -413,6 +419,16 @@
   #phonetop span:nth-child(2) { color: #7fd0ff; font-weight: 700; }
   #minimap { display: block; width: 100%; height: auto; border-radius: 13px; border: 1px solid #1c2027; }
   #ph-nav { display: flex; flex-direction: column; padding: 6px 5px 0; }
+  /* how intact the package is — the whole payout rides on this */
+  #ph-cond { display: none; padding: 5px 5px 0; font-size: 8.5px; letter-spacing: 1px; color: #9fb2c4; }
+  #ph-cond b { color: #7dff8a; font-size: 10px; }
+  #ph-cond.warn b { color: #ffd479; }
+  #ph-cond.bad b { color: #ff6b6b; }
+  #ph-cond i { display: block; height: 4px; margin-top: 3px; border-radius: 2px;
+    background: rgba(0,0,0,.55); overflow: hidden; }
+  #ph-cond u { display: block; height: 100%; width: 100%; background: #7dff8a; transition: width .25s; }
+  #ph-cond.warn u { background: #ffd479; }
+  #ph-cond.bad u { background: #ff6b6b; }
   #ph-nav b { color: #7dff8a; font-size: 11px; letter-spacing: .4px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #ph-nav span { color: #9fb2c4; font-size: 9.5px; margin-top: 1px; }
@@ -497,6 +513,7 @@
     <div id="phonetop"><span id="ph-time">12:00</span><span>DRIVER APP</span><span>📶 🔋</span></div>
     <canvas id="minimap" width="220" height="250"></canvas>
     <div id="ph-nav"><b id="ph-dest">NO ACTIVE ORDER</b><span id="ph-eta">waiting for orders…</span></div>
+    <div id="ph-cond"><span>📦 CONDITION <b id="ph-condv">100%</b></span><i><u id="ph-condfill"></u></i></div>
     <div id="phonenotif">
       <canvas id="radar" width="56" height="56"></canvas>
       <div id="ph-notif-txt"><b>📳 NEW ORDER</b><span id="ph-notif-sub"></span></div>
@@ -559,10 +576,21 @@
     <div class="tbtn sm" id="btnAct">🚗</div>
     <div class="tbtn sm" id="btnQ">⚡</div>
     <div class="tbtn sm" id="btnShop">🛒</div>
+    <div class="tbtn sm" id="btnHome">🏠</div>
     <div class="tbtn sm" id="btnRec">🎬</div>
     <div class="tbtn sm" id="btnRide">🚗</div>
     <div class="tbtn sm" id="btnDrone">🚁</div>
     <div class="tbtn sm" id="btnCam">📷</div>
+  </div>
+</div>
+
+<div id="quitask" class="overlay">
+  <h1>Leave the shift?</h1>
+  <h2>YOUR WALLET, LEVEL, CARS AND OUTFITS ARE ALL SAVED</h2>
+  <div style="margin-top:8px;font-size:13px;color:#9fb2c4">Only this run's cash and streak are lost.</div>
+  <div id="quitbtns">
+    <div class="modebtn sel" id="quitno">↩ KEEP PLAYING</div>
+    <div class="modebtn" id="quityes">🏠 QUIT TO MENU</div>
   </div>
 </div>
 
@@ -787,6 +815,6 @@ setTimeout(function () {
   document.body.appendChild(d);
 }, 9000);
 </script>
-<script type="module" src="game.js?v=65"></script>
+<script type="module" src="game.js?v=66"></script>
 </body>
 </html>
