@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=31';
+import { CITIES } from './sponsors.js?v=33';
 
 // ---------------------------------------------------------------------------
 // Renderer / scene / camera
@@ -163,6 +163,7 @@ const DAY = {
   doha:   { sky: 0xaacde6, fogMul: 0.35 },   // bright corniche morning
 };
 const lampLights = [];   // point lights that dim at day
+const dayGlowMats = []; // additive glow cones that must vanish in daylight
 const EMI_MATS = [];     // window/storefront materials whose glow dims at day
 let starsObj = null, moonSprite = null;
 
@@ -413,6 +414,7 @@ function playChirp() {
     t += 0.13 + Math.random() * 0.1;
   }
 }
+const AF = v => (Number.isFinite(v) ? v : 0); // never feed NaN to WebAudio
 function updateAmbient(dt) {
   if (!AMB) return;
   AMB.hornT -= dt;
@@ -425,20 +427,20 @@ function updateAmbient(dt) {
   let prox = 0;
   for (const v of venues)
     prox = Math.max(prox, 1 - Math.hypot(v.x - player.pos.x, v.z - player.pos.z) / 45);
-  AMB.crowdG.gain.value = 0.05 * Math.max(0, prox) * (0.75 + 0.25 * Math.sin(game.time * 0.6));
+  AMB.crowdG.gain.value = AF(0.05 * Math.max(0, prox) * (0.75 + 0.25 * Math.sin(game.time * 0.6)));
   // surf grows as you approach the shore
   let waveAmt = 0;
   if (THEME && (THEME.waterfront || THEME.docks)) {
     const shoreX = THEME.waterfront ? 134 : -134;
     waveAmt = Math.max(0, 1 - Math.abs(player.pos.x - shoreX) / 60);
   }
-  AMB.waveG.gain.value = 0.06 * waveAmt * (0.6 + 0.4 * Math.sin(game.time * 0.55));
+  AMB.waveG.gain.value = AF(0.06 * waveAmt * (0.6 + 0.4 * Math.sin(game.time * 0.55)));
   // rain patter follows the live weather
-  AMB.rainG.gain.value = 0.05 * Math.min(1, weather.amount / 900);
+  AMB.rainG.gain.value = AF(0.05 * Math.min(1, weather.amount / 900));
   // crickets after dark
   const cricket = NF > 0.6 ? 0.011 : 0;
-  AMB.cricketG.gain.value = cricket;
-  AMB.cricketLfoG.gain.value = cricket;
+  AMB.cricketG.gain.value = AF(cricket);
+  AMB.cricketLfoG.gain.value = AF(cricket);
 }
 function noiseBuffer(dur) {
   const buf = AC.createBuffer(1, AC.sampleRate * dur, AC.sampleRate);
@@ -619,9 +621,9 @@ function updateMusic() {
     prox = Math.max(prox, 1 - d / 52);
   }
   prox = Math.max(0, prox);
-  musicNodes.club.g.gain.value = musicOn ? 0.5 * Math.pow(prox, 1.6) : 0;
-  musicNodes.club.filt.frequency.value = 320 + Math.pow(prox, 2) * 11000;
-  musicNodes.city.g.gain.value = musicOn ? 0.05 * (1 - prox * 0.85) : 0;
+  musicNodes.club.g.gain.value = AF(musicOn ? 0.5 * Math.pow(prox, 1.6) : 0);
+  musicNodes.club.filt.frequency.value = AF(320 + Math.pow(prox, 2) * 11000) || 320;
+  musicNodes.city.g.gain.value = AF(musicOn ? 0.05 * (1 - prox * 0.85) : 0);
 }
 
 function playCrash(k) {
@@ -1696,13 +1698,32 @@ const realWalkers = []; // animated characters walking the sidewalk lanes
 // model's authored facing is handled as a per-frame yaw offset.
 // opts: height, faceOffset, clip (regex), attach(root),
 //       walker {lane fields} or place {pos, ry}.
+const walkerFiles = {}; // one fetch per url; each instance parses its own copy
 function loadWalker(url, opts) {
-  gltfLoader.load(url, g => {
+  (walkerFiles[url] = walkerFiles[url] || fetch(url).then(r => r.arrayBuffer()))
+    .then(buf => {
+      // a FRESH loader per parse: sharing one GLTFLoader across parses of
+      // the same file corrupts the skinned rigs (the giant-blob bug)
+      const l = new GLTFLoader();
+      l.setMeshoptDecoder(MeshoptDecoder);
+      l.parse(buf.slice(0), '', g => onWalkerLoaded(g, opts), () => {});
+    })
+    .catch(() => {});
+}
+function onWalkerLoaded(g, opts) {
+  {
     lockWalkRoot(g.animations || []);
     const root = g.scene;
-    const box = new THREE.Box3().setFromObject(root);
-    const dim = box.getSize(new THREE.Vector3());
-    root.scale.setScalar(opts.height / dim.y);
+    // rig exports disagree about size: mixamo rigs report a broken tiny
+    // mesh box but true bone bounds, the robot rig reports the opposite.
+    // The larger of the two is always the real displayed height.
+    const rawY = new THREE.Box3().setFromObject(root).getSize(new THREE.Vector3()).y;
+    const boneY = boneBounds(root).getSize(new THREE.Vector3()).y;
+    const trueY = Math.max(
+      Number.isFinite(rawY) ? rawY : 0,
+      Number.isFinite(boneY) ? boneY : 0);
+    if (trueY <= 0.001) return; // bad parse — drop it
+    root.scale.setScalar(opts.height / trueY);
     root.traverse(o => { if (o.isMesh) o.castShadow = true; });
     scene.add(root);
     const clips = g.animations || [];
@@ -1720,7 +1741,7 @@ function loadWalker(url, opts) {
       root.position.set(opts.place.pos[0], opts.place.pos[1], opts.place.pos[2]);
       root.rotation.y = opts.place.ry + (opts.faceOffset || 0);
     }
-  }, undefined, () => {});
+  }
 }
 const modelMixers = [];   // animation players for real character models
 const modelBobbers = [];  // fallback idle for models without animations
@@ -1799,10 +1820,9 @@ function spawnMercFleet() {
 // Hero cars — every real car model uploaded to models/ becomes a drivable
 // showpiece parked around the city (plus feed announcements)
 const HERO_CARS = [
-  { file: 'models/car_bmw_x7.glb', key: 'hero_x7', base: 'suv', len: 5.1, label: 'BMW X7 M60i',
-    spots: [[65.1, 14, 0], [-5.1, -70, Math.PI]] },
+  // BMW X7 removed: its export has a door welded open in every pose
   { file: 'models/car_challenger.glb', key: 'hero_dodge', base: 'sports', len: 5.0, label: 'CHALLENGER V8',
-    rotY: Math.PI, spots: [[5.1, 84, 0], [-65.1, -20, Math.PI]] },
+    rotY: Math.PI, spots: [[5.1, 84, 0], [-65.1, -20, Math.PI], [65.1, 14, 0]] },
   { file: 'models/car_concept.glb', key: 'hero_concept', base: 'hyper', len: 4.7, label: 'CONCEPT X',
     spots: [[125.1, 40, 0]] },
   { file: 'models/car_lambo.glb', key: 'hero_lambo', base: 'hyper', len: 4.6, label: 'TORO SV',
@@ -2625,6 +2645,7 @@ function buildCity(city) {
             blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
         cone.position.set(lx, 3.0, lz);
         scene.add(cone);
+        dayGlowMats.push({ mat: cone.material, base: 0.05 });
         if (lightBudget > 0 && Math.hypot(lx - 4, lz - 26) < 95) {
           const light = new THREE.PointLight(THEME.lamp, 20, 24, 2);
           light.position.set(lx, 5.4, lz);
@@ -2887,6 +2908,7 @@ function buildCity(city) {
   const glow = 0.12 + 0.88 * NF;
   for (const e of EMI_MATS) e.mat.emissiveIntensity = e.base * glow;
   for (const l of lampLights) l.intensity = 20 * NF;
+  for (const m of dayGlowMats) m.mat.opacity = m.base * NF;
 
   buildClub();
   buildVenues();
@@ -2952,6 +2974,7 @@ function buildClub() {
     beam.position.set(10.6, 4, z + dz);
     scene.add(beam);
     clubBeams.push({ mesh: beam, phase: dz });
+    dayGlowMats.push({ mat: beam.material, base: 0.08 });
   }
   clubLight = new THREE.PointLight(0xffb02a, 7, 22, 2);
   clubLight.position.set(9.8, 3.5, z);
@@ -4614,8 +4637,8 @@ function updateHeat(dt) {
     }
   }
   if (sirenNodes) {
-    sirenNodes.osc.frequency.value = 640 + (Math.sin(game.time * 9) > 0 ? 320 : 0);
-    sirenNodes.g.gain.value = 0.12 * Math.max(0.15, 1 - nearest / 120);
+    sirenNodes.osc.frequency.value = AF(640 + (Math.sin(game.time * 9) > 0 ? 320 : 0)) || 640;
+    sirenNodes.g.gain.value = AF(0.12 * Math.max(0.15, 1 - nearest / 120));
   }
   const mySpeed = driving ? Math.abs(driving.speed) : Math.hypot(player.vel.x, player.vel.z);
   if (nearest < 6 && mySpeed < 4) {
@@ -4956,6 +4979,7 @@ function buildVenues() {
       beam.position.set(x + 0.9, 4.5, z + dz);
       scene.add(beam);
       beams.push(beam);
+      dayGlowMats.push({ mat: beam.material, base: 0.12 });
     }
     const light = new THREE.PointLight(0xff4fd8, 8, 20, 2);
     light.position.set(x + 1.6, 3.5, z);
@@ -5573,25 +5597,51 @@ const orderAppEl = document.getElementById('order-app');
 
 function makeBeacon() {
   const g = new THREE.Group();
+  // slim light beam that fades out with height instead of a fat tube
+  const gradCv = document.createElement('canvas');
+  gradCv.width = 2; gradCv.height = 64;
+  const gctx = gradCv.getContext('2d');
+  const grad = gctx.createLinearGradient(0, 64, 0, 0);
+  grad.addColorStop(0, 'rgba(255,255,255,0.85)');
+  grad.addColorStop(0.6, 'rgba(255,255,255,0.25)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  gctx.fillStyle = grad;
+  gctx.fillRect(0, 0, 2, 64);
+  const gradTex = new THREE.CanvasTexture(gradCv);
   const cyl = new THREE.Mesh(
-    new THREE.CylinderGeometry(1.3, 1.3, 18, 16, 1, true),
-    new THREE.MeshBasicMaterial({ color: 0x41d8ff, transparent: true, opacity: 0.2,
+    new THREE.CylinderGeometry(0.55, 0.7, 9, 14, 1, true),
+    new THREE.MeshBasicMaterial({ color: 0x41d8ff, map: gradTex, transparent: true, opacity: 0.55,
       blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
-  cyl.position.y = 9;
+  cyl.position.y = 4.5;
   g.add(cyl);
   const ring = new THREE.Mesh(new THREE.TorusGeometry(1.7, 0.09, 8, 24),
     new THREE.MeshBasicMaterial({ color: 0x41d8ff }));
   ring.rotation.x = Math.PI / 2;
   ring.position.y = 0.3;
   g.add(ring);
+  // floating icon so you always know what you're heading for
+  const iconCv = document.createElement('canvas');
+  iconCv.width = iconCv.height = 128;
+  const iconTex = new THREE.CanvasTexture(iconCv);
+  const icon = new THREE.Sprite(new THREE.SpriteMaterial({ map: iconTex, transparent: true, depthWrite: false }));
+  icon.scale.setScalar(2.2);
+  icon.position.y = 4.2;
+  g.add(icon);
   scene.add(g);
-  return { group: g, cyl, ring };
+  return { group: g, cyl, ring, icon, iconCv, iconTex };
 }
-function setBeacon(x, z, color) {
+function setBeacon(x, z, color, emoji = '🍕') {
   if (!beacon) beacon = makeBeacon();
   beacon.group.position.set(x, 0, z);
   beacon.cyl.material.color.set(color);
   beacon.ring.material.color.set(color);
+  const c = beacon.iconCv.getContext('2d');
+  c.clearRect(0, 0, 128, 128);
+  c.font = '96px serif';
+  c.textAlign = 'center';
+  c.textBaseline = 'middle';
+  c.fillText(emoji, 64, 70);
+  beacon.iconTex.needsUpdate = true;
   beacon.group.visible = true;
 }
 function newOrder() {
@@ -5617,7 +5667,7 @@ function newOrder() {
   order.vip = game.deliveries > 0 && game.deliveries % 3 === 2;
   order.timeLeft = 0;
   if (order.vip) order.reward = Math.round(order.reward * 2.5);
-  setBeacon(from.x, from.z, order.vip ? 0xffd23f : 0x41d8ff);
+  setBeacon(from.x, from.z, order.vip ? 0xffd23f : 0x41d8ff, '🍕');
   showBanner(order.vip ? '⭐ VIP RUSH ORDER' : 'New order');
   addFeed(order.vip ? `⭐ VIP order from ${order.name} — 2.5× pay!` : `Order from ${order.name}`);
   playClick(1700, 0.2);
@@ -5640,7 +5690,7 @@ function updateDelivery(dt) {
       order.vip = false;
       order.reward = Math.round(order.reward / 2.5);
       addFeed('⏱ VIP deadline missed — normal pay');
-      setBeacon(order.tx, order.tz, 0x7dff8a);
+      setBeacon(order.tx, order.tz, 0x7dff8a, '📦');
     }
   }
   const mult = 1 + Math.min(game.streak * 0.1, 1);
@@ -5666,7 +5716,7 @@ function updateDelivery(dt) {
       order.stage = 'dropoff';
       if (order.vip)
         order.timeLeft = 14 + Math.hypot(order.tx - player.pos.x, order.tz - player.pos.z) * 0.55;
-      setBeacon(order.tx, order.tz, order.vip ? 0xffd23f : 0x7dff8a);
+      setBeacon(order.tx, order.tz, order.vip ? 0xffd23f : 0x7dff8a, '📦');
       showBanner(order.vip ? `Picked up — ⏱ beat the clock!` : 'Picked up — go deliver!');
       playClick(1900, 0.25);
       if (Math.random() < Math.min(0.35 + prog.level * 0.008, 0.85)) {
@@ -6019,6 +6069,11 @@ navArrow.visible = false;
 scene.add(navArrow);
 const _navDir = new THREE.Vector3(), _navFwd = new THREE.Vector3();
 function updateNavArrow() {
+  if (beacon && beacon.group.visible) {
+    beacon.icon.position.y = 4.2 + Math.sin(game.time * 2.2) * 0.3;
+    const pulse = 1 + Math.sin(game.time * 3) * 0.12;
+    beacon.ring.scale.setScalar(pulse);
+  }
   const show = mode === 'delivery' && order.active && !cine.active && !player.dead;
   navArrow.visible = show;
   if (!show) return;
@@ -6297,6 +6352,23 @@ window.__so = {
   get cineT() { return cine.t; },
   tp(x, z, yaw = 0) { player.pos.set(x, 0, z); player.yaw = yaw; player.pitch = 0; },
   wanted(n = 1) { heat.crimeCd = 0; addHeat(n, 'Debug'); },
+  giants() {
+    const out = [];
+    const v = new THREE.Vector3();
+    scene.traverse(o => {
+      if (o.isMesh) {
+        o.getWorldScale(v);
+        const s = Math.max(Math.abs(v.x), Math.abs(v.y), Math.abs(v.z));
+        if (s > 40) out.push(`${o.name || o.type}|scale=${s.toFixed(1)}`);
+      }
+      if (o.isBone) {
+        o.getWorldPosition(v);
+        const p = Math.max(Math.abs(v.x), Math.abs(v.y), Math.abs(v.z));
+        if (p > 300) out.push(`${o.name || 'bone'}|pos=${p.toFixed(0)}`);
+      }
+    });
+    return out.slice(0, 15);
+  },
   get state() {
     return {
       cine: cine.active, driving: !!driving, firing, locked, started, mode,

@@ -33,6 +33,25 @@
   .citycard { padding: 12px 16px; width: 236px; }
   #modes { margin-top: 18px; }
   @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+
+  /* ---------- home menu presentation ---------- */
+  #menu h1 { font-size: 60px; letter-spacing: 14px;
+    background: linear-gradient(100deg, #ffffff 15%, #7fd0ff 35%, #ffd479 55%, #ffffff 75%);
+    background-size: 300% 100%; -webkit-background-clip: text; background-clip: text; color: transparent;
+    animation: shine 7s linear infinite;
+    filter: drop-shadow(0 0 26px rgba(120,190,255,.5)); }
+  @keyframes shine { to { background-position: 300% 0; } }
+  #tagline { margin-top: 6px; display: flex; gap: 12px; align-items: center;
+    font-size: 13px; letter-spacing: 5px; color: #ffd479; font-weight: 700; }
+  #tagline i { color: #4a5c70; font-style: normal; }
+  #menu h2 { margin-top: 10px; }
+  #keyhelp { margin-top: 16px; text-align: center; }
+  #keyhelp summary { cursor: pointer; font-size: 12px; letter-spacing: 3px; color: #7fa2c0;
+    list-style: none; padding: 6px 18px; border: 1px solid #2c3c4e; border-radius: 20px;
+    display: inline-block; transition: all .15s; }
+  #keyhelp summary:hover { border-color: #7fd0ff; color: #b8d8f0; }
+  #keyhelp[open] summary { border-color: #7fd0ff; }
+  @media (max-width: 980px) { #menu h1 { font-size: 40px; letter-spacing: 8px; } #keyhelp { display: none; } }
   #gameover { display: none; }
   #gameover h1 { color: #ff5f5f; -webkit-text-fill-color: currentColor; }
   #gameover .stats { margin-top: 20px; font-size: 22px; color: #cfe0ee; line-height: 1.8; }
@@ -321,7 +340,8 @@
 
 <div id="menu" class="overlay">
   <h1>Street Ops</h1>
-  <h2>3D URBAN COMBAT &mdash; CHOOSE YOUR CITY</h2>
+  <div id="tagline"><span>DELIVERY</span><i>•</i><span>COMBAT</span><i>•</i><span>7 CITIES</span></div>
+  <h2>CHOOSE YOUR CITY &amp; RIDE OUT</h2>
   <div id="profile">
     <canvas id="charpreview" width="150" height="190"></canvas>
     <div id="profilecol">
@@ -341,6 +361,7 @@
     <div class="modebtn" id="lbbtn">🏆 LEADERBOARD</div>
   </div>
   <div id="progressline" style="margin-top:14px;color:#ffd479;font-size:13px;letter-spacing:2px;"></div>
+  <details id="keyhelp"><summary>⌨ KEYBOARD CONTROLS</summary>
   <div class="keys">
     <div><b>W A S D</b></div><div>Move</div>
     <div><b>MOUSE</b></div><div>Look / Aim</div>
@@ -356,7 +377,9 @@
     <div><b>SPACE</b></div><div>Brake (while driving)</div>
     <div><b>M</b></div><div>Music on / off</div>
     <div><b>B</b></div><div>Driver shop (spend your cash)</div>
+    <div><b>F</b></div><div>Eat at a restaurant</div>
   </div>
+  </details>
   <div class="go" id="deployline">CLICK ANYWHERE TO DEPLOY</div>
 </div>
 
@@ -400,6 +423,6 @@
   "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.1/examples/jsm/"
 } }
 </script>
-<script type="module" src="game.js?v=31"></script>
+<script type="module" src="game.js?v=33"></script>
 </body>
 </html>
