@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from './lib/jsm/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader } from './lib/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from './lib/jsm/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from './lib/jsm/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=61';
+import { CITIES } from './sponsors.js?v=62';
 
 // Clean-brand mode: the portal build (CrazyGames etc.) must carry no real
 // trademarks. window.CLEAN_BUILD is injected by the build script; ?clean=1
@@ -4134,11 +4134,37 @@ document.addEventListener('mousemove', e => {
 // drag-to-look, and on-screen action buttons
 // ---------------------------------------------------------------------------
 const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+// Phones held upright get a rotate prompt instead of a broken layout: a
+// first-person driving game has nowhere to put the road and the controls in
+// portrait. The run is frozen while the prompt is up and resumes on rotate.
+let portraitBlocked = false;
+function checkOrientation() {
+  if (!isTouch) return;
+  const portrait = window.innerHeight > window.innerWidth;
+  if (portrait === portraitBlocked) return;
+  portraitBlocked = portrait;
+  const el = id => document.getElementById(id); // these run before some consts exist
+  el('rotate').style.display = portrait ? 'flex' : 'none';
+  if (!started) return;
+  if (portrait) {
+    locked = false;                       // main loop goes render-only
+    el('hud').style.display = 'none';
+    el('touchui').style.display = 'none';
+  } else {
+    locked = true;
+    el('touchui').style.display = 'block';
+    if (el('cine').style.display !== 'block') el('hud').style.display = 'block';
+  }
+}
+window.addEventListener('resize', checkOrientation);
+window.addEventListener('orientationchange', () => setTimeout(checkOrientation, 120));
+
 const touchMove = { x: 0, y: 0, hard: false };
 let joyTouchId = null, lookTouchId = null, lastLook = null;
 if (isTouch) {
   const ui = document.getElementById('touchui');
   ui.style.display = 'block';
+  checkOrientation(); // a phone may already be upright before the first frame
   const joy = document.getElementById('joy');
   const knob = document.getElementById('joyknob');
   const setKnob = (dx, dy) => { knob.style.transform = `translate(${dx}px, ${dy}px)`; };
