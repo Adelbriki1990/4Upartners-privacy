@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=47';
+import { CITIES } from './sponsors.js?v=48';
 
 // ---------------------------------------------------------------------------
 // Renderer / scene / camera
@@ -3227,6 +3227,8 @@ function buildCity(city) {
     if (gel && THEME.noGuns) gel.style.pointerEvents = 'none';
   }
   buildFuelStations();
+  buildCarWash();
+  setupCityActivities();
   buildClub();
   buildVenues();
   buildRaceCourse();
@@ -3879,7 +3881,10 @@ document.addEventListener('keydown', e => {
   if (e.code === 'KeyQ' && locked) drinkEnergy();
   if (e.code === 'KeyC' && driving) camMode = camMode === 'chase' ? 'hood' : 'chase';
   if (e.code === 'KeyB' && (locked || shopOpen)) toggleShop();
-  if (e.code === 'KeyF' && (locked || cafeOpen)) toggleCafe();
+  if (e.code === 'KeyF') {
+    if (locked && actSpot && !cafeOpen && !nearRest) actSpot.cb();
+    else if (locked || cafeOpen) toggleCafe();
+  }
   if (e.code === 'KeyV' && locked) toggleRecord();
   if (e.code === 'KeyG' && locked) spawnRide();
   if (e.code === 'KeyM' && locked) {
@@ -4567,6 +4572,25 @@ function updateDriving(dt) {
       }
     }
     if (!atPump && v.refueling) { v.refueling = false; saveProg(); }
+    // car wash: park between the brushes to repair the bodywork ($8)
+    for (const ws of WASH_STATIONS) {
+      if (Math.abs(v.group.position.x - ws.x) < 8 && Math.abs(v.group.position.z - ws.z) < 8
+          && Math.abs(v.speed) < 1 && v.health < 100) {
+        if (game.money + prog.bank < 8) break;
+        v.washT = (v.washT || 0) + dt;
+        if (!v.washing) { v.washing = true; showBanner('🧼 Washing — stay parked'); }
+        if (v.washT > 2.5) {
+          v.health = 100;
+          v.washT = 0; v.washing = false;
+          const fromMoney = Math.min(8, game.money);
+          game.money -= fromMoney;
+          prog.bank -= 8 - fromMoney;
+          saveProg();
+          showBanner('✨ CAR WASHED — LIKE NEW');
+          playChirp();
+        }
+      } else if (v.washing && Math.abs(v.speed) >= 1) { v.washing = false; v.washT = 0; }
+    }
   }
   const steer = (keys['KeyA'] ? 1 : 0) - (keys['KeyD'] ? 1 : 0)
     - (Math.abs(touchMove.x) > 0.15 ? touchMove.x : 0);
@@ -4910,6 +4934,9 @@ const ACHS = [
   { id: 's3',   icon: '📣', name: 'INFLUENCER',       desc: 'Share the game 3 times',      need: 3,     key: 'shares',  reward: 300 },
   { id: 'r1',   icon: '🏁', name: 'FIRST PODIUM',     desc: 'Win a street race',           need: 1,     key: 'races',   reward: 200 },
   { id: 'r10',  icon: '🏎', name: 'STREET KING',      desc: 'Win 10 street races',         need: 10,    key: 'races',   reward: 1000 },
+  { id: 'x10',  icon: '🚕', name: 'TAXI VETERAN',     desc: 'Complete 10 taxi fares',      need: 10,    key: 'taxi',    reward: 300 },
+  { id: 'f10',  icon: '🎣', name: 'ANGLER',           desc: 'Catch 10 fish',               need: 10,    key: 'fish',    reward: 250 },
+  { id: 'home', icon: '🏠', name: 'HOMEOWNER',        desc: 'Buy the apartment',           need: 1,     key: 'home',    reward: 300 },
 ];
 function statVal(key) {
   if (key === 'level') return prog.level;
@@ -5753,6 +5780,268 @@ function buildFuelStations() {
     FUEL_STATIONS.push({ x, z });
   }
 }
+
+// ---------------------------------------------------------------------------
+// City activities — taxi fares, car wash, apartment, fishing, airport
+// ---------------------------------------------------------------------------
+const WASH_STATIONS = [];
+function buildCarWash() {
+  WASH_STATIONS.length = 0;
+  const mPostW = new THREE.MeshStandardMaterial({ color: 0xd8dade, roughness: 0.4, metalness: 0.5 });
+  const mRoofW = new THREE.MeshStandardMaterial({ color: 0x2a7ae8, roughness: 0.5 });
+  const mPadW = new THREE.MeshStandardMaterial({ color: 0x4a5560, roughness: 0.9 });
+  const mBrush = new THREE.MeshStandardMaterial({ color: 0x41c9ff, roughness: 0.85 });
+  const [x, z] = [-90, -70.5];
+  const g = new THREE.Group();
+  const pad = new THREE.Mesh(new THREE.BoxGeometry(11, 0.14, 8), mPadW);
+  pad.position.y = 0.07;
+  g.add(pad);
+  for (const [dx, dz] of [[-4.5, -3], [4.5, -3], [-4.5, 3], [4.5, 3]]) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 4.2, 8), mPostW);
+    post.position.set(dx, 2.1, dz);
+    g.add(post);
+  }
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(11.6, 0.5, 8.6), mRoofW);
+  roof.position.y = 4.4;
+  roof.castShadow = true;
+  g.add(roof);
+  for (const dx of [-2.6, 2.6]) {
+    const brush = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 3.2, 10), mBrush);
+    brush.position.set(dx, 1.9, 0);
+    g.add(brush);
+  }
+  g.position.set(x, 0, z);
+  scene.add(g);
+  marquee('SPARKLE WASH', '#41c9ff', x, z - 4.4, 0, 7, 5.4);
+  WASH_STATIONS.push({ x, z });
+}
+
+// --- taxi side-hustle: pick up waving passengers while driving ---
+const taxi = { state: 'idle', cd: 18, ped: null, hand: null, px: 0, pz: 0,
+  tx: 0, tz: 0, reward: 0, offCarT: 0 };
+function emojiSprite(emoji, scale) {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 128;
+  const c = cv.getContext('2d');
+  c.font = '96px serif';
+  c.textAlign = 'center';
+  c.textBaseline = 'middle';
+  c.fillText(emoji, 64, 70);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: new THREE.CanvasTexture(cv), transparent: true, depthWrite: false }));
+  sp.scale.setScalar(scale);
+  return sp;
+}
+function updateTaxi(dt) {
+  if (mode !== 'delivery' || !started || player.dead) return;
+  if (taxi.state === 'idle') {
+    taxi.cd -= dt;
+    if (taxi.cd <= 0) {
+      const p = streetPointNear(player.pos, 45, 110);
+      taxi.px = p.x; taxi.pz = p.z;
+      taxi.ped = makeCharacter(randomLook());
+      taxi.ped.group.position.set(p.x, 0, p.z);
+      taxi.ped.arms[1].rotation.x = -2.9; // hailing arm up
+      scene.add(taxi.ped.group);
+      taxi.hand = emojiSprite('🙋', 1.6);
+      taxi.hand.position.set(p.x, 2.6, p.z);
+      scene.add(taxi.hand);
+      taxi.state = 'wait';
+      addFeed('🚕 Someone is hailing a ride — pick them up for cash');
+    }
+    return;
+  }
+  if (taxi.state === 'wait') {
+    taxi.hand.position.y = 2.6 + Math.sin(game.time * 3) * 0.2;
+    taxi.ped.group.rotation.y = Math.atan2(player.pos.x - taxi.px, player.pos.z - taxi.pz);
+    if (driving && Math.abs(driving.speed) < 2.5 &&
+        Math.hypot(player.pos.x - taxi.px, player.pos.z - taxi.pz) < 6.5) {
+      scene.remove(taxi.ped.group);
+      scene.remove(taxi.hand);
+      taxi.ped = null; taxi.hand = null;
+      const d = streetPointNear(player.pos, 60, 150);
+      taxi.tx = d.x; taxi.tz = d.z;
+      taxi.reward = Math.round(14 + Math.hypot(d.x - player.pos.x, d.z - player.pos.z) * 0.14);
+      taxi.state = 'ride';
+      taxi.offCarT = 0;
+      taxi.mark = emojiSprite('📍', 3.2);
+      taxi.mark.position.set(d.x, 3.4, d.z);
+      scene.add(taxi.mark);
+      showBanner('🚕 PASSENGER ON BOARD');
+      say('Passenger picked up. Follow the purple marker.');
+      phoneNotify('🚕 TAXI FARE', `Drop-off pays $${taxi.reward}`, d.x, d.z);
+    }
+    return;
+  }
+  // riding
+  if (!driving) {
+    taxi.offCarT += dt;
+    if (taxi.offCarT > 18) {
+      taxi.state = 'idle'; taxi.cd = 25;
+      if (taxi.mark) { scene.remove(taxi.mark); taxi.mark = null; }
+      showBanner('🚕 Passenger left — fare lost');
+      return;
+    }
+  } else taxi.offCarT = 0;
+  if (taxi.mark) taxi.mark.position.y = 3.4 + Math.sin(game.time * 2.5) * 0.35;
+  if (Math.hypot(player.pos.x - taxi.tx, player.pos.z - taxi.tz) < 8) {
+    game.money += taxi.reward;
+    prog.bank += taxi.reward;
+    bumpStat('taxi');
+    addXP(12);
+    showBanner(`🚕 FARE COMPLETE +$${taxi.reward}`);
+    addFeed(`🚕 Passenger delivered — +$${taxi.reward}`);
+    playClick(2200, 0.25);
+    if (taxi.mark) { scene.remove(taxi.mark); taxi.mark = null; }
+    taxi.state = 'idle';
+    taxi.cd = 22;
+  }
+}
+
+// --- fishing on the corniche ---
+const fish = { on: false, state: 'cast', t: 0, x: 0, z: 0 };
+const FISH_TABLE = [
+  { n: 'sardine', v: 3, p: 0.45 }, { n: 'seabream', v: 8, p: 0.3 },
+  { n: 'hamour', v: 15, p: 0.19 }, { n: 'GOLDEN FISH', v: 40, p: 0.06 },
+];
+function fishAction() {
+  if (!fish.on) {
+    fish.on = true;
+    fish.state = 'cast';
+    fish.t = 2 + Math.random() * 4;
+    fish.x = player.pos.x; fish.z = player.pos.z;
+    showBanner('🎣 Line cast — wait for the bite…');
+    return;
+  }
+  if (fish.state === 'bite') {
+    const r = Math.random();
+    let acc = 0, caught = FISH_TABLE[0];
+    for (const f of FISH_TABLE) { acc += f.p; if (r <= acc) { caught = f; break; } }
+    game.money += caught.v;
+    prog.bank += caught.v;
+    bumpStat('fish');
+    showBanner(`🐟 Caught a ${caught.n} +$${caught.v}!`);
+    playClick(2400, 0.25);
+    fish.state = 'cast';
+    fish.t = 2 + Math.random() * 4;
+  }
+}
+function updateFishing(dt) {
+  if (!fish.on) return;
+  if (Math.hypot(player.pos.x - fish.x, player.pos.z - fish.z) > 5 || driving) {
+    fish.on = false;
+    return;
+  }
+  fish.t -= dt;
+  if (fish.state === 'cast' && fish.t <= 0) {
+    fish.state = 'bite';
+    fish.t = 1.4;
+    showBanner('❗ BITE — press F NOW!');
+    playClick(1800, 0.3);
+  } else if (fish.state === 'bite' && fish.t <= 0) {
+    fish.state = 'cast';
+    fish.t = 2.5 + Math.random() * 4;
+    showBanner('💧 It got away… line cast again');
+  }
+}
+
+// --- generic walk-up interactions (F key or tap the hint) ---
+const INTERACT_SPOTS = [];
+const acthintEl = document.getElementById('acthint');
+let actSpot = null;
+function setupCityActivities() {
+  INTERACT_SPOTS.length = 0;
+  // estate office — buy the apartment
+  marquee('HOME ESTATE', '#ffd479', 49.1, -30, Math.PI / 2, 4.5, 3.6);
+  INTERACT_SPOTS.push({
+    x: 49.1, z: -30, r: 5.5,
+    label: () => prog.apartment ? null : '🏠 BUY THIS APARTMENT — $2,500 (F)',
+    cb: () => {
+      if (prog.apartment) return;
+      if (game.money + prog.bank < 2500) { showBanner('🏠 Need $2,500 for the apartment'); return; }
+      const fromMoney = Math.min(2500, game.money);
+      game.money -= fromMoney;
+      prog.bank -= 2500 - fromMoney;
+      prog.apartment = true;
+      prog.stats.home = 1;
+      checkAchs();
+      saveProg();
+      showBanner('🏠 APARTMENT YOURS — $50 rent every day!');
+      addFeed('🏠 You bought an apartment — rent pays $50 daily');
+      playCheer();
+    },
+  });
+  // fishing on the corniche in sea cities
+  if (THEME.waterfront === 'east') {
+    marquee('FISHING PIER', '#41d8ff', 133.5, 40, -Math.PI / 2, 4.5, 3.2);
+    INTERACT_SPOTS.push({
+      x: 134.5, z: 40, r: 5,
+      label: () => fish.on ? (fish.state === 'bite' ? '❗ PRESS F — REEL IN!' : '🎣 waiting for a bite…')
+        : '🎣 FISH HERE (F)',
+      cb: fishAction,
+    });
+  }
+  // airport — fly between the seven cities mid-game
+  marquee('CITY AIRPORT ✈', '#f2f2f2', 14, -123.5, 0, 8, 4.6);
+  INTERACT_SPOTS.push({
+    x: 14, z: -121, r: 6.5,
+    label: () => '✈️ FLY TO ANOTHER CITY — $100 (F)',
+    cb: openTravel,
+  });
+  // daily rent lands when the shift starts
+  if (prog.apartment) {
+    const today = new Date().toDateString();
+    if (prog.lastRent !== today) {
+      prog.lastRent = today;
+      prog.bank += 50;
+      saveProg();
+      setTimeout(() => { showBanner('🏠 RENT COLLECTED +$50'); addFeed('🏠 Your tenant paid $50 rent'); }, 12000);
+    }
+  }
+}
+function updateInteractions() {
+  let best = null, bd = 1e9;
+  for (const s of INTERACT_SPOTS) {
+    const d = Math.hypot(player.pos.x - s.x, player.pos.z - s.z);
+    if (d < s.r && d < bd) { bd = d; best = s; }
+  }
+  actSpot = best;
+  const label = best && !driving ? best.label() : null;
+  if (label) {
+    acthintEl.textContent = label;
+    acthintEl.style.display = 'block';
+  } else acthintEl.style.display = 'none';
+}
+acthintEl.addEventListener('click', () => { if (actSpot) actSpot.cb(); });
+function openTravel() {
+  if (game.money + prog.bank < 100) { showBanner('✈️ A ticket costs $100'); return; }
+  const box = document.getElementById('travelbtns');
+  box.innerHTML = '';
+  for (const c of CITIES) {
+    if (CITY && c.id === CITY.id) continue;
+    const b = document.createElement('div');
+    b.className = 'modebtn';
+    b.textContent = `${c.name}`;
+    b.addEventListener('click', e => {
+      e.stopPropagation();
+      const fromMoney = Math.min(100, game.money);
+      game.money -= fromMoney;
+      prog.bank -= 100 - fromMoney;
+      prog.bank += Math.floor(game.money); // bank the shift cash before takeoff
+      saveProg();
+      localStorage.setItem('streetops.city', c.id);
+      location.reload();
+    });
+    box.appendChild(b);
+  }
+  document.getElementById('travel').style.display = 'flex';
+  if (!isTouch) document.exitPointerLock();
+}
+document.getElementById('travelclose').addEventListener('click', () => {
+  document.getElementById('travel').style.display = 'none';
+  if (!isTouch) requestLock();
+});
+document.getElementById('travel').addEventListener('click', e => e.stopPropagation());
 
 const race = { active: false, cp: 0, t: 0, cooldown: 0 };
 const RACE_START = { x: 60, z: 30 };
@@ -6816,11 +7105,13 @@ function navTarget() {
     const c = RACE_CPS[race.cp];
     return { x: c[0], z: c[1], label: `🏁 RING ${race.cp + 1} / ${RACE_CPS.length}` };
   }
+  if (taxi.state === 'ride') return { x: taxi.tx, z: taxi.tz, label: '🚕 DROP THE PASSENGER' };
   if (mode === 'delivery' && order.active) {
     return order.stage === 'pickup'
       ? { x: order.fx, z: order.fz, label: '🍕 ' + order.name }
       : { x: order.tx, z: order.tz, label: '📦 CUSTOMER' };
   }
+  if (taxi.state === 'wait') return { x: taxi.px, z: taxi.pz, label: '🚕 PASSENGER WAITING' };
   return null;
 }
 // Manhattan route down the street grid: onto my road, along it, across, arrive
@@ -7078,6 +7369,20 @@ function drawMinimap() {
   for (const fs of FUEL_STATIONS) {
     const p = P(fs.x, fs.z);
     mmCtx.fillRect(p[0] - 3, p[1] - 3, 6, 6);
+  }
+  mmCtx.fillStyle = '#41c9ff';
+  for (const ws of WASH_STATIONS) {
+    const p = P(ws.x, ws.z);
+    mmCtx.fillRect(p[0] - 3, p[1] - 3, 6, 6);
+  }
+  if (taxi.state === 'wait') {
+    const p = P(taxi.px, taxi.pz);
+    mmCtx.fillStyle = '#c86aff';
+    mmCtx.beginPath(); mmCtx.arc(p[0], p[1], 4, 0, Math.PI * 2); mmCtx.fill();
+  } else if (taxi.state === 'ride') {
+    const p = P(taxi.tx, taxi.tz);
+    mmCtx.fillStyle = '#c86aff';
+    mmCtx.beginPath(); mmCtx.arc(p[0], p[1], 4.5, 0, Math.PI * 2); mmCtx.fill();
   }
   // the driver: fixed chevron, always pointing up
   mmCtx.save();
@@ -7602,6 +7907,9 @@ function tick() {
   musicTick();
   updateRecording(dt);
   updateRace(dt);
+  updateTaxi(dt);
+  updateFishing(dt);
+  updateInteractions();
   carryBox.visible = mode === 'delivery' && order.active && order.stage === 'dropoff'
     && !driving && !player.dead && !cine.active;
   // parked cars you damaged keep smoking where they stand
@@ -7665,7 +7973,10 @@ tick();
 // debug/testing handle
 window.__so = {
   get cineT() { return cine.t; },
-  tp(x, z, yaw = 0) { player.pos.set(x, 0, z); player.yaw = yaw; player.pitch = 0; },
+  tp(x, z, yaw = 0) {
+    player.pos.set(x, 0, z); player.yaw = yaw; player.pitch = 0;
+    if (driving) { driving.group.position.set(x, 0, z); driving.yaw = yaw; driving.speed = 0; }
+  },
   veh(type) {
     const v = vehicles.find(v => v.type === type && v.health > 0);
     return v ? [v.group.position.x, v.group.position.z, v.yaw] : null;
@@ -7674,6 +7985,8 @@ window.__so = {
     return myRide ? [myRide.type, myRide.group.position.x, myRide.group.position.z] : null;
   },
   get race() { return { active: race.active, cp: race.cp, t: race.t }; },
+  get taxi() { return { state: taxi.state, px: taxi.px, pz: taxi.pz, tx: taxi.tx, tz: taxi.tz, reward: taxi.reward }; },
+  hail() { taxi.cd = 0; },
   boss() {
     const p = streetPointNear(player.pos, 10, 18);
     spawnEnemy(p.x, p.z, true);
