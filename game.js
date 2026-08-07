@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=39';
+import { CITIES } from './sponsors.js?v=40';
 
 // ---------------------------------------------------------------------------
 // Renderer / scene / camera
@@ -2719,6 +2719,9 @@ function buildCity(city) {
   {
     let nScooter = 0, nBike = 0;
     const boxCol = new THREE.Color(CITY.sponsors[0].colorA);
+    // one guaranteed scooter right at the spawn point so a new player can
+    // ride within seconds of deploying
+    registerVehicle(buildScooterMesh(boxCol), 8.6, 22, 0.4, 'scooter');
     for (const s of STREETS)
       for (let v = -116; v <= 116; v += 18) {
         if (STREETS.some(t => Math.abs(v - t) < 11)) continue;
@@ -3071,6 +3074,7 @@ function buildCity(city) {
 
   buildClub();
   buildVenues();
+  buildRaceCourse();
   addLandmarks();
   spawnTraffic();
   spawnPeds();
@@ -4161,21 +4165,23 @@ function makeSoldier() {
   return { group: g, legs, arms, rifle };
 }
 
-function spawnEnemy(x, z) {
+function spawnEnemy(x, z, boss = false) {
   const rig = makeSoldier();
   rig.group.position.set(x, 0, z);
+  if (boss) rig.group.scale.setScalar(1.45);
   scene.add(rig.group);
   enemies.push({
     rig,
+    boss,
     pos: rig.group.position,
-    health: 100 + Math.min(prog.level * 2, 120),
+    health: (100 + Math.min(prog.level * 2, 120)) * (boss ? 6 : 1),
     dead: false,
     deathT: 0,
     fireCooldown: 1 + Math.random() * 1.5,
     strafe: Math.random() < 0.5 ? 1 : -1,
     strafeT: 1 + Math.random() * 2,
     walkPhase: Math.random() * 6,
-    speed: 3.0 + Math.random() * 1.2,
+    speed: boss ? 2.3 : 3.0 + Math.random() * 1.2,
     bodyBox: new THREE.Box3(),
     headBox: new THREE.Box3(),
   });
@@ -4189,7 +4195,14 @@ function damageEnemy(en, dmg) {
     en.deathT = 0;
     game.kills++;
     bumpStat('kills');
-    addFeed('Hostile down');
+    if (en.boss) {
+      game.money += 150;
+      prog.bank += 150;
+      saveProg();
+      showBanner('💀 BOSS DOWN +$150');
+      addFeed('💀 Gang boss eliminated — +$150 bounty');
+      addXP(40);
+    } else addFeed('Hostile down');
     addXP(8);
     progressMission('kill', 1);
     if (enemies.every(e => e.dead)) {
@@ -4376,6 +4389,12 @@ function updateDriving(dt) {
       v.health = Math.max(0, v.health - (impact - 5) * 3.2);
       playCrash(Math.min(1, impact / 30));
       if (impact > 15) addHeat(1, 'Reckless crash');
+      if (impact > 10 && order.active && order.stage === 'dropoff' && order.fragile && !order.dropped) {
+        order.dropped = true;
+        order.reward = Math.round(order.reward / 2);
+        showBanner('📦 Package damaged — payout halved!');
+        addFeed('📦 The fragile order got crushed in that crash');
+      }
       const nose = v.group.position.clone().addScaledVector(fwd, Math.sign(preSpeed) * st.size[1] / 2);
       nose.y = 0.7;
       spawnImpact(nose);
@@ -4613,10 +4632,20 @@ function spawnRide() {
     scene.remove(myRide.group);
     myRide = null;
   }
-  const p = streetPointNear(player.pos, 5, 12);
+  // deliver the car onto the NEAREST road, a few metres along it — never
+  // into a building (random street points can be far away or off-road)
+  let bestS = STREETS[0], bestD = 1e9, axis = 'x';
+  for (const s of STREETS) {
+    if (Math.abs(player.pos.x - s) < bestD) { bestD = Math.abs(player.pos.x - s); bestS = s; axis = 'x'; }
+    if (Math.abs(player.pos.z - s) < bestD) { bestD = Math.abs(player.pos.z - s); bestS = s; axis = 'z'; }
+  }
+  const clamp = n => Math.max(-BOUND, Math.min(BOUND, n));
+  const p = axis === 'x'
+    ? { x: bestS + 3, z: clamp(player.pos.z + 7) }
+    : { x: clamp(player.pos.x + 7), z: bestS + 3 };
   const colors = CAR_STYLE_COLORS[t] || CAR_STYLE_COLORS.car;
   const v = registerVehicle(buildCarMesh(colors[Math.floor(Math.random() * colors.length)], t),
-    p.x, p.z, player.yaw, t);
+    p.x, p.z, axis === 'x' ? 0 : Math.PI / 2, t);
   v.owned = true;
   myRide = v;
   showBanner(`${v.stats.label} DELIVERED 🔑`);
@@ -4682,6 +4711,8 @@ const ACHS = [
   { id: 'l25',  icon: '🌟', name: 'TOP DRIVER',       desc: 'Reach driver level 25',       need: 25,    key: 'level',   reward: 600 },
   { id: 'l50',  icon: '💫', name: 'HALF CENTURY',     desc: 'Reach driver level 50',       need: 50,    key: 'level',   reward: 1500 },
   { id: 's3',   icon: '📣', name: 'INFLUENCER',       desc: 'Share the game 3 times',      need: 3,     key: 'shares',  reward: 300 },
+  { id: 'r1',   icon: '🏁', name: 'FIRST PODIUM',     desc: 'Win a street race',           need: 1,     key: 'races',   reward: 200 },
+  { id: 'r10',  icon: '🏎', name: 'STREET KING',      desc: 'Win 10 street races',         need: 10,    key: 'races',   reward: 1000 },
 ];
 function statVal(key) {
   if (key === 'level') return prog.level;
@@ -5355,8 +5386,115 @@ function startWave() {
     const p = streetPointNear(player.pos, 30, 85);
     spawnEnemy(p.x + (Math.random() - 0.5) * 3, p.z + (Math.random() - 0.5) * 3);
   }
-  showBanner(`Wave ${game.wave}`);
-  addFeed(`Wave ${game.wave} — ${count} hostiles inbound`);
+  const bossWave = game.wave % 5 === 0;
+  if (bossWave) {
+    const p = streetPointNear(player.pos, 25, 60);
+    spawnEnemy(p.x, p.z, true);
+  }
+  showBanner(bossWave ? `⚠ WAVE ${game.wave} — GANG BOSS!` : `Wave ${game.wave}`);
+  addFeed(`Wave ${game.wave} — ${count} hostiles inbound${bossWave ? ' + a GANG BOSS' : ''}`);
+}
+
+// ---------------------------------------------------------------------------
+// Street racing — drive through the 🏁 arch to start a checkpoint sprint
+// around the whole city; beat the par time for a bigger payout
+// ---------------------------------------------------------------------------
+const race = { active: false, cp: 0, t: 0, cooldown: 0 };
+const RACE_START = { x: 60, z: 30 };
+const RACE_CPS = [
+  [60, 100], [0, 120], [-60, 60], [-120, 0], [-60, -90], [0, -120], [90, -60], [60, 30],
+];
+const RACE_PAR = 60;
+let raceRing = null, raceHudEl = null;
+function buildRaceCourse() {
+  const mPost = new THREE.MeshStandardMaterial({ color: 0xffd23f, roughness: 0.4, metalness: 0.3 });
+  for (const dx of [-7, 7]) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 6, 8), mPost);
+    post.position.set(RACE_START.x + dx, 3, RACE_START.z);
+    post.castShadow = true;
+    scene.add(post);
+  }
+  const cv = document.createElement('canvas');
+  cv.width = 512; cv.height = 96;
+  const g = cv.getContext('2d');
+  g.fillStyle = '#101216'; g.fillRect(0, 0, 512, 96);
+  // checkered border
+  for (let i = 0; i < 16; i++) {
+    g.fillStyle = i % 2 ? '#fff' : '#111';
+    g.fillRect(i * 32, 0, 32, 14);
+    g.fillStyle = i % 2 ? '#111' : '#fff';
+    g.fillRect(i * 32, 82, 32, 14);
+  }
+  g.font = '800 52px Arial'; g.textAlign = 'center'; g.fillStyle = '#ffd23f';
+  g.shadowColor = '#ffd23f'; g.shadowBlur = 14;
+  g.fillText('🏁 STREET RACE', 256, 66);
+  const bannerTex = new THREE.CanvasTexture(cv);
+  bannerTex.colorSpace = THREE.SRGBColorSpace;
+  for (const ry of [0, Math.PI]) { // one face each way so the text never mirrors
+    const bar = new THREE.Mesh(new THREE.PlaneGeometry(14.4, 2.7),
+      new THREE.MeshBasicMaterial({ map: bannerTex }));
+    bar.position.set(RACE_START.x, 6.2, RACE_START.z + (ry === 0 ? 0.03 : -0.03));
+    bar.rotation.y = ry;
+    scene.add(bar);
+  }
+  raceRing = new THREE.Mesh(new THREE.TorusGeometry(3.6, 0.32, 10, 28),
+    new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.85,
+      blending: THREE.AdditiveBlending, depthWrite: false }));
+  raceRing.visible = false;
+  scene.add(raceRing);
+  raceHudEl = document.getElementById('racehud');
+  addFeed('🏁 Street race: drive through the yellow arch on the east avenue');
+}
+function placeRaceRing() {
+  const c = RACE_CPS[race.cp];
+  const prev = race.cp === 0 ? [RACE_START.x, RACE_START.z] : RACE_CPS[race.cp - 1];
+  raceRing.position.set(c[0], 3.6, c[1]);
+  raceRing.rotation.y = Math.atan2(c[0] - prev[0], c[1] - prev[1]);
+  raceRing.visible = true;
+}
+function endRace(msg) {
+  race.active = false;
+  race.cooldown = 20;
+  raceRing.visible = false;
+  raceHudEl.style.display = 'none';
+  if (msg) showBanner(msg);
+}
+function updateRace(dt) {
+  if (!raceRing) return;
+  race.cooldown = Math.max(0, race.cooldown - dt);
+  if (!race.active) {
+    if (driving && race.cooldown <= 0 && started && !player.dead &&
+        Math.hypot(player.pos.x - RACE_START.x, player.pos.z - RACE_START.z) < 8) {
+      race.active = true;
+      race.cp = 0;
+      race.t = 0;
+      placeRaceRing();
+      raceHudEl.style.display = 'block';
+      showBanner('🏁 RACE — hit every ring!');
+      playChirp();
+    }
+    return;
+  }
+  race.t += dt;
+  raceRing.scale.setScalar(1 + Math.sin(game.time * 5) * 0.06);
+  raceHudEl.textContent = `🏁 RING ${race.cp + 1} / ${RACE_CPS.length} · ${race.t.toFixed(1)}s`;
+  if (!driving) { endRace('🏁 Race abandoned — car left'); return; }
+  if (race.t > RACE_PAR * 2.5) { endRace('🏁 Too slow — race over'); return; }
+  const c = RACE_CPS[race.cp];
+  if (Math.hypot(player.pos.x - c[0], player.pos.z - c[1]) < 9) {
+    race.cp++;
+    playChirp();
+    if (race.cp >= RACE_CPS.length) {
+      const reward = 250 + Math.max(0, Math.round((RACE_PAR - race.t) * 10));
+      game.money += reward;
+      prog.bank += reward;
+      bumpStat('races');
+      addXP(60);
+      recordScore();
+      addFeed(`🏁 Race won in ${race.t.toFixed(1)}s — +$${reward}`);
+      endRace(`🏁 RACE WON +$${reward}`);
+    } else placeRaceRing();
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -6115,10 +6253,13 @@ function newOrder() {
   // collect from a real named restaurant (nearest few, picked at random)
   const sorted = [...RESTAURANTS].sort((a, b) =>
     Math.hypot(a.x - player.pos.x, a.z - player.pos.z) - Math.hypot(b.x - player.pos.x, b.z - player.pos.z));
-  const r = sorted[Math.floor(Math.random() * Math.min(4, sorted.length))] ||
+  // the session's first order is always the closest restaurant with a short
+  // drop — action within the first minute, not a hike across the map
+  const first = game.deliveries === 0;
+  const r = (first ? sorted[0] : sorted[Math.floor(Math.random() * Math.min(4, sorted.length))]) ||
     { name: SHOP_NAMES[0], x: player.pos.x + 40, z: player.pos.z };
   const from = new THREE.Vector3(r.x, 0, r.z);
-  const to = streetPointNear(from, 70, 190);
+  const to = streetPointNear(from, first ? 45 : 70, first ? 90 : 190);
   order.active = true;
   order.stage = 'pickup';
   order.name = r.name;
@@ -6136,12 +6277,29 @@ function newOrder() {
   order.vip = game.deliveries > 0 && game.deliveries % 3 === 2;
   order.timeLeft = 0;
   if (order.vip) order.reward = Math.round(order.reward * 2.5);
+  // fragile orders: 1.8x pay, but a hard crash while carrying halves it
+  order.fragile = !order.vip && Math.random() < 0.25;
+  order.dropped = false;
+  if (order.fragile) order.reward = Math.round(order.reward * 1.8);
   setBeacon(from.x, from.z, order.vip ? 0xffd23f : 0x41d8ff, '🍕');
-  showBanner(order.vip ? '⭐ VIP RUSH ORDER' : 'New order');
-  addFeed(order.vip ? `⭐ VIP order from ${order.name} — 2.5× pay!` : `Order from ${order.name}`);
+  showBanner(order.vip ? '⭐ VIP RUSH ORDER' : order.fragile ? '🥡 FRAGILE ORDER — 1.8× pay' : 'New order');
+  addFeed(order.vip ? `⭐ VIP order from ${order.name} — 2.5× pay!`
+    : order.fragile ? `🥡 Fragile order from ${order.name} — no crashing!`
+    : `Order from ${order.name}`);
   playClick(1700, 0.2);
 }
+let earlyAmbush = false;
 function updateDelivery(dt) {
+  // scripted first-minute action: robbers jump the new driver ~25s in
+  if (!earlyAmbush && game.time > 25 && !player.dead && !cine.active) {
+    earlyAmbush = true;
+    for (let i = 0; i < 2; i++) {
+      const p = streetPointNear(player.pos, 18, 32);
+      spawnEnemy(p.x, p.z);
+    }
+    showBanner('⚠ Robbers spotted your delivery bag!');
+    addFeed('⚠ Two robbers are coming for you — fight back!');
+  }
   if (!order.active) {
     order.cooldown -= dt;
     if (order.cooldown <= 0) newOrder();
@@ -6150,7 +6308,7 @@ function updateDelivery(dt) {
   const tx = order.stage === 'pickup' ? order.fx : order.tx;
   const tz = order.stage === 'pickup' ? order.fz : order.tz;
   const d = Math.hypot(player.pos.x - tx, player.pos.z - tz);
-  orderTaskEl.textContent = (order.vip ? '⭐ VIP — ' : '') + (order.stage === 'pickup'
+  orderTaskEl.textContent = (order.vip ? '⭐ VIP — ' : order.fragile ? '🥡 FRAGILE — ' : '') + (order.stage === 'pickup'
     ? `Pick up: ${order.name} — ${locationName(order.fx, order.fz)}`
     : `Deliver to customer — ${locationName(order.tx, order.tz)}`);
   if (order.vip && order.stage === 'dropoff' && order.timeLeft > 0) {
@@ -6194,8 +6352,15 @@ function updateDelivery(dt) {
           const p = streetPointNear(player.pos, 25, 45);
           spawnEnemy(p.x, p.z);
         }
-        showBanner('Robbers want your order!');
-        addFeed('⚠ Robbers incoming — defend the delivery');
+        if (prog.level >= 5 && Math.random() < 0.2) {
+          const bp = streetPointNear(player.pos, 25, 45);
+          spawnEnemy(bp.x, bp.z, true);
+          showBanner('💀 A GANG BOSS wants your order!');
+          addFeed('💀 Gang boss ambush — $150 bounty on his head');
+        } else {
+          showBanner('Robbers want your order!');
+          addFeed('⚠ Robbers incoming — defend the delivery');
+        }
       }
     } else {
       order.active = false;
@@ -6268,6 +6433,16 @@ function drawMinimap() {
     mmCtx.beginPath();
     mmCtx.arc(M(tx), M(tz), 3.6, 0, Math.PI * 2);
     mmCtx.fill();
+  }
+  mmCtx.fillStyle = '#ffd23f';
+  if (race.active) {
+    const c = RACE_CPS[race.cp];
+    mmCtx.beginPath();
+    mmCtx.arc(M(c[0]), M(c[1]), 4, 0, Math.PI * 2);
+    mmCtx.fill();
+  } else {
+    mmCtx.fillRect(M(RACE_START.x) - 2, M(RACE_START.z) - 2, 4, 4);
+    mmCtx.fillText('RACE', M(RACE_START.x) + 4, M(RACE_START.z) + 3);
   }
   mmCtx.fillStyle = '#ff4d4d';
   for (const en of enemies) {
@@ -6778,6 +6953,7 @@ function tick() {
   updateHeat(dt);
   updateAmbient(dt);
   updateRecording(dt);
+  updateRace(dt);
   carryBox.visible = mode === 'delivery' && order.active && order.stage === 'dropoff'
     && !driving && !player.dead && !cine.active;
   // parked cars you damaged keep smoking where they stand
@@ -6844,6 +7020,11 @@ window.__so = {
   },
   get ride() {
     return myRide ? [myRide.type, myRide.group.position.x, myRide.group.position.z] : null;
+  },
+  get race() { return { active: race.active, cp: race.cp, t: race.t }; },
+  boss() {
+    const p = streetPointNear(player.pos, 10, 18);
+    spawnEnemy(p.x, p.z, true);
   },
   near(x, z, r = 6) {
     const out = [], v = new THREE.Vector3();
