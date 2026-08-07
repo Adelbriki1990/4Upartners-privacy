@@ -608,11 +608,24 @@ if (window.CLEAN_BUILD) {
   document.head.appendChild(cgs);
 }
 </script>
-<script type="importmap">
-{ "imports": {
-  "three": "./lib/three.module.min.js",
-  "three/addons/": "./lib/jsm/"
-} }
+<script>
+// boot watchdog: if the game module fails to start (old iOS, bad cache),
+// show the real error on screen instead of a silently dead page
+window.__bootErr = null;
+window.addEventListener('error', function (e) {
+  if (!window.__bootErr) window.__bootErr = (e.message || 'script error') +
+    (e.filename ? ' @ ' + e.filename.split('/').pop() + ':' + e.lineno : '');
+});
+setTimeout(function () {
+  if (window.__so) return; // game booted fine
+  var d = document.createElement('div');
+  d.style.cssText = 'position:fixed;left:50%;bottom:90px;transform:translateX(-50%);z-index:99;' +
+    'background:#5e1414;color:#ffd8d8;padding:10px 16px;border-radius:10px;font:600 12px Arial;' +
+    'max-width:92vw;text-align:center';
+  d.textContent = '⚠ Game failed to load' + (window.__bootErr ? ': ' + window.__bootErr : '') +
+    ' — try reloading, or screenshot this message.';
+  document.body.appendChild(d);
+}, 9000);
 </script>
 <script type="module" src="game.js?v=52"></script>
 </body>

@@ -1,4 +1,4 @@
-const CACHE = 'streetops-v36';
+const CACHE = 'streetops-v52';
 
 self.addEventListener('install', () => self.skipWaiting());
 

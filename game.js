@@ -1,14 +1,14 @@
 // Street Ops — cinematic 3D urban combat in the browser (Three.js, no assets).
 // Three selectable cities, sponsor advertising, drivable cars, wave combat.
-import * as THREE from 'three';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
-import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+import * as THREE from './lib/three.module.min.js';
+import { EffectComposer } from './lib/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from './lib/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from './lib/jsm/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from './lib/jsm/postprocessing/OutputPass.js';
+import { RoundedBoxGeometry } from './lib/jsm/geometries/RoundedBoxGeometry.js';
+import { GLTFLoader } from './lib/jsm/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from './lib/jsm/libs/meshopt_decoder.module.js';
+import * as SkeletonUtils from './lib/jsm/utils/SkeletonUtils.js';
 import { CITIES } from './sponsors.js?v=52';
 
 // Clean-brand mode: the portal build (CrazyGames etc.) must carry no real
