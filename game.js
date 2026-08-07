@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=44';
+import { CITIES } from './sponsors.js?v=45';
 
 // ---------------------------------------------------------------------------
 // Renderer / scene / camera
@@ -5345,6 +5345,117 @@ document.getElementById('boardclose').addEventListener('click', () => {
   document.getElementById('board').style.display = 'none';
 });
 document.getElementById('board').addEventListener('click', e => e.stopPropagation());
+// ---------------------------------------------------------------------------
+// Daily spin — one free wheel spin per day for a gift
+// ---------------------------------------------------------------------------
+const SPIN_PRIZES = [
+  { t: '$25',   cash: 25,  c: '#3a7bd5' },
+  { t: '$75',   cash: 75,  c: '#2e9e5b' },
+  { t: '⚡×2',  cans: 2,   c: '#b8952e' },
+  { t: '$150',  cash: 150, c: '#d5702a' },
+  { t: '$50',   cash: 50,  c: '#8a4ad5' },
+  { t: '$300',  cash: 300, c: '#c94a68' },
+  { t: '⚡×3',  cans: 3,   c: '#2ea89e' },
+  { t: '$500',  cash: 500, c: '#d8b21e' },
+];
+const spinCv = document.getElementById('spinwheel');
+const spinCtx = spinCv.getContext('2d');
+let spinAngle = 0, spinning = false;
+function spinDoneToday() {
+  try { return JSON.parse(localStorage.getItem('streetops.spin')).day === new Date().toDateString(); }
+  catch { return false; }
+}
+function drawWheel() {
+  const S = spinCv.width, C = S / 2, R = C - 8;
+  spinCtx.clearRect(0, 0, S, S);
+  const seg = Math.PI * 2 / SPIN_PRIZES.length;
+  for (let i = 0; i < SPIN_PRIZES.length; i++) {
+    const a0 = spinAngle + i * seg;
+    spinCtx.fillStyle = SPIN_PRIZES[i].c;
+    spinCtx.beginPath();
+    spinCtx.moveTo(C, C);
+    spinCtx.arc(C, C, R, a0, a0 + seg);
+    spinCtx.closePath();
+    spinCtx.fill();
+    spinCtx.strokeStyle = 'rgba(0,0,0,.35)';
+    spinCtx.lineWidth = 2;
+    spinCtx.stroke();
+    spinCtx.save();
+    spinCtx.translate(C, C);
+    spinCtx.rotate(a0 + seg / 2);
+    spinCtx.textAlign = 'right';
+    spinCtx.font = '800 22px Arial';
+    spinCtx.fillStyle = 'rgba(0,0,0,.45)';
+    spinCtx.fillText(SPIN_PRIZES[i].t, R - 13, 9.5);
+    spinCtx.fillStyle = '#fff';
+    spinCtx.fillText(SPIN_PRIZES[i].t, R - 14, 8);
+    spinCtx.restore();
+  }
+  spinCtx.fillStyle = '#10141c';
+  spinCtx.beginPath(); spinCtx.arc(C, C, 34, 0, Math.PI * 2); spinCtx.fill();
+  spinCtx.strokeStyle = '#ffd479'; spinCtx.lineWidth = 3;
+  spinCtx.beginPath(); spinCtx.arc(C, C, 34, 0, Math.PI * 2); spinCtx.stroke();
+  spinCtx.font = '26px Arial'; spinCtx.textAlign = 'center';
+  spinCtx.fillStyle = '#ffd479';
+  spinCtx.fillText('🎡', C, C + 9);
+  // pointer at the top
+  spinCtx.fillStyle = '#ffffff';
+  spinCtx.beginPath();
+  spinCtx.moveTo(C - 12, 2);
+  spinCtx.lineTo(C + 12, 2);
+  spinCtx.lineTo(C, 26);
+  spinCtx.closePath();
+  spinCtx.fill();
+}
+function refreshSpinBtn() {
+  const btn = document.getElementById('spingo');
+  const done = spinDoneToday();
+  btn.textContent = done ? '✅ COME BACK TOMORROW' : 'SPIN!';
+  btn.classList.toggle('done', done);
+}
+function runSpin() {
+  if (spinning || spinDoneToday()) return;
+  spinning = true;
+  const target = Math.floor(Math.random() * SPIN_PRIZES.length);
+  const seg = Math.PI * 2 / SPIN_PRIZES.length;
+  // the pointer sits at -90°; land the middle of the target segment under it
+  const final = Math.PI * 2 * (5 + Math.random() * 2)
+    - (target * seg + seg / 2) - Math.PI / 2;
+  const start = spinAngle % (Math.PI * 2);
+  const t0 = performance.now(), DUR = 3400;
+  playClick(900, 0.15);
+  (function anim() {
+    const k = Math.min(1, (performance.now() - t0) / DUR);
+    const ease = 1 - Math.pow(1 - k, 3);
+    spinAngle = start + (final - start) * ease;
+    drawWheel();
+    if (k < 1) requestAnimationFrame(anim);
+    else {
+      spinning = false;
+      localStorage.setItem('streetops.spin', JSON.stringify({ day: new Date().toDateString() }));
+      const p = SPIN_PRIZES[target];
+      if (p.cash) { prog.bank += p.cash; saveProg(); }
+      if (p.cans) energy.cans = Math.min(energyCap(), energy.cans + p.cans);
+      document.getElementById('spinsum').textContent =
+        p.cash ? `🎉 YOU WON $${p.cash} — ADDED TO YOUR WALLET!` : `🎉 YOU WON ${p.cans} RED BULLS!`;
+      playCheer();
+      refreshSpinBtn();
+    }
+  })();
+}
+document.getElementById('spinbtn').addEventListener('click', e => {
+  e.stopPropagation();
+  document.getElementById('spinsum').textContent = 'ONE FREE SPIN EVERY DAY — WIN UP TO $500';
+  drawWheel();
+  refreshSpinBtn();
+  document.getElementById('spin').style.display = 'flex';
+});
+document.getElementById('spingo').addEventListener('click', e => { e.stopPropagation(); runSpin(); });
+document.getElementById('spinclose').addEventListener('click', () => {
+  if (!spinning) document.getElementById('spin').style.display = 'none';
+});
+document.getElementById('spin').addEventListener('click', e => e.stopPropagation());
+
 document.getElementById('achbtn').addEventListener('click', e => {
   e.stopPropagation();
   renderAchs();
