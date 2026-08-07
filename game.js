@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from './lib/jsm/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader } from './lib/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from './lib/jsm/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from './lib/jsm/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=55';
+import { CITIES } from './sponsors.js?v=56';
 
 // Clean-brand mode: the portal build (CrazyGames etc.) must carry no real
 // trademarks. window.CLEAN_BUILD is injected by the build script; ?clean=1
@@ -4728,6 +4728,11 @@ function updateDriving(dt) {
       v.health = Math.max(0, v.health - (impact - 5) * 3.2);
       playCrash(Math.min(1, impact / 30));
       if (impact > 15) addHeat(1, 'Reckless crash');
+      if (prog.quest === 8 && order.active && impact > 8 && prog.q8clean) {
+        prog.q8clean = 0;
+        showBanner('📜 Crash! The clean-hands count resets…');
+        refreshQuestbar();
+      }
       if (impact > 10 && order.active && order.stage === 'dropoff' && order.fragile && !order.dropped) {
         order.dropped = true;
         order.reward = Math.round(order.reward / 2);
@@ -5070,6 +5075,7 @@ const ACHS = [
   { id: 'f10',  icon: '🎣', name: 'ANGLER',           desc: 'Catch 10 fish',               need: 10,    key: 'fish',    reward: 250 },
   { id: 'home', icon: '🏠', name: 'HOMEOWNER',        desc: 'Buy the apartment',           need: 1,     key: 'home',    reward: 300 },
   { id: 'gold', icon: '🕵️', name: 'THE GOLDEN COURIER', desc: 'Finish the adventure',      need: 1,     key: 'story',   reward: 1000 },
+  { id: 'gold2', icon: '🌑', name: 'LEGEND II',          desc: 'Finish ACT II of the story',  need: 1,     key: 'story2',  reward: 1500 },
 ];
 function statVal(key) {
   if (key === 'level') return prog.level;
@@ -5131,6 +5137,7 @@ const OUTFITS = [
   { id: 'biz',    name: 'BUSINESS SUIT', price: 800,  shirt: 0x1c2a48, pants: 0x10141c },
   { id: 'racer',  name: 'NEON RACER',    price: 1500, shirt: 0x11c8e8, pants: 0x10141c },
   { id: 'royal',  name: 'ROYAL GOLD',    price: 3000, shirt: 0xd8b21e, pants: 0x2a1c08 },
+  { id: 'shadow', name: 'SHADOW SKIN',   price: 0,    shirt: 0x16161c, pants: 0x5e1420, questReward: true },
 ];
 function upgLvl(id) { return prog.upg[id] || 0; }
 function upgCost(u) { return u.base * (upgLvl(u.id) + 1); }
@@ -5172,6 +5179,7 @@ function renderWardrobe() {
   const box = document.getElementById('wardrobeitems');
   box.innerHTML = '';
   for (const o of OUTFITS) {
+    if (o.questReward && !prog.wardrobe[o.id]) continue; // story rewards stay hidden until earned
     const owned = !!prog.wardrobe[o.id];
     const worn = prog.outfit === o.id;
     const row = document.createElement('div');
@@ -6222,6 +6230,10 @@ function questText() {
     case 3: return '📜 CH.3 — Beat the rival: WIN a street race';
     case 4: return `📜 CH.4 — Find the 5 GOLDEN BOXES (${quest.got}/5)`;
     case 5: return '📜 CH.5 — Return to the stranger at the park';
+    case 6: return '📜 ACT II — The stranger has returned… visit the park';
+    case 7: return `📜 ACT II — Draw out the SHADOW COURIER: win 2 races (${Math.max(0, (prog.stats.races || 0) - (prog.q7base || 0))}/2)`;
+    case 8: return `📜 ACT II — Prove your hands: 5 deliveries with NO crash (${prog.q8clean || 0}/5)`;
+    case 9: return '📜 ACT II — Return to the stranger for the truth';
     default: return null;
   }
 }
@@ -6315,6 +6327,25 @@ function strangerInteract() {
     questAdvance(6);
     if (quest.npc) { scene.remove(quest.npc.group); quest.npc = null; }
     if (quest.mark) { scene.remove(quest.mark); quest.mark = null; }
+  } else if (prog.quest === 6) {
+    questSay(['🕵️ Stranger: “The SHADOW COURIER stole my last box…”',
+      '🕵️ “He only races the best. WIN TWO RACES to draw him out.”',
+      '📜 ACT II — THE SHADOW COURIER begins']);
+    prog.q7base = prog.stats.races || 0;
+    questAdvance(7);
+  } else if (prog.quest === 9) {
+    questSay(['🕵️ Stranger: “You beat his time. You never dropped a box.”',
+      '🕵️ “The truth: there is no Shadow Courier. It was always YOU.”',
+      '🏆 +$2,500 · SHADOW SKIN UNLOCKED · LEGEND II']);
+    game.money += 2500; prog.bank += 2500;
+    prog.wardrobe.shadow = true;
+    prog.stats.story2 = 1;
+    checkAchs();
+    saveProg();
+    playCheer();
+    questAdvance(10);
+    if (quest.npc) { scene.remove(quest.npc.group); quest.npc = null; }
+    if (quest.mark) { scene.remove(quest.mark); quest.mark = null; }
   } else {
     questSay(['🕵️ Stranger: “Not yet. Finish what you started…”']);
   }
@@ -6333,7 +6364,7 @@ function djInteract() {
   }
 }
 function setupQuest() {
-  if (prog.quest >= 6) { refreshQuestbar(); return; }
+  if (prog.quest >= 10 || (prog.quest >= 6 && !prog.goldRider)) { refreshQuestbar(); return; }
   // the hooded stranger waits at the park in every city
   quest.npc = makeCharacter({ gender: 'm', skin: 0x8a6248, shirtHue: 0.6, pantsHue: 0.6,
     hairColor: 0x1c1712, robe: 0x1a1a24 });
@@ -6556,7 +6587,12 @@ function updateRace(dt) {
           '📱 Unknown: “Impressive. Now find my five GOLDEN BOXES…”']);
         questAdvance(4);
         spawnGoldBoxes();
-      }
+      } else if (prog.quest === 7 && (prog.stats.races || 0) - (prog.q7base || 0) >= 2) {
+        questSay(['📱 Unknown: “He saw you win. He is FURIOUS.”',
+          '🕵️ “Now show clean hands: FIVE deliveries, ZERO crashes.”']);
+        prog.q8clean = 0;
+        questAdvance(8);
+      } else if (prog.quest === 7) refreshQuestbar();
       endRace(`🏁 RACE WON +$${reward}`);
     } else placeRaceRing();
   }
@@ -7486,6 +7522,13 @@ function updateDelivery(dt) {
       prog.bank += pay;
       prog.stats.deliv = (prog.stats.deliv || 0) + 1;
       prog.stats.earned = (prog.stats.earned || 0) + pay;
+      if (prog.quest === 8) {
+        prog.q8clean = (prog.q8clean || 0) + 1;
+        if (prog.q8clean >= 5) {
+          questSay(['📱 Unknown: “Five clean drops. He is waiting at the park…”']);
+          questAdvance(9);
+        } else refreshQuestbar();
+      }
       checkAchs();
       if (game.deliveries % 5 === 0) {
         playCheer();
