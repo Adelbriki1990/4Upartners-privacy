@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=37';
+import { CITIES } from './sponsors.js?v=38';
 
 // ---------------------------------------------------------------------------
 // Renderer / scene / camera
@@ -2973,6 +2973,11 @@ function buildCity(city) {
   spawnPolice();
   placeRealPeople();
 
+  // career: remember every city the driver has worked in
+  prog.stats.cities[city.id] = 1;
+  checkAchs();
+  saveProg();
+
   // capture the finished city as the environment map (deferred so the page
   // stays responsive; skipped on software renderers where it would stall)
   setTimeout(() => {
@@ -3599,6 +3604,7 @@ document.addEventListener('keydown', e => {
   if (e.code === 'KeyB' && (locked || shopOpen)) toggleShop();
   if (e.code === 'KeyF' && (locked || cafeOpen)) toggleCafe();
   if (e.code === 'KeyV' && locked) toggleRecord();
+  if (e.code === 'KeyG' && locked) spawnRide();
   if (e.code === 'KeyM' && locked) {
     musicOn = !musicOn;
     addFeed(musicOn ? '♪ Music on' : '♪ Music off');
@@ -3704,6 +3710,7 @@ if (isTouch) {
   hold('btnQ', () => drinkEnergy(), null);
   hold('btnShop', () => toggleShop(), null);
   hold('btnRec', () => toggleRecord(), null);
+  hold('btnRide', () => spawnRide(), null);
 }
 
 const menuEl = document.getElementById('menu');
@@ -4063,6 +4070,7 @@ function damageEnemy(en, dmg) {
     en.dead = true;
     en.deathT = 0;
     game.kills++;
+    bumpStat('kills');
     addFeed('Hostile down');
     addXP(8);
     progressMission('kill', 1);
@@ -4185,7 +4193,7 @@ function toggleDrive() {
     const v = nearestVehicle(3.8);
     if (!v) return;
     const need = VEH_UNLOCK[v.type];
-    if (need && prog.level < need) {
+    if (need && prog.level < need && !v.owned) {
       addFeed(`🔒 ${v.stats.label} unlocks at level ${need} — keep delivering!`);
       playClick(320, 0.15);
       return;
@@ -4444,6 +4452,159 @@ const prog = (() => {
   catch { return { level: 1, xp: 0, bank: 0, upg: {} }; }
 })();
 prog.upg = prog.upg || {};
+prog.garage = prog.garage || {};
+prog.stats = prog.stats || {};
+prog.achs = prog.achs || {};
+prog.stats.cities = prog.stats.cities || {};
+
+// ---------------------------------------------------------------------------
+// Career ranks — a new title every 10 driver levels
+// ---------------------------------------------------------------------------
+const RANKS = ['ROOKIE', 'RUNNER', 'COURIER', 'PRO', 'HUSTLER',
+  'VETERAN', 'ACE', 'BOSS', 'ELITE', 'LEGEND'];
+function rankName() {
+  return RANKS[Math.min(Math.floor((prog.level - 1) / 10), RANKS.length - 1)];
+}
+
+// ---------------------------------------------------------------------------
+// Garage — buy vehicles with bank money and own them forever; G calls
+// your selected ride to the nearest street
+// ---------------------------------------------------------------------------
+const GARAGE = [
+  { type: 'car',     icon: '🚗', price: 600,  desc: 'Reliable city sedan' },
+  { type: 'suv',     icon: '🚙', price: 900,  desc: 'Big 4x4 — shrugs off crashes' },
+  { type: 'sports',  icon: '🏎', price: 2500, desc: 'Low, loud and fast' },
+  { type: 'luxury',  icon: '🚘', price: 3200, desc: 'Long executive sedan' },
+  { type: 'phantom', icon: '🕴', price: 5000, desc: 'The VIP limousine' },
+  { type: 'hyper',   icon: '⚡', price: 9000, desc: 'The fastest thing on wheels' },
+];
+let myRide = null;
+function spawnRide() {
+  if (!started || player.dead || cine.active || driving) return;
+  const t = prog.ride;
+  if (!t || !prog.garage[t]) {
+    addFeed('🔒 No car owned yet — buy one in the DRIVER SHOP (B)');
+    playClick(320, 0.15);
+    return;
+  }
+  if (myRide) {
+    const i = vehicles.indexOf(myRide);
+    if (i >= 0) vehicles.splice(i, 1);
+    const ci = colliders.indexOf(myRide.box);
+    if (ci >= 0) colliders.splice(ci, 1);
+    scene.remove(myRide.group);
+    myRide = null;
+  }
+  const p = streetPointNear(player.pos, 5, 12);
+  const colors = CAR_STYLE_COLORS[t] || CAR_STYLE_COLORS.car;
+  const v = registerVehicle(buildCarMesh(colors[Math.floor(Math.random() * colors.length)], t),
+    p.x, p.z, player.yaw, t);
+  v.owned = true;
+  myRide = v;
+  showBanner(`${v.stats.label} DELIVERED 🔑`);
+  addFeed(`🚗 Your ${v.stats.label} just pulled up — press E next to it`);
+  playClick(1500, 0.25);
+}
+function renderGarage() {
+  const box = document.getElementById('garageitems');
+  box.innerHTML = '';
+  for (const gcar of GARAGE) {
+    const owned = !!prog.garage[gcar.type];
+    const active = prog.ride === gcar.type;
+    const st = VEH_STATS[gcar.type];
+    const row = document.createElement('div');
+    row.className = 'shopitem' + (owned ? ' done' : '');
+    row.innerHTML = `<div class="ic">${gcar.icon}</div><div class="info">` +
+      `<div class="nm">${st.label}${active ? ' · <span style="color:#7dff8a">YOUR RIDE</span>' : ''}</div>` +
+      `<div class="ds">${gcar.desc} · top speed ${Math.round(st.maxF * 3.6)} km/h</div></div>`;
+    const btn = document.createElement('button');
+    btn.className = 'buybtn';
+    btn.textContent = owned ? (active ? 'SELECTED' : 'USE') : `BUY $${gcar.price}`;
+    btn.disabled = active || (!owned && prog.bank < gcar.price);
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      if (!owned) {
+        if (prog.bank < gcar.price) return;
+        prog.bank -= gcar.price;
+        prog.garage[gcar.type] = true;
+        prog.stats.cars = Object.keys(prog.garage).length;
+        addFeed(`🔑 You now OWN the ${st.label} — press G to call it`);
+        checkAchs();
+      }
+      prog.ride = gcar.type;
+      saveProg();
+      playClick(2000, 0.25);
+      renderShop();
+    });
+    row.appendChild(btn);
+    box.appendChild(row);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Career goals — lifetime achievements with cash rewards
+// ---------------------------------------------------------------------------
+const ACHS = [
+  { id: 'd1',   icon: '🍕', name: 'FIRST DROP',       desc: 'Complete 1 delivery',         need: 1,     key: 'deliv',   reward: 50 },
+  { id: 'd10',  icon: '📦', name: 'REGULAR RUNNER',   desc: 'Complete 10 deliveries',      need: 10,    key: 'deliv',   reward: 150 },
+  { id: 'd50',  icon: '🚀', name: 'DELIVERY MACHINE', desc: 'Complete 50 deliveries',      need: 50,    key: 'deliv',   reward: 500 },
+  { id: 'd200', icon: '👑', name: 'CITY LEGEND',      desc: 'Complete 200 deliveries',     need: 200,   key: 'deliv',   reward: 2000 },
+  { id: 'k10',  icon: '🥊', name: 'DEFENDER',         desc: 'Stop 10 robbers',             need: 10,    key: 'kills',   reward: 100 },
+  { id: 'k100', icon: '💀', name: 'STREET SOLDIER',   desc: 'Stop 100 robbers',            need: 100,   key: 'kills',   reward: 800 },
+  { id: 'e1',   icon: '🚓', name: 'CLEAN GETAWAY',    desc: 'Escape the police once',      need: 1,     key: 'escapes', reward: 100 },
+  { id: 'e10',  icon: '🏁', name: 'UNCATCHABLE',      desc: 'Escape the police 10 times',  need: 10,    key: 'escapes', reward: 600 },
+  { id: 'c3',   icon: '🌍', name: 'TRAVELER',         desc: 'Play in 3 different cities',  need: 3,     key: 'cityN',   reward: 200 },
+  { id: 'c7',   icon: '🧭', name: 'WORLD TOUR',       desc: 'Play in all 7 cities',        need: 7,     key: 'cityN',   reward: 700 },
+  { id: 'g1',   icon: '🚗', name: 'CAR OWNER',        desc: 'Buy your first car',          need: 1,     key: 'cars',    reward: 150 },
+  { id: 'g3',   icon: '🏎', name: 'COLLECTOR',        desc: 'Own 3 vehicles',              need: 3,     key: 'cars',    reward: 500 },
+  { id: 'g6',   icon: '🏆', name: 'FULL GARAGE',      desc: 'Own all 6 vehicles',          need: 6,     key: 'cars',    reward: 1500 },
+  { id: 'm1k',  icon: '💰', name: 'FIRST GRAND',      desc: 'Earn $1,000 lifetime',        need: 1000,  key: 'earned',  reward: 200 },
+  { id: 'm10k', icon: '🏦', name: 'HIGH ROLLER',      desc: 'Earn $10,000 lifetime',       need: 10000, key: 'earned',  reward: 1000 },
+  { id: 'l10',  icon: '⭐', name: 'RISING STAR',      desc: 'Reach driver level 10',       need: 10,    key: 'level',   reward: 200 },
+  { id: 'l25',  icon: '🌟', name: 'TOP DRIVER',       desc: 'Reach driver level 25',       need: 25,    key: 'level',   reward: 600 },
+  { id: 'l50',  icon: '💫', name: 'HALF CENTURY',     desc: 'Reach driver level 50',       need: 50,    key: 'level',   reward: 1500 },
+  { id: 's3',   icon: '📣', name: 'INFLUENCER',       desc: 'Share the game 3 times',      need: 3,     key: 'shares',  reward: 300 },
+];
+function statVal(key) {
+  if (key === 'level') return prog.level;
+  if (key === 'cityN') return Object.keys(prog.stats.cities).length;
+  return prog.stats[key] || 0;
+}
+function bumpStat(key, n = 1) {
+  prog.stats[key] = (prog.stats[key] || 0) + n;
+  checkAchs();
+  saveProg();
+}
+function checkAchs() {
+  for (const a of ACHS) {
+    if (prog.achs[a.id]) continue;
+    if (statVal(a.key) >= a.need) {
+      prog.achs[a.id] = true;
+      prog.bank += a.reward;
+      showBanner(`🏅 ${a.name} — +$${a.reward}`);
+      addFeed(`🏅 Career goal complete: ${a.name} (+$${a.reward})`);
+      playClick(2600, 0.3);
+    }
+  }
+}
+function renderAchs() {
+  const done = ACHS.filter(a => prog.achs[a.id]).length;
+  document.getElementById('achsum').textContent =
+    `${done} / ${ACHS.length} COMPLETE · RANK: ${rankName()} · LIFETIME DELIVERIES: ${statVal('deliv')}`;
+  const box = document.getElementById('achitems');
+  box.innerHTML = '';
+  for (const a of ACHS) {
+    const got = !!prog.achs[a.id];
+    const cur = Math.min(statVal(a.key), a.need);
+    const row = document.createElement('div');
+    row.className = 'shopitem' + (got ? ' done' : '');
+    row.innerHTML = `<div class="ic">${got ? '✅' : a.icon}</div><div class="info">` +
+      `<div class="nm">${a.name}</div><div class="ds">${a.desc}</div>` +
+      `<div class="lv">${got ? 'COMPLETE' : `${cur} / ${a.need}`}</div></div>` +
+      `<div class="pr">+$${a.reward}</div>`;
+    box.appendChild(row);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Driver Shop — spend earned cash on permanent upgrades (B)
@@ -4488,6 +4649,7 @@ function renderShop() {
     row.appendChild(btn);
     box.appendChild(row);
   }
+  renderGarage();
 }
 function toggleShop() {
   if (!started || player.dead || cine.active) return;
@@ -4630,6 +4792,7 @@ function clearPursuit(escaped) {
   if (escaped) {
     showBanner('YOU LOST THE POLICE');
     addFeed('✅ Escaped — heat cleared');
+    bumpStat('escapes');
   }
 }
 function startSiren() {
@@ -4818,6 +4981,7 @@ function grantShareReward() {
   localStorage.setItem('streetops.shares', JSON.stringify(d));
   game.money += 100;
   prog.bank += 100;
+  bumpStat('shares');
   saveProg();
   showBanner('SHARE BONUS +$100');
   addFeed(`📣 Share bonus +$100 (${d.n}/3 today)`);
@@ -4884,6 +5048,15 @@ document.getElementById('boardclose').addEventListener('click', () => {
   document.getElementById('board').style.display = 'none';
 });
 document.getElementById('board').addEventListener('click', e => e.stopPropagation());
+document.getElementById('achbtn').addEventListener('click', e => {
+  e.stopPropagation();
+  renderAchs();
+  document.getElementById('achs').style.display = 'flex';
+});
+document.getElementById('achclose').addEventListener('click', () => {
+  document.getElementById('achs').style.display = 'none';
+});
+document.getElementById('achs').addEventListener('click', e => e.stopPropagation());
 
 // ---------------------------------------------------------------------------
 // First-shift tutorial — walks a brand-new driver through their first
@@ -4936,8 +5109,9 @@ function addXP(n) {
   while (prog.level < 100 && prog.xp >= xpNeed(prog.level)) {
     prog.xp -= xpNeed(prog.level);
     prog.level++;
-    showBanner(`LEVEL ${prog.level}`);
-    addFeed(`⭐ Level up — ${prog.level} / 100`);
+    showBanner((prog.level - 1) % 10 === 0 ? `NEW RANK: ${rankName()} ★` : `LEVEL ${prog.level}`);
+    addFeed(`⭐ Level up — ${prog.level} / 100 · ${rankName()}`);
+    checkAchs();
     const unlock = UNLOCK_LADDER.find(u => u.level === prog.level);
     if (unlock) {
       showBanner(`UNLOCKED: ${unlock.what}`);
@@ -5837,7 +6011,9 @@ function newOrder() {
   order.customer = makeCivilian();
   order.customer.group.position.set(to.x, 0, to.z);
   scene.add(order.customer.group);
-  order.reward = Math.round((12 + Math.hypot(to.x - from.x, to.z - from.z) * 0.15) * (1 + prog.level * 0.02));
+  order.reward = Math.round((12 + Math.hypot(to.x - from.x, to.z - from.z) * 0.15)
+    * (1 + prog.level * 0.02)
+    * (1 + Math.min(game.deliveries * 0.04, 1))); // rush hour: the shift pays more the longer you ride
   // every third order is a VIP rush: 2.5x pay, deadline after pickup
   order.vip = game.deliveries > 0 && game.deliveries % 3 === 2;
   order.timeLeft = 0;
@@ -5912,6 +6088,11 @@ function updateDelivery(dt) {
       game.deliveries++;
       game.streak++;
       prog.bank += pay;
+      prog.stats.deliv = (prog.stats.deliv || 0) + 1;
+      prog.stats.earned = (prog.stats.earned || 0) + pay;
+      checkAchs();
+      if (game.deliveries % 5 === 0)
+        setTimeout(() => { showBanner('🔥 RUSH HOUR — payouts increased!'); }, 1800);
       addXP(16 + pay / 2);
       recordScore();
       if (energy.cans < energyCap()) energy.cans++;
@@ -6503,7 +6684,7 @@ function tick() {
   killsEl.textContent = game.kills;
   document.getElementById('cash').textContent = '$' + game.money;
   document.getElementById('deliveries').textContent = game.deliveries;
-  document.getElementById('lvl').textContent = playerName() + ' · LVL ' + prog.level;
+  document.getElementById('lvl').textContent = playerName() + ' · LVL ' + prog.level + ' · ' + rankName();
   document.getElementById('cans').textContent = '⚡ ×' + energy.cans;
   if (++frameNo % 20 === 0)
     document.getElementById('location').textContent =
@@ -6542,6 +6723,9 @@ window.__so = {
   veh(type) {
     const v = vehicles.find(v => v.type === type && v.health > 0);
     return v ? [v.group.position.x, v.group.position.z, v.yaw] : null;
+  },
+  get ride() {
+    return myRide ? [myRide.type, myRide.group.position.x, myRide.group.position.z] : null;
   },
   wanted(n = 1) { heat.crimeCd = 0; addHeat(n, 'Debug'); },
   giants() {
