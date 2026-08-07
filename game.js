@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=41';
+import { CITIES } from './sponsors.js?v=42';
 
 // ---------------------------------------------------------------------------
 // Renderer / scene / camera
@@ -458,6 +458,109 @@ function playChirp() {
   }
 }
 const AF = v => (Number.isFinite(v) ? v : 0); // never feed NaN to WebAudio
+
+// ---------------------------------------------------------------------------
+// Dynamic action soundtrack — a live WebAudio sequencer that reacts to the
+// game: chill cruise groove on quiet streets, driving chase beat when police,
+// robbers or a street race light things up. No audio files, pure synthesis.
+// ---------------------------------------------------------------------------
+const MUSIC = { bus: null, next: 0, step: 0, i: 0 };
+const MUSIC_RIFF = [0, 0, 12, 0, 3, 3, 15, 3, 5, 17, 5, 3, 8, 7, 5, 3];
+let NOISE_BUF = null;
+function noiseBuf() {
+  if (!NOISE_BUF) {
+    NOISE_BUF = AC.createBuffer(1, AC.sampleRate, AC.sampleRate);
+    const d = NOISE_BUF.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  }
+  return NOISE_BUF;
+}
+function mKick(t, I) {
+  const o = AC.createOscillator(), g = AC.createGain();
+  o.frequency.setValueAtTime(AF(115 + 45 * I), t);
+  o.frequency.exponentialRampToValueAtTime(36, t + 0.1);
+  g.gain.setValueAtTime(0.5, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+  o.connect(g).connect(MUSIC.bus);
+  o.start(t); o.stop(t + 0.17);
+}
+function mSnap(t, freq, q, vol, dur) {
+  const src = AC.createBufferSource();
+  src.buffer = noiseBuf();
+  src.loop = true;
+  src.playbackRate.value = 1;
+  const f = AC.createBiquadFilter();
+  f.type = freq > 4000 ? 'highpass' : 'bandpass';
+  f.frequency.value = AF(freq); f.Q.value = q;
+  const g = AC.createGain();
+  g.gain.setValueAtTime(AF(vol), t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  src.connect(f).connect(g).connect(MUSIC.bus);
+  src.start(t, Math.random()); src.stop(t + dur + 0.02);
+}
+function mBass(t, semi, dur, I) {
+  const o = AC.createOscillator(), f = AC.createBiquadFilter(), g = AC.createGain();
+  o.type = 'sawtooth';
+  o.frequency.value = AF(55 * Math.pow(2, semi / 12));
+  f.type = 'lowpass';
+  f.frequency.value = AF(280 + 900 * I);
+  f.Q.value = 6;
+  g.gain.setValueAtTime(0.22, t);
+  g.gain.setValueAtTime(0.22, t + dur * 0.6);
+  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  o.connect(f).connect(g).connect(MUSIC.bus);
+  o.start(t); o.stop(t + dur + 0.02);
+}
+function musicTick() {
+  if (!AC || !started) return;
+  if (!MUSIC.bus) {
+    MUSIC.bus = AC.createGain();
+    MUSIC.bus.gain.value = 0;
+    MUSIC.bus.connect(MASTER);
+    MUSIC.next = AC.currentTime + 0.1;
+  }
+  // how hot is the moment? police heat, live robbers or an active race
+  const danger = heat.level > 0 || race.active || enemies.some(e => !e.dead);
+  const target = player.dead ? 0 : danger ? 1 : 0.32;
+  MUSIC.i += (target - MUSIC.i) * 0.02;
+  const I = MUSIC.i;
+  // duck the street soundtrack near venues that play their own music
+  let dmin = 1e9;
+  for (const z of musicZones)
+    dmin = Math.min(dmin, Math.hypot(z.x - player.pos.x, z.z - player.pos.z));
+  const duck = Math.max(0.15, Math.min(1, (dmin - 16) / 26));
+  MUSIC.bus.gain.value = AF((0.05 + 0.13 * I) * duck);
+  const spb = 60 / (98 + 34 * I) / 4; // sixteenth-note length
+  while (MUSIC.next < AC.currentTime + 0.15) {
+    const t = Math.max(MUSIC.next, AC.currentTime);
+    const s = MUSIC.step % 16;
+    if (s % 4 === 0 || (I > 0.7 && s === 14)) mKick(t, I);
+    if (I > 0.5 && (s === 4 || s === 12)) mSnap(t, 1900, 1.1, 0.3, 0.12);   // snare
+    if (s % 2 === 0 || I > 0.7) mSnap(t, 7800, 1, s % 4 === 2 ? 0.12 : 0.07, 0.05); // hats
+    if (s % 2 === 0 || I > 0.6) mBass(t, MUSIC_RIFF[s] + (I > 0.85 ? 12 : 0), spb * 1.9, I);
+    MUSIC.next += spb;
+    MUSIC.step++;
+  }
+}
+// crowd-goes-wild stinger for wins: delivery streaks, race wins, boss kills
+function playCheer() {
+  if (!AC) return;
+  const src = AC.createBufferSource();
+  src.buffer = noiseBuf();
+  src.loop = true;
+  const f = AC.createBiquadFilter();
+  f.type = 'bandpass'; f.Q.value = 0.8;
+  const g = AC.createGain();
+  const t = AC.currentTime;
+  f.frequency.setValueAtTime(700, t);
+  f.frequency.linearRampToValueAtTime(1500, t + 0.5);
+  g.gain.setValueAtTime(0.001, t);
+  g.gain.exponentialRampToValueAtTime(0.3, t + 0.16);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 1.15);
+  src.connect(f).connect(g).connect(MASTER);
+  src.start(t, Math.random()); src.stop(t + 1.2);
+  playChirp();
+}
 function updateAmbient(dt) {
   if (!AMB) return;
   AMB.hornT -= dt;
@@ -1633,18 +1736,13 @@ function loadRealAssets() {
   // ...and something unexplained circles the desert sky
   if (THEME.camels)
     loadGlider('models/ufo.glb', { size: 6, alt: 55, r: 70, speed: 4, bob: 3 });
-  // BrainStem robot busts moves on the live stage next to the samba dancer
-  loadWalker('models/robot_dancer.glb', {
-    height: 1.7, clip: /./, place: { pos: [-33.8, 0, 71], ry: Math.PI } });
-  // a second dancer works the club queue
-  loadWalker('models/person_dancer2.glb', {
-    height: 1.68, clip: /./, place: { pos: [-12.2, 0, -43], ry: Math.PI / 2 } });
-  // the city mascot jogs laps around the blocks
-  loadWalker('models/person_jogger.glb', {
-    height: 1.8, clip: /./,
-    walker: { s: STREETS[3], alongX: true, dir: 1, side: ROAD_HALF + 2.2,
-      v: -60 + Math.random() * 120, speed: 2.4 },
-  });
+  // a courier robot breaks into dance at the park — same family as the
+  // delivery bots so the robot cast stays consistent
+  loadWalker('models/robot_courier.glb', {
+    height: 1.5, clip: /dance/i, place: { pos: [-33.8, 0, 71], ry: Math.PI } });
+  // a third samba dancer works the club queue (same dancer family)
+  loadWalker('models/person_dancer.glb', {
+    height: 1.7, clip: /samba/i, place: { pos: [-12.2, 0, -43], ry: Math.PI / 2 } });
   // a fox lives in the park
   gltfLoader.load('models/fox.glb', g => {
     const root = g.scene;
@@ -4262,6 +4360,7 @@ function damageEnemy(en, dmg) {
       game.money += 150;
       prog.bank += 150;
       saveProg();
+      playCheer();
       showBanner('💀 BOSS DOWN +$150');
       addFeed('💀 Gang boss eliminated — +$150 bounty');
       addXP(40);
@@ -5555,6 +5654,7 @@ function updateRace(dt) {
       addXP(60);
       recordScore();
       addFeed(`🏁 Race won in ${race.t.toFixed(1)}s — +$${reward}`);
+      playCheer();
       endRace(`🏁 RACE WON +$${reward}`);
     } else placeRaceRing();
   }
@@ -6439,8 +6539,10 @@ function updateDelivery(dt) {
       prog.stats.deliv = (prog.stats.deliv || 0) + 1;
       prog.stats.earned = (prog.stats.earned || 0) + pay;
       checkAchs();
-      if (game.deliveries % 5 === 0)
+      if (game.deliveries % 5 === 0) {
+        playCheer();
         setTimeout(() => { showBanner('🔥 RUSH HOUR — payouts increased!'); }, 1800);
+      }
       addXP(16 + pay / 2);
       recordScore();
       if (energy.cans < energyCap()) energy.cans++;
@@ -7017,6 +7119,7 @@ function tick() {
   updateTutorial(dt);
   updateHeat(dt);
   updateAmbient(dt);
+  musicTick();
   updateRecording(dt);
   updateRace(dt);
   carryBox.visible = mode === 'delivery' && order.active && order.stage === 'dropoff'
@@ -7134,6 +7237,7 @@ window.__so = {
       pos: [player.pos.x, player.pos.z],
       camels: camels.length, realCamels: camels.filter(c => !c.rig.legs).length,
       wanderers: modelWanderers.length, walkers: realWalkers.length,
+      music: +MUSIC.i.toFixed(3), musicOn: !!MUSIC.bus,
       weather: weather.state, rain: weather.amount | 0, vehicles: vehicles.length,
       tut: tut.step, tutDisp: tutbarEl.style.display,
       heat: heat.level, pursuers: pursuers.length,
