@@ -271,6 +271,21 @@
   /* Banner slots live only on menu screens, never over the 3D view. The
      generous margin keeps a mis-tap from landing on the ad (portals ban
      accidental clicks). Hidden unless a build actually serves banners. */
+  /* pinned like the START button: on a cramped phone menu this scrolled out
+     of reach, and a reviewer must always be able to find it */
+  #privline { position: fixed; left: 12px; bottom: max(10px, env(safe-area-inset-bottom));
+    z-index: 46; font-size: 10.5px; letter-spacing: .5px; color: #6f8296;
+    max-width: min(300px, 46vw); line-height: 1.5; text-align: left; }
+  #privmore { color: #7fa2c0; text-decoration: underline; cursor: pointer; }
+  #privtext { display: none; z-index: 130; }
+  #privtext .body { margin-top: 14px; max-width: min(620px, 90vw); text-align: left;
+    font-size: 13px; line-height: 1.75; color: #b9c7d4; }
+  #privtext .body b { color: #e8eef5; }
+  @media (max-width: 980px) {
+    #privline { font-size: 8.5px; max-width: 40vw; }
+    #privtext .body { font-size: 11px; }
+  }
+
   /* a city you have not earned yet: visible, tempting, clearly not ready */
   .citycard.locked { opacity: .5; filter: grayscale(.55); cursor: not-allowed; }
   .citycard.locked .lockmsg { color: #ffd479; letter-spacing: 1px; }
@@ -647,6 +662,25 @@
   </div>
 </div>
 
+<div id="privtext" class="overlay">
+  <div class="xclose" id="x-privtext">✕</div>
+  <h1 style="font-size:26px">Privacy &amp; Terms</h1>
+  <div class="body">
+    <p><b>What we store.</b> STREET OPS keeps your driver level, wallet, cars, outfits and
+    settings in your own browser's local storage, on your device. That data never leaves
+    your device and is not sent to us.</p>
+    <p><b>What we do not collect.</b> No name, no email, no account, no payment details and
+    no location. The game has no login and no chat.</p>
+    <p><b>Advertising.</b> When you play on a game portal, that portal may show ads and
+    apply its own privacy policy and terms, which you can read on the portal's own site.
+    Rewarded ads are always your choice — nothing plays unless you press the button.</p>
+    <p><b>Clearing your data.</b> Clearing your browser's site data for this game erases
+    your progress permanently.</p>
+    <p><b>Terms.</b> The game is provided as is, for entertainment. Places, brands and
+    characters in it are fictional; any resemblance to real ones is unintentional.</p>
+  </div>
+</div>
+
 <div id="quitask" class="overlay">
   <h1>Leave the shift?</h1>
   <h2>YOUR WALLET, LEVEL, CARS AND OUTFITS ARE ALL SAVED</h2>
@@ -723,6 +757,10 @@
   </details>
   <div class="go" id="deployline">CLICK ANYWHERE TO DEPLOY</div>
   <div class="adslot" id="banner-menu"></div>
+  <div id="privline">
+    STREET OPS saves your progress on this device only and collects no personal data.
+    <span id="privmore">Privacy &amp; Terms</span>
+  </div>
   <div id="startbtn">▶ START GAME</div>
 </div>
 
@@ -887,6 +925,6 @@ setTimeout(function () {
   document.body.appendChild(d);
 }, 9000);
 </script>
-<script type="module" src="game.js?v=68"></script>
+<script type="module" src="game.js?v=69"></script>
 </body>
 </html>
