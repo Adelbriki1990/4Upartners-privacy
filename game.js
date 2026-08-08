@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from './lib/jsm/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader } from './lib/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from './lib/jsm/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from './lib/jsm/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=69';
+import { CITIES } from './sponsors.js?v=70';
 
 // Clean-brand mode: the portal build (CrazyGames etc.) must carry no real
 // trademarks. window.CLEAN_BUILD is injected by the build script; ?clean=1
@@ -4315,6 +4315,18 @@ menuEl.addEventListener('click', () => {
 pausedEl.addEventListener('click', () => {
   if (isTouch) { locked = true; pausedEl.style.display = 'none'; hudEl.style.display = 'block'; }
   else requestLock();
+});
+// A desktop player has no on-screen home button (the mouse is captured while
+// playing), so the pause screen is their way out. Esc unlocks the pointer,
+// which is what shows this screen.
+document.getElementById('pauseresume').addEventListener('click', e => {
+  e.stopPropagation();
+  if (isTouch) { locked = true; pausedEl.style.display = 'none'; hudEl.style.display = 'block'; }
+  else requestLock();
+});
+document.getElementById('pausehome').addEventListener('click', e => {
+  e.stopPropagation();
+  location.reload();
 });
 // No click-anywhere-to-reload: a stray tap used to throw the run away. The
 // screen now offers explicit choices, and only they act.

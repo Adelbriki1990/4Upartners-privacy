@@ -118,6 +118,8 @@
     #gameover .modebtn { font-size: 11px; padding: 8px 14px; }
   }
   #paused { display: none; }
+  #pausebtns { margin-top: 22px; display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+  #pausehome { border-color: #ff8a8a; color: #ff8a8a; }
 
   /* ---------- HUD ---------- */
   #hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; display: none; }
@@ -277,9 +279,12 @@
     z-index: 46; font-size: 10.5px; letter-spacing: .5px; color: #6f8296;
     max-width: min(300px, 46vw); line-height: 1.5; text-align: left; }
   #privmore { color: #7fa2c0; text-decoration: underline; cursor: pointer; }
-  #privtext { display: none; z-index: 130; }
+  #privtext { display: none; z-index: 130; background: rgba(2,5,10,.97); }
   #privtext .body { margin-top: 14px; max-width: min(620px, 90vw); text-align: left;
-    font-size: 13px; line-height: 1.75; color: #b9c7d4; }
+    font-size: 13px; line-height: 1.75; color: #b9c7d4;
+    background: #0b111b; border: 1px solid #24344a; border-radius: 12px;
+    padding: 18px 22px; max-height: 62vh; overflow-y: auto; }
+  #privtext .body p + p { margin-top: 10px; }
   #privtext .body b { color: #e8eef5; }
   @media (max-width: 980px) {
     #privline { font-size: 8.5px; max-width: 40vw; }
@@ -831,7 +836,11 @@
 
 <div id="paused" class="overlay">
   <h1 style="font-size:40px">Paused</h1>
-  <div class="go">CLICK TO RESUME</div>
+  <div id="pausebtns">
+    <div class="modebtn sel" id="pauseresume">▶ RESUME</div>
+    <div class="modebtn" id="pausehome">🏠 HOME</div>
+  </div>
+  <div class="go">OR CLICK ANYWHERE TO RESUME</div>
 </div>
 
 <div id="gameover" class="overlay">
@@ -925,6 +934,6 @@ setTimeout(function () {
   document.body.appendChild(d);
 }, 9000);
 </script>
-<script type="module" src="game.js?v=69"></script>
+<script type="module" src="game.js?v=70"></script>
 </body>
 </html>
