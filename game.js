@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from './lib/jsm/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader } from './lib/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from './lib/jsm/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from './lib/jsm/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=68';
+import { CITIES } from './sponsors.js?v=69';
 
 // Clean-brand mode: the portal build (CrazyGames etc.) must carry no real
 // trademarks. window.CLEAN_BUILD is injected by the build script; ?clean=1
@@ -46,6 +46,17 @@ function resumeAfterAd() {
 }
 window.__adPause = pauseForAd;
 window.__adResume = resumeAfterAd;
+function cgLoading(ev) {
+  try {
+    if (PORTAL === 'crazygames' && window.CrazyGames?.SDK?.game) {
+      if (ev === 'start') window.CrazyGames.SDK.game.loadingStart();
+      else window.CrazyGames.SDK.game.loadingStop();
+    } else if (PORTAL === 'poki' && window.PokiSDK) {
+      if (ev === 'start') window.PokiSDK.gameLoadingStart();
+      else window.PokiSDK.gameLoadingFinished();
+    }
+  } catch (e) { /* sdk optional */ }
+}
 async function portalInit() {
   if (!ADS) return;
   // give the platform script time to land before we call into it
@@ -54,13 +65,14 @@ async function portalInit() {
   for (let i = 0; i < 20 && !ready(); i++) await new Promise(r => setTimeout(r, 500));
   try {
     if (PORTAL === 'crazygames') await window.CrazyGames.SDK.init();
-    else if (PORTAL === 'poki') {
-      await window.PokiSDK.init();
-      window.PokiSDK.gameLoadingFinished();
-    }
+    else if (PORTAL === 'poki') await window.PokiSDK.init();
   } catch (e) { /* offline preview — the game runs fine without the network */ }
 }
-portalInit().then(() => { if (!started) requestAdBanner('banner-menu'); });
+portalInit().then(() => {
+  cgLoading('start');                       // assets + city are still building
+  const done = () => { cgLoading('stop'); if (!started) requestAdBanner('banner-menu'); };
+  if (window.__so) done(); else setTimeout(done, 1200);
+});
 // Rewarded video: the player CHOOSES to watch, we grant the prize.
 function showRewardedAd(onReward) {
   pauseForAd();
@@ -4326,6 +4338,15 @@ document.addEventListener('pointerlockchange', () => {
 document.getElementById('shopclose').addEventListener('click', () => { if (shopOpen) toggleShop(); });
 // Corner ✕ on every panel: the in-flow close labels sit under long lists and
 // named keys ("(B)") that a phone does not have.
+document.getElementById('privmore').addEventListener('click', e => {
+  e.stopPropagation();
+  document.getElementById('privtext').style.display = 'flex';
+});
+document.getElementById('privtext').addEventListener('click', e => e.stopPropagation());
+document.getElementById('x-privtext').addEventListener('click', e => {
+  e.stopPropagation();
+  document.getElementById('privtext').style.display = 'none';
+});
 for (const [id, close] of [
   ['x-shop', () => { if (shopOpen) toggleShop(); }],
   ['x-spin', () => document.getElementById('spinclose').click()],
