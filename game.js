@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from './lib/jsm/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader } from './lib/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from './lib/jsm/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from './lib/jsm/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=67';
+import { CITIES } from './sponsors.js?v=68';
 
 // Clean-brand mode: the portal build (CrazyGames etc.) must carry no real
 // trademarks. window.CLEAN_BUILD is injected by the build script; ?clean=1
@@ -60,7 +60,7 @@ async function portalInit() {
     }
   } catch (e) { /* offline preview — the game runs fine without the network */ }
 }
-portalInit();
+portalInit().then(() => { if (!started) requestAdBanner('banner-menu'); });
 // Rewarded video: the player CHOOSES to watch, we grant the prize.
 function showRewardedAd(onReward) {
   pauseForAd();
@@ -104,6 +104,19 @@ function showMidgameAd() {
   } catch (e) { /* ads are optional */ }
   done();
 }
+// Banners: passive income on high-dwell menu screens only. Never over the 3D
+// view, so frame rate and visibility are untouched. CrazyGames serves these;
+// other portals handle display ads themselves, so the slots stay hidden.
+const BANNERS = PORTAL === 'crazygames';
+function requestAdBanner(containerId) {
+  if (!BANNERS || !window.CrazyGames?.SDK?.banner) return;
+  try { window.CrazyGames.SDK.banner.requestResponsiveBanner(containerId); } catch (e) {}
+}
+function clearAdBanners() {
+  if (!BANNERS || !window.CrazyGames?.SDK?.banner) return;
+  try { window.CrazyGames.SDK.banner.clearAllBanners(); } catch (e) {}
+}
+if (BANNERS) document.body.classList.add('hasbanners');
 // Every portal wants to know when real gameplay is running (ad pacing, metrics)
 function cgGame(ev) {
   if (!ADS) return;
@@ -4280,7 +4293,7 @@ menuEl.addEventListener('click', () => {
     locked = true;
     menuEl.style.display = 'none';
     pausedEl.style.display = 'none';
-    if (!started) { started = true; cgGame('start'); startCinematic(); }
+    if (!started) { started = true; clearAdBanners(); cgGame('start'); startCinematic(); }
     else if (!cine.active) hudEl.style.display = 'block';
     if (AC && AC.state === 'suspended') AC.resume();
   } else {
@@ -4300,7 +4313,7 @@ document.addEventListener('pointerlockchange', () => {
   if (locked) {
     menuEl.style.display = 'none';
     pausedEl.style.display = 'none';
-    if (!started) { started = true; cgGame('start'); startCinematic(); }
+    if (!started) { started = true; clearAdBanners(); cgGame('start'); startCinematic(); }
     else if (!cine.active) hudEl.style.display = 'block';
     if (AC && AC.state === 'suspended') AC.resume();
   } else if (started && !player.dead && !shopOpen && !cafeOpen
@@ -5178,6 +5191,11 @@ function restartRun() {
   order.active = false;
   order.cooldown = 2;
   reckless.hits.length = 0;
+  timeSavesUsed = 0;
+  dblOffersUsed = 0;
+  dblPending = 0;
+  hideTimeSave();
+  hideDblPay();
   document.getElementById('ph-cond').style.display = 'none';
   cgGame('start');
   hudEl.style.display = 'block';
@@ -5291,10 +5309,10 @@ const GARAGE = [
   { type: 'royal',   icon: '👑', price: 25000, desc: 'The golden royal limousine' },
 ];
 let myRide = null;
-function spawnRide() {
+function spawnRide(forceType) {
   if (!started || player.dead || cine.active || driving) return;
-  const t = prog.ride;
-  if (!t || !prog.garage[t]) {
+  const t = forceType || prog.ride;
+  if (!t || !(forceType || prog.garage[t] === true)) {
     addFeed('🔒 No car owned yet — buy one in the DRIVER SHOP (B)');
     playClick(320, 0.15);
     return;
@@ -5328,11 +5346,39 @@ function spawnRide() {
   addFeed(`🚗 Your ${v.stats.label} just pulled up — press E next to it`);
   playClick(1500, 0.25);
 }
+// Letting a rookie feel the $25,000 limousine for a few minutes is the best
+// advertisement the garage has: they come back to grind for it.
+const TEST_DRIVE_SECS = 300;
+let testDrive = null; // { type, until }
+function startTestDrive(type, label) {
+  // kept out of prog.garage entirely — anything saved there survives a reload
+  testDrive = { type, until: game.time + TEST_DRIVE_SECS, prevRide: prog.ride };
+  if (shopOpen) toggleShop();
+  spawnRide(type);
+  celebrate(`${label} — 5 MIN TEST DRIVE`, '🔑');
+  addFeed(`🔑 Test drive started — the ${label} is yours for 5 minutes`);
+}
+function updateTestDrive() {
+  if (!testDrive || game.time < testDrive.until) return;
+  const t = testDrive.type;
+  testDrive = null;
+  if (myRide && myRide.type === t) {
+    if (driving === myRide) toggleDrive();
+    const i = vehicles.indexOf(myRide);
+    if (i >= 0) vehicles.splice(i, 1);
+    const ci = colliders.indexOf(myRide.box);
+    if (ci >= 0) colliders.splice(ci, 1);
+    scene.remove(myRide.group);
+    myRide = null;
+  }
+  showBanner('🔑 TEST DRIVE OVER');
+  addFeed('🔑 The test drive ended — buy it in the shop to keep it');
+}
 function renderGarage() {
   const box = document.getElementById('garageitems');
   box.innerHTML = '';
   for (const gcar of GARAGE) {
-    const owned = !!prog.garage[gcar.type];
+    const owned = prog.garage[gcar.type] === true;
     const active = prog.ride === gcar.type;
     const st = VEH_STATS[gcar.type];
     const row = document.createElement('div');
@@ -5361,9 +5407,27 @@ function renderGarage() {
       renderShop();
     });
     row.appendChild(btn);
+    // a rewarded taste of anything not owned yet, once per car per run
+    if (!owned && ADS && !testDrive && !(testedThisRun[gcar.type])) {
+      const td = document.createElement('button');
+      td.className = 'buybtn';
+      td.style.marginLeft = '6px';
+      td.style.borderColor = '#7dff8a';
+      td.style.color = '#7dff8a';
+      td.textContent = '📺 TEST DRIVE';
+      td.addEventListener('click', e => {
+        e.stopPropagation();
+        showRewardedAd(() => {
+          testedThisRun[gcar.type] = true;
+          startTestDrive(gcar.type, st.label);
+        });
+      });
+      row.appendChild(td);
+    }
     box.appendChild(row);
   }
 }
+const testedThisRun = {};
 
 // ---------------------------------------------------------------------------
 // Career goals — lifetime achievements with cash rewards
@@ -5542,9 +5606,13 @@ function toggleShop() {
   if (shopOpen) {
     renderShop();
     el.style.display = 'flex';
+    cgGame('stop');                 // menus are not gameplay
+    requestAdBanner('banner-shop');
     if (!isTouch) document.exitPointerLock();
   } else {
     el.style.display = 'none';
+    clearAdBanners();
+    cgGame('start');
     if (!isTouch) requestLock();
   }
 }
@@ -6156,7 +6224,10 @@ function updateTutorial(dt) {
 let tutShownStep = -1;
 
 function xpNeed(l) { return 40 + l * 12; }
-function saveProg() { localStorage.setItem('streetops.prog', JSON.stringify(prog)); }
+function saveProg() {
+  for (const k of Object.keys(prog.garage)) if (prog.garage[k] !== true) delete prog.garage[k];
+  localStorage.setItem('streetops.prog', JSON.stringify(prog));
+}
 function addXP(n) {
   if (prog.level >= 100) { saveProg(); return; }
   prog.xp += Math.round(n);
@@ -7816,6 +7887,67 @@ function newOrder() {
 // Crashes, gunfire and hard knocks spoil it; the payout follows the condition,
 // and a ruined order costs you its value instead of paying it.
 const ORDER_RUINED = 20; // at or below this the customer refuses delivery
+// The clock running out is the moment the player most wants a way back, so
+// that is where the rewarded ad goes. Once per run, and it un-marks the
+// order as late so the full payout is genuinely back on the table.
+let timeSavesUsed = 0;
+function hideTimeSave() { document.getElementById('timesave').style.display = 'none'; }
+function offerTimeSave() {
+  if (!ADS || timeSavesUsed >= 1 || !order.active) return;
+  document.getElementById('timesave').style.display = 'block';
+  setTimeout(() => { if (order.late) hideTimeSave(); }, 9000); // never nags for long
+}
+document.getElementById('timesaveno').addEventListener('click', e => {
+  e.stopPropagation();
+  hideTimeSave();
+});
+// A doubling offer only lands on a payout worth doubling. Offering it after
+// every drop would nag twenty times a session and cost more retention than
+// the ad is worth.
+let dblOffersUsed = 0, dblPending = 0;
+const DBL_MIN_PAY = 45, DBL_MAX_PER_RUN = 3;
+function hideDblPay() { document.getElementById('dblpay').style.display = 'none'; }
+function offerDoublePay(pay, why) {
+  if (!ADS || pay < DBL_MIN_PAY || dblOffersUsed >= DBL_MAX_PER_RUN) return;
+  dblPending = pay;
+  document.getElementById('dblpaytxt').textContent = `${why} · $${pay}`;
+  document.getElementById('dblpaybtn').textContent = `📺 WATCH AD → MAKE IT $${pay * 2}`;
+  document.getElementById('dblpay').style.display = 'block';
+  setTimeout(hideDblPay, 10000);
+}
+document.getElementById('dblpayno').addEventListener('click', e => {
+  e.stopPropagation();
+  hideDblPay();
+});
+document.getElementById('dblpaybtn').addEventListener('click', e => {
+  e.stopPropagation();
+  const bonus = dblPending;
+  if (bonus <= 0) return;
+  dblPending = 0;
+  hideDblPay();
+  showRewardedAd(() => {
+    dblOffersUsed++;
+    game.money += bonus;
+    prog.bank += bonus;
+    prog.stats.earned = (prog.stats.earned || 0) + bonus;
+    saveProg();
+    celebrate(`DOUBLED — +$${bonus}`, '💰');
+    addFeed(`💰 Delivery doubled — another $${bonus} banked`);
+  });
+});
+document.getElementById('timesavebtn').addEventListener('click', e => {
+  e.stopPropagation();
+  if (timeSavesUsed >= 1 || !order.active) return;
+  hideTimeSave();
+  showRewardedAd(() => {
+    timeSavesUsed++;
+    order.late = false;
+    order.hurried = false;
+    order.timeLeft = 30;
+    celebrate('+30 SECONDS — GO!', '⏱');
+    addFeed('⏱ Extra time granted — the full payout is back');
+  });
+});
 // A patrol car ignores one bump. Three real crashes inside half a minute is
 // a driver they pull over.
 const reckless = { hits: [], };
@@ -7895,6 +8027,7 @@ function updateDelivery(dt) {
         addFeed('⏱ You are late — the customer pays 40% less');
         showBanner('⏱ LATE DELIVERY');
       }
+      offerTimeSave();
       playClick(300, 0.25);
     } else if (order.timeLeft < 8 && !order.hurried) {
       order.hurried = true;
@@ -7959,6 +8092,7 @@ function updateDelivery(dt) {
     } else {
       order.active = false;
       order.cooldown = 3;
+      hideTimeSave();
       const cond = order.condition === undefined ? 100 : Math.round(order.condition);
       const mult2 = 1 + Math.min(game.streak * 0.1, 1);
       let pay = Math.round(order.reward * mult2);
@@ -7971,6 +8105,7 @@ function updateDelivery(dt) {
       // the customer pays for what actually arrives. A ruined order is worse
       // than no order: you refund its value out of your own pocket.
       const value = order.reward;   // captured: a new order overwrites it soon
+      const wasVip = !!order.vip;
       const ruined = cond <= ORDER_RUINED;
       if (order.late) pay = Math.round(pay * 0.6);
       if (ruined) pay = -value;
@@ -8013,6 +8148,8 @@ function updateDelivery(dt) {
       if (!ruined) {
         showBanner(`Delivered! +$${pay}${game.streak > 1 ? ` · STREAK ×${mult2.toFixed(1)}` : ''}`);
         addFeed(`${playerName()} handed the order to the guest — +$${pay}`);
+        const why = wasVip ? '⭐ VIP DELIVERY' : cond >= 98 ? '✨ PERFECT DROP' : '💰 BIG DELIVERY';
+        setTimeout(() => offerDoublePay(pay, why), 1500);
       }
       if (order.customer) {
         const done = order.customer;
@@ -8536,18 +8673,30 @@ function refreshPreview() {
 // ---------------------------------------------------------------------------
 // City select menu
 // ---------------------------------------------------------------------------
+// Three cities are open from the first minute; the richer four are earned.
+// A driver with somewhere to get to plays longer than one handed everything.
+const CITY_RANK = { nyc: 5, dubai: 10, doha: 16, harbor: 22 };
+function cityLocked(id) { return prog.level < (CITY_RANK[id] || 0); }
 let selectedId = localStorage.getItem('streetops.city') || CITIES[0].id;
+if (cityLocked(selectedId)) selectedId = CITIES[0].id; // a save from before the gate
 function selectedCity() { return CITIES.find(c => c.id === selectedId) || CITIES[0]; }
 {
   const wrap = document.getElementById('cities');
   for (const city of CITIES) {
+    const locked = cityLocked(city.id);
     const card = document.createElement('div');
-    card.className = 'citycard' + (city.id === selectedId ? ' sel' : '');
+    card.className = 'citycard' + (city.id === selectedId ? ' sel' : '') + (locked ? ' locked' : '');
     card.style.setProperty('--accent', city.accent);
-    card.innerHTML = `<h3>${city.name}</h3><p>${city.blurb}</p>` +
-      `<div class="sp">Sponsors: ${city.sponsors.map(s => s.name).join(' · ')}</div>`;
+    card.innerHTML = `<h3>${locked ? '🔒 ' : ''}${city.name}</h3><p>${city.blurb}</p>` +
+      (locked ? `<div class="sp lockmsg">REACH LEVEL ${CITY_RANK[city.id]} TO UNLOCK</div>`
+        : `<div class="sp">Sponsors: ${city.sponsors.map(s => s.name).join(' · ')}</div>`);
     card.addEventListener('click', e => {
       e.stopPropagation();
+      if (cityLocked(city.id)) {
+        showBanner(`🔒 REACH LEVEL ${CITY_RANK[city.id]} FOR ${city.name}`);
+        playClick(300, 0.18);
+        return;
+      }
       selectedId = city.id;
       localStorage.setItem('streetops.city', selectedId);
       for (const el of wrap.children) el.classList.remove('sel');
@@ -8906,6 +9055,7 @@ function tick() {
   updateNavArrow();
   trackDistance();
   updateEffects(dt);
+  updateTestDrive();
 
   // ---- HUD ----
   waveEl.textContent = game.wave;
@@ -8990,6 +9140,8 @@ window.__so = {
   },
   wanted(n = 1) { heat.crimeCd = 0; addHeat(n, 'Debug'); },
   hurt(n = 30) { hurtPlayer(n); },
+  expire() { if (order.active && order.stage === 'dropoff') order.timeLeft = 0.01; },
+  dbl(pay = 80) { offerDoublePay(pay, 'DEBUG DROP'); },
   crash(impact = 12) { damageOrder((impact - 5) * 2.4, 'debug'); noteReckless(impact); },
   get cond() { return order.active ? order.condition : null; },
   get late() { return { late: !!order.late, left: +(order.timeLeft || 0).toFixed(1) }; },

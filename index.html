@@ -239,6 +239,46 @@
   /* Long panels (the shop is 11 cars + 12 outfits + upgrades) scroll, which
      pushed their only close control far below the fold — and it read
      "(B)", a key phones do not have. This one never scrolls away. */
+  /* time-save offer: a small card, never a full-screen takeover, and the
+     decline option is as easy to hit as the ad button (portal requirement) */
+  #timesave { position: absolute; left: 50%; top: 30%; transform: translateX(-50%);
+    z-index: 20; pointer-events: auto; text-align: center; padding: 14px 20px;
+    border-radius: 14px; background: rgba(8,14,24,.93); border: 1px solid #ffd479;
+    box-shadow: 0 6px 30px rgba(0,0,0,.6); max-width: 90vw; }
+  #timesave b { display: block; font-size: 15px; letter-spacing: 3px; color: #ffd479; }
+  #timesavebtn { display: inline-block; margin-top: 10px; padding: 10px 20px; border-radius: 24px;
+    font-size: 14px; font-weight: 800; letter-spacing: 1px; color: #08131c; cursor: pointer;
+    background: linear-gradient(180deg, #8fe0ff, #41c9ff); }
+  #timesaveno { display: block; margin-top: 9px; padding: 6px; font-size: 12.5px; font-style: normal;
+    letter-spacing: 1px; color: #9fb2c4; cursor: pointer; text-decoration: underline; }
+  #dblpay { position: absolute; left: 50%; top: 30%; transform: translateX(-50%);
+    z-index: 20; pointer-events: auto; text-align: center; padding: 14px 20px;
+    border-radius: 14px; background: rgba(8,14,24,.93); border: 1px solid #7dff8a;
+    box-shadow: 0 6px 30px rgba(0,0,0,.6); max-width: 90vw; }
+  #dblpay b { display: block; font-size: 15px; letter-spacing: 2px; color: #7dff8a; }
+  #dblpaybtn { display: inline-block; margin-top: 10px; padding: 10px 20px; border-radius: 24px;
+    font-size: 14px; font-weight: 800; letter-spacing: 1px; color: #08131c; cursor: pointer;
+    background: linear-gradient(180deg, #a8ffbb, #3ddc84); }
+  #dblpayno { display: block; margin-top: 9px; padding: 6px; font-size: 12.5px; font-style: normal;
+    letter-spacing: 1px; color: #9fb2c4; cursor: pointer; text-decoration: underline; }
+  body.touch #dblpay { top: 22%; padding: 10px 14px; }
+  body.touch #dblpay b { font-size: 12px; }
+  body.touch #dblpaybtn { font-size: 12px; padding: 9px 16px; }
+  body.touch #timesave { top: 22%; padding: 10px 14px; }
+  body.touch #timesave b { font-size: 12px; }
+  body.touch #timesavebtn { font-size: 12px; padding: 9px 16px; }
+
+  /* Banner slots live only on menu screens, never over the 3D view. The
+     generous margin keeps a mis-tap from landing on the ad (portals ban
+     accidental clicks). Hidden unless a build actually serves banners. */
+  /* a city you have not earned yet: visible, tempting, clearly not ready */
+  .citycard.locked { opacity: .5; filter: grayscale(.55); cursor: not-allowed; }
+  .citycard.locked .lockmsg { color: #ffd479; letter-spacing: 1px; }
+
+  .adslot { display: none; margin: 15px auto; min-height: 50px; width: min(728px, 92vw); }
+  body.hasbanners .adslot { display: block; }
+  @media (max-width: 980px) { .adslot { width: min(320px, 92vw); margin: 12px auto; } }
+
   .xclose { position: fixed; top: max(10px, env(safe-area-inset-top)); right: 12px; z-index: 8;
     width: 46px; height: 46px; border-radius: 50%; display: flex; align-items: center;
     justify-content: center; font-size: 21px; font-weight: 700; color: #e8eef5;
@@ -533,6 +573,19 @@
   <div id="drivehint">PRESS E TO DRIVE</div>
   <div id="cafehint">🍕 PRESS F TO EAT HERE</div>
   <div id="acthint"></div>
+  <!-- offered the moment the delivery clock runs out: the player is about to
+       lose 40% of the pay, which is exactly when a rewarded ad is welcome -->
+  <div id="timesave" style="display:none">
+    <b>⏱ OUT OF TIME</b>
+    <span id="timesavebtn">📺 WATCH AD → +30 SECONDS</span>
+    <i id="timesaveno">No thanks</i>
+  </div>
+  <!-- only offered on a big payout, so it stays a treat instead of a nag -->
+  <div id="dblpay" style="display:none">
+    <b id="dblpaytxt">💰 BIG DELIVERY</b>
+    <span id="dblpaybtn">📺 WATCH AD → DOUBLE IT</span>
+    <i id="dblpayno">Keep it as is</i>
+  </div>
   <div id="stars" style="display:none;position:absolute;top:56px;left:50%;transform:translateX(-50%);
     color:#ffd479;font-size:22px;letter-spacing:6px;text-shadow:0 0 12px rgba(255,180,60,.8)"></div>
   <div id="tutbar"><span class="step"></span><span class="txt"></span></div>
@@ -669,6 +722,7 @@
   </div>
   </details>
   <div class="go" id="deployline">CLICK ANYWHERE TO DEPLOY</div>
+  <div class="adslot" id="banner-menu"></div>
   <div id="startbtn">▶ START GAME</div>
 </div>
 
@@ -676,6 +730,7 @@
   <div class="xclose" id="x-shop">✕</div>
   <h1 style="font-size:32px">DRIVER SHOP</h1>
   <div id="wallet">WALLET $0</div>
+  <div class="adslot" id="banner-shop"></div>
   <div id="shopitems"></div>
   <div id="garagehint" style="margin-top:20px;font-size:15px;letter-spacing:3px;color:#7fd0ff;font-weight:700">🚗 GARAGE — BUY &amp; OWN CARS · CALL YOURS WITH <b style="color:#ffd479">G</b></div>
   <div id="garageitems"></div>
@@ -832,6 +887,6 @@ setTimeout(function () {
   document.body.appendChild(d);
 }, 9000);
 </script>
-<script type="module" src="game.js?v=67"></script>
+<script type="module" src="game.js?v=68"></script>
 </body>
 </html>
