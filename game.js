@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from './lib/jsm/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader } from './lib/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from './lib/jsm/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from './lib/jsm/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=70';
+import { CITIES } from './sponsors.js?v=71';
 
 // Clean-brand mode: the portal build (CrazyGames etc.) must carry no real
 // trademarks. window.CLEAN_BUILD is injected by the build script; ?clean=1
@@ -4480,6 +4480,12 @@ const WEAPONS = [
   { name: 'MK-4 ASSAULT RIFLE', magSize: 30, mag: 30, reserve: 120, damage: 30, interval: 0.1,  auto: true,  spread: 0.018, adsSpread: 0.004, freq: 950,  vol: 0.45, reload: 1.9, scale: 1 },
   { name: 'P9 SIDEARM',         magSize: 12, mag: 12, reserve: 72,  damage: 24, interval: 0.15, auto: false, spread: 0.012, adsSpread: 0.005, freq: 1350, vol: 0.34, reload: 1.2, scale: 0.62 },
   { name: 'VIPER SMG',          magSize: 36, mag: 36, reserve: 144, damage: 17, interval: 0.065, auto: true, spread: 0.032, adsSpread: 0.012, freq: 1150, vol: 0.4,  reload: 1.6, scale: 0.8 },
+  // pellets > 1 sprays a cone of shots in one trigger pull
+  { name: 'BREAKER 12 SHOTGUN', magSize: 6,  mag: 6,  reserve: 48,  damage: 16, interval: 0.72, auto: false, spread: 0.13,  adsSpread: 0.085, freq: 420,  vol: 0.6,  reload: 2.4, scale: 0.95, pellets: 8, range: 45 },
+  { name: 'LONGSHOT RIFLE',     magSize: 5,  mag: 5,  reserve: 40,  damage: 120, interval: 1.15, auto: false, spread: 0.055, adsSpread: 0.0009, freq: 620, vol: 0.7,  reload: 2.6, scale: 1.15 },
+  { name: 'STORM-6 MINIGUN',    magSize: 150, mag: 150, reserve: 300, damage: 11, interval: 0.045, auto: true, spread: 0.055, adsSpread: 0.03, freq: 780, vol: 0.36, reload: 4.2, scale: 1.1 },
+  // the joke that earns its place: you are a courier, so you throw the food
+  { name: 'PIZZA CANNON',       magSize: 8,  mag: 8,  reserve: 40,  damage: 75, interval: 0.85, auto: false, spread: 0.05,  adsSpread: 0.02,  freq: 240,  vol: 0.5,  reload: 2.0, scale: 1.0, pizza: true },
 ];
 let curW = 0, pendingShot = false;
 function W() { return WEAPONS[curW]; }
@@ -4581,42 +4587,48 @@ function fireBullet() {
   muzzleFlash.rotation.z = Math.random() * Math.PI;
   muzzleLight.intensity = 14;
 
-  camera.getWorldDirection(_dir);
   const spread = aiming ? w.adsSpread : w.spread;
-  _dir.x += (Math.random() - 0.5) * spread;
-  _dir.y += (Math.random() - 0.5) * spread;
-  _dir.z += (Math.random() - 0.5) * spread;
-  _dir.normalize();
-  _origin.copy(camera.position);
-
-  const maxDist = 220;
-  let hitDist = worldHitDistance(_origin, _dir, maxDist);
-  let hitEnemy = null, headshot = false;
-  _ray.set(_origin, _dir);
-  for (const en of enemies) {
-    if (en.dead) continue;
-    if (_ray.intersectBox(en.headBox, _hitPt)) {
-      const d = _origin.distanceTo(_hitPt);
-      if (d < hitDist) { hitDist = d; hitEnemy = en; headshot = true; }
-    }
-    if (_ray.intersectBox(en.bodyBox, _hitPt)) {
-      const d = _origin.distanceTo(_hitPt);
-      if (d < hitDist) { hitDist = d; hitEnemy = en; headshot = false; }
-    }
-  }
-
-  const end = _origin.clone().addScaledVector(_dir, hitDist);
+  const maxDist = w.range || 220;
   const muzzleWorld = muzzleFlash.getWorldPosition(new THREE.Vector3());
-  spawnTracer(muzzleWorld, end);
-  spawnImpact(end);
-  if (Math.random() < 0.4) spawnSmoke(muzzleWorld);
-  shake = Math.min(shake + 0.05, 0.22);
+  const pellets = w.pellets || 1;   // a shotgun sends the whole cone at once
+  let anyHit = null, anyKill = false;
 
-  if (hitEnemy) {
-    const dmg = (headshot ? w.damage * 2 : w.damage) * (1 + 0.08 * upgLvl('weap'));
-    damageEnemy(hitEnemy, dmg);
-    showHitmarker(hitEnemy.dead);
+  for (let p = 0; p < pellets; p++) {
+    camera.getWorldDirection(_dir);
+    _dir.x += (Math.random() - 0.5) * spread;
+    _dir.y += (Math.random() - 0.5) * spread;
+    _dir.z += (Math.random() - 0.5) * spread;
+    _dir.normalize();
+    _origin.copy(camera.position);
+
+    let hitDist = worldHitDistance(_origin, _dir, maxDist);
+    let hitEnemy = null, headshot = false;
+    _ray.set(_origin, _dir);
+    for (const en of enemies) {
+      if (en.dead) continue;
+      if (_ray.intersectBox(en.headBox, _hitPt)) {
+        const d = _origin.distanceTo(_hitPt);
+        if (d < hitDist) { hitDist = d; hitEnemy = en; headshot = true; }
+      }
+      if (_ray.intersectBox(en.bodyBox, _hitPt)) {
+        const d = _origin.distanceTo(_hitPt);
+        if (d < hitDist) { hitDist = d; hitEnemy = en; headshot = false; }
+      }
+    }
+
+    const end = _origin.clone().addScaledVector(_dir, hitDist);
+    spawnTracer(muzzleWorld, end);
+    spawnImpact(end);
+    if (hitEnemy) {
+      const dmg = (headshot ? w.damage * 2 : w.damage) * (1 + 0.08 * upgLvl('weap'));
+      damageEnemy(hitEnemy, dmg);
+      anyHit = hitEnemy;
+      if (hitEnemy.dead) anyKill = true;
+    }
   }
+  if (Math.random() < 0.4) spawnSmoke(muzzleWorld);
+  shake = Math.min(shake + (pellets > 1 ? 0.14 : 0.05), 0.3);
+  if (anyHit) showHitmarker(anyKill);
 }
 
 // ---------------------------------------------------------------------------
@@ -6283,16 +6295,23 @@ function addXP(n) {
 // ---------------------------------------------------------------------------
 // Retention loop: unlock ladder, daily missions, streaks, VIP orders, records
 // ---------------------------------------------------------------------------
-const WEAPON_UNLOCK = [1, 3, 6];
+const WEAPON_UNLOCK = [1, 3, 6, 9, 13, 18, 24];
 const VEH_UNLOCK = { sports: 8, phantom: 10, hyper: 12, police: 14,
   hero_concept: 12, hero_lambo: 12 };
 const UNLOCK_LADDER = [
   { level: 3, what: 'P9 SIDEARM' },
+  { level: 5, what: 'EMPIRE CITY' },
   { level: 6, what: 'VIPER SMG' },
+  { level: 9, what: 'BREAKER 12 SHOTGUN' },
   { level: 8, what: 'ROSSO GT' },
   { level: 10, what: 'PHANTOM LIMO' },
   { level: 12, what: 'TORO HYPER' },
+  { level: 13, what: 'LONGSHOT RIFLE' },
   { level: 14, what: 'POLICE INTERCEPTOR' },
+  { level: 16, what: 'PEARL BAY' },
+  { level: 18, what: 'STORM-6 MINIGUN' },
+  { level: 22, what: 'RED HARBOR' },
+  { level: 24, what: 'PIZZA CANNON 🍕' },
 ];
 function nextUnlock() {
   return UNLOCK_LADDER.find(u => u.level > prog.level);
@@ -7900,20 +7919,44 @@ function newOrder() {
   order.timeLeft = 0;
   if (order.vip) order.reward = Math.round(order.reward * 2.5);
   // fragile orders: 1.8x pay, but a hard crash while carrying halves it
-  order.fragile = !order.vip && Math.random() < 0.25;
+  order.fragile = !order.vip && Math.random() < 0.2;
   order.dropped = false;
   order.droneDone = false;
   order.condition = 100;   // every knock while carrying eats into the payout
   order.warned = 0;
+  // ---- order flavours: each one asks something different of the driver ----
+  order.hot = order.heat = order.mystery = order.pet = false;
+  if (!order.vip && !order.fragile) {
+    const roll = Math.random();
+    if (roll < 0.16) {                       // goes cold on its own: pure speed
+      order.hot = true;
+      order.reward = Math.round(order.reward * 1.5);
+    } else if (roll < 0.3) {                 // the police want to know what is in the bag
+      order.heat = true;
+      order.reward = Math.round(order.reward * 2.2);
+    } else if (roll < 0.42) {                // a live passenger that hates crashes
+      order.pet = true;
+      order.reward = Math.round(order.reward * 1.6);
+    } else if (roll < 0.54) {                // sealed box, pay revealed on delivery
+      order.mystery = true;
+      order.mysteryMult = 0.4 + Math.random() * 2.6;
+    }
+  }
+  order.kind = order.vip ? { icon: '⭐', name: 'VIP RUSH', note: '2.5× pay · beat the clock' }
+    : order.fragile ? { icon: '🥡', name: 'FRAGILE', note: '1.8× pay · no crashing' }
+    : order.hot ? { icon: '🔥', name: 'HOT FOOD', note: '1.5× pay · it goes cold as you drive' }
+    : order.heat ? { icon: '🕶', name: 'NO QUESTIONS', note: '2.2× pay · the police get curious' }
+    : order.pet ? { icon: '🐕', name: 'LIVE PET', note: '1.6× pay · he panics when you crash' }
+    : order.mystery ? { icon: '❓', name: 'MYSTERY BOX', note: 'pay unknown until you open it' }
+    : { icon: '🍕', name: 'ORDER', note: '' };
   if (order.fragile) order.reward = Math.round(order.reward * 1.8);
   setBeacon(from.x, from.z, order.vip ? 0xffd23f : 0x41d8ff, '🍕');
-  phoneNotify(order.vip ? '📳 VIP ORDER' : order.fragile ? '📳 FRAGILE ORDER' : '📳 NEW ORDER',
-    `${order.name} — $${order.reward}${order.fragile ? ' · no crashing!' : ''}`, from.x, from.z);
+  phoneNotify(`📳 ${order.kind.icon} ${order.kind.name}`,
+    `${order.name} — $${order.reward}`, from.x, from.z);
   say(`New order from ${order.name}`);
-  showBanner(order.vip ? '⭐ VIP RUSH ORDER' : order.fragile ? '🥡 FRAGILE ORDER — 1.8× pay' : 'New order');
-  addFeed(order.vip ? `⭐ VIP order from ${order.name} — 2.5× pay!`
-    : order.fragile ? `🥡 Fragile order from ${order.name} — no crashing!`
-    : `Order from ${order.name}`);
+  showBanner(`${order.kind.icon} ${order.kind.name}${order.kind.note ? ' — ' + order.kind.note : ''}`);
+  addFeed(`${order.kind.icon} ${order.kind.name} from ${order.name}` +
+    (order.kind.note ? ` — ${order.kind.note}` : ''));
   playClick(1700, 0.2);
 }
 // The order arrives at the customer in whatever shape you drove it there in.
@@ -7998,7 +8041,8 @@ function damageOrder(amount, why) {
   if (!order.active || order.stage !== 'dropoff' || order.droneDone) return;
   if (order.condition === undefined) order.condition = 100;
   const before = order.condition;
-  order.condition = Math.max(0, order.condition - amount * (order.fragile ? 2 : 1));
+  order.condition = Math.max(0, order.condition
+    - amount * (order.fragile ? 2 : order.pet ? 1.6 : 1));
   if (order.condition === before) return;
   // one warning per threshold crossed, not one per bump
   for (const [mark, msg] of [[70, '📦 The order took a knock'],
@@ -8023,6 +8067,42 @@ function refreshCondition() {
   document.getElementById('ph-condv').textContent = c + '%';
   document.getElementById('ph-condfill').style.width = c + '%';
 }
+// The customer has opinions. Cheap to add, and it makes a delivery land as a
+// small scene instead of a number going up.
+const REACT_PERFECT = [
+  '😍 "Still warm! You are my driver forever."',
+  '🤩 "Not one scratch. Are you a professional?"',
+  '👏 "Fastest food of my life. Take the tip."',
+  '🥹 "I was about to eat cereal for dinner. You saved me."',
+];
+const REACT_OK = [
+  '🙂 "A bit shaken but I will survive."',
+  '😅 "Looks like it went through a car chase… did it?"',
+  '🤷 "Good enough. I am too hungry to complain."',
+];
+const REACT_BAD = [
+  '😳 "What… what happened to it?"',
+  '😤 "I am rating this one star and you know why."',
+  '🫠 "It is soup now. It was not soup before."',
+];
+const REACT_LATE = [
+  '⏰ "I ordered this yesterday, right?"',
+  '😑 "My cat gave up waiting and went to bed."',
+  '🙄 "Cold. Late. But you did show up, I guess."',
+];
+const REACT_PET = [
+  '🐕 "He is shaking! What did you DO?"',
+  '🐕 "Good boy! He looks like he enjoyed the ride."',
+];
+function customerReaction(cond, kind, late) {
+  const pool = cond <= ORDER_RUINED ? REACT_BAD
+    : kind && kind.icon === '🐕' ? REACT_PET
+    : late ? REACT_LATE
+    : cond >= 95 ? REACT_PERFECT
+    : cond >= 55 ? REACT_OK : REACT_BAD;
+  const line = pool[Math.floor(Math.random() * pool.length)];
+  setTimeout(() => addFeed(line), 700);
+}
 let earlyAmbush = false;
 function updateDelivery(dt) {
   // scripted first-minute action: robbers jump the new driver ~25s in
@@ -8043,7 +8123,8 @@ function updateDelivery(dt) {
   const tx = order.stage === 'pickup' ? order.fx : order.tx;
   const tz = order.stage === 'pickup' ? order.fz : order.tz;
   const d = Math.hypot(player.pos.x - tx, player.pos.z - tz);
-  orderTaskEl.textContent = (order.vip ? '⭐ VIP — ' : order.fragile ? '🥡 FRAGILE — ' : '') + (order.stage === 'pickup'
+  orderTaskEl.textContent = (order.kind && order.kind.icon !== '🍕'
+    ? `${order.kind.icon} ${order.kind.name} — ` : '') + (order.stage === 'pickup'
     ? `Pick up: ${order.name} — ${locationName(order.fx, order.fz)}`
     : `Deliver to customer — ${locationName(order.tx, order.tz)}`);
   // every order is on the clock now, not just the VIP ones
@@ -8071,6 +8152,19 @@ function updateDelivery(dt) {
   const mult = 1 + Math.min(game.streak * 0.1, 1);
   orderDistEl.textContent = Math.round(d) + ' m' + (order.stage === 'dropoff'
     ? (order.late ? ' · ⏱ LATE' : ` · ⏱ ${Math.max(0, Math.ceil(order.timeLeft))}s`) : '');
+  if (order.stage === 'dropoff') {
+    // hot food cools on its own — the only cure is speed
+    if (order.hot) damageOrder(dt * 1.6, 'going cold');
+    // a suspicious package draws police attention the longer you hold it
+    if (order.heat) {
+      order.heatT = (order.heatT || 0) + dt;
+      if (order.heatT > 12) {
+        order.heatT = 0;
+        heat.crimeCd = 0;
+        addHeat(1, 'Suspicious delivery');
+      }
+    }
+  }
   const condNow = order.condition === undefined ? 100 : order.condition;
   const gross = Math.round(order.reward * mult);
   orderPayEl.textContent = order.stage === 'dropoff' && condNow < 100
@@ -8137,8 +8231,14 @@ function updateDelivery(dt) {
       }
       // the customer pays for what actually arrives. A ruined order is worse
       // than no order: you refund its value out of your own pocket.
-      const value = order.reward;   // captured: a new order overwrites it soon
+      let value = order.reward;   // captured: a new order overwrites it soon
       const wasVip = !!order.vip;
+      if (order.mystery) {          // sealed box: the real value shows up now
+        value = Math.max(5, Math.round(value * order.mysteryMult));
+        pay = Math.round(pay * order.mysteryMult);
+        setTimeout(() => showBanner(order.mysteryMult >= 1.8 ? `❓ JACKPOT BOX — $${value}!`
+          : order.mysteryMult < 0.7 ? `❓ It was junk… $${value}` : `❓ Mystery box — $${value}`), 900);
+      }
       const ruined = cond <= ORDER_RUINED;
       if (order.late) pay = Math.round(pay * 0.6);
       if (ruined) pay = -value;
@@ -8178,6 +8278,7 @@ function updateDelivery(dt) {
       for (const w2 of WEAPONS) w2.reserve = Math.max(w2.reserve, w2.magSize * 4);
       player.health = Math.min(maxHealth(), player.health + 25);
       if (beacon) beacon.group.visible = false;
+      customerReaction(cond, order.kind, order.late);
       if (!ruined) {
         showBanner(`Delivered! +$${pay}${game.streak > 1 ? ` · STREAK ×${mult2.toFixed(1)}` : ''}`);
         addFeed(`${playerName()} handed the order to the guest — +$${pay}`);
@@ -9175,6 +9276,19 @@ window.__so = {
   hurt(n = 30) { hurtPlayer(n); },
   expire() { if (order.active && order.stage === 'dropoff') order.timeLeft = 0.01; },
   dbl(pay = 80) { offerDoublePay(pay, 'DEBUG DROP'); },
+  guns() { return WEAPONS.map((w, i) => ({ name: w.name, unlock: WEAPON_UNLOCK[i],
+    damage: w.damage, magSize: w.magSize, pellets: w.pellets || 1 })); },
+  gun(i) { switchWeapon(i); },
+  get trig() { return { firing, pendingShot, cd: +weapon.cooldown.toFixed(3), mag: W().mag, name: W().name, auto: !!W().auto }; },
+  rollKind() {   // exercise the flavour roll without waiting for real orders
+    const o = { vip: false, fragile: false };
+    const roll = Math.random();
+    if (roll < 0.16) return 'hot';
+    if (roll < 0.3) return 'suspicious';
+    if (roll < 0.42) return 'pet';
+    if (roll < 0.54) return 'mystery';
+    return 'plain';
+  },
   crash(impact = 12) { damageOrder((impact - 5) * 2.4, 'debug'); noteReckless(impact); },
   get cond() { return order.active ? order.condition : null; },
   get late() { return { late: !!order.late, left: +(order.timeLeft || 0).toFixed(1) }; },
@@ -9200,7 +9314,7 @@ window.__so = {
     return {
       cine: cine.active, driving: !!driving, firing, locked, started, mode,
       mag: W().mag, cooldown: weapon.cooldown, reloading: weapon.reloading,
-      dead: player.dead, wave: game.wave, enemies: enemies.length,
+      dead: player.dead, wave: game.wave, enemies: enemies.length, weapon: W().name,
       money: game.money, order: order.active ? order.stage : null,
       peds: peds.length, traffic: traffic.length, nf: NF,
       pos: [player.pos.x, player.pos.z],
