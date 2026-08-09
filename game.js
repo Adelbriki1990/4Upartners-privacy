@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from './lib/jsm/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader } from './lib/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from './lib/jsm/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from './lib/jsm/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=74';
+import { CITIES } from './sponsors.js?v=75';
 
 // Clean-brand mode: the portal build (CrazyGames etc.) must carry no real
 // trademarks. window.CLEAN_BUILD is injected by the build script; ?clean=1
@@ -5330,6 +5330,8 @@ function restartRun() {
   order.cooldown = 2;
   reckless.hits.length = 0;
   timeSavesUsed = 0;
+  rival.active = false;
+  document.getElementById('rivalbar').style.display = 'none';
   dblOffersUsed = 0;
   dblPending = 0;
   hideTimeSave();
@@ -6093,8 +6095,70 @@ function shareGame() {
     }).catch(() => {});
   }
 }
+// ---------------------------------------------------------------------------
+// Friend challenges: a link that carries your best shift, so opening it sets
+// a target instead of just starting a game. No server, no accounts.
+// On a portal the URL belongs to the portal, so the link degrades to a plain
+// invite there; on our own site and itch.io it carries the challenge.
+// ---------------------------------------------------------------------------
+let challenge = null, challengeBeaten = false;
+function readChallenge() {
+  try {
+    const raw = new URLSearchParams(location.search).get('c');
+    if (!raw) return null;
+    const c = JSON.parse(atob(raw));
+    if (!c || typeof c.d !== 'number' || typeof c.m !== 'number') return null;
+    return { name: String(c.n || 'A DRIVER').slice(0, 18), del: c.d | 0, cash: c.m | 0 };
+  } catch (e) { return null; }
+}
+function challengeLink() {
+  const best = prog.best || {};
+  const payload = btoa(JSON.stringify({
+    n: playerName(), d: best.deliveries || game.deliveries || 0,
+    m: best.cash || Math.round(prog.bank + game.money) }));
+  return `${location.origin}${location.pathname}?c=${encodeURIComponent(payload)}`;
+}
+function checkChallenge() {
+  if (!challenge || challengeBeaten) return;
+  if (game.deliveries > challenge.del
+      || (game.deliveries === challenge.del && game.money > challenge.cash)) {
+    challengeBeaten = true;
+    celebrate(`YOU BEAT ${challenge.name}!`, '🏆');
+    addFeed(`🏆 ${challenge.name}'s record is yours — share it back!`);
+    prog.bank += 250;
+    saveProg();
+  }
+}
+function challengeFriend() {
+  const link = challengeLink();
+  const best = prog.best || {};
+  const text = `Beat me in STREET OPS 🛵 — ${best.deliveries || 0} deliveries, $${best.cash || 0}. `
+    + `Think you can do better?`;
+  if (navigator.share) {
+    navigator.share({ title: 'STREET OPS challenge', text, url: link })
+      .then(grantShareReward).catch(() => {});
+  } else if (navigator.clipboard) {
+    navigator.clipboard.writeText(`${text} ${link}`).then(() => {
+      addFeed('🔗 Challenge copied — send it to a friend!');
+      grantShareReward();
+    }).catch(() => {});
+  }
+}
 document.getElementById('sharebtn').addEventListener('click', e => { e.stopPropagation(); shareGame(); });
 document.getElementById('goshare').addEventListener('click', e => { e.stopPropagation(); shareGame(); });
+document.getElementById('gochallenge').addEventListener('click', e => {
+  e.stopPropagation();
+  challengeFriend();
+});
+// show an incoming challenge on the menu, so the target is known before the
+// first delivery rather than discovered afterwards
+challenge = readChallenge();
+if (challenge) {
+  const bar = document.getElementById('challengebar');
+  bar.innerHTML = `🏆 <b>${challenge.name}</b> challenges you: `
+    + `<b>${challenge.del}</b> deliveries · <b>$${challenge.cash}</b>. Beat it for a $250 bonus.`;
+  bar.style.display = 'block';
+}
 if (ADS) document.getElementById('goad').style.display = '';
 document.getElementById('goad').addEventListener('click', e => {
   e.stopPropagation();
@@ -8196,6 +8260,57 @@ function customerReaction(cond, kind, late) {
   const line = pool[Math.floor(Math.random() * pool.length)];
   setTimeout(() => addFeed(line), 700);
 }
+// ---------------------------------------------------------------------------
+// The rival courier. Random robbers are noise; one named driver who keeps
+// turning up is a story. He races you to the same customer — no AI car to
+// simulate, just a clock you can see and beat.
+// ---------------------------------------------------------------------------
+const RIVAL_NAMES = ['VIKTOR "TWO-WHEELS"', 'SAM THE GHOST', 'BIG TONY', 'NADIA QUICKHANDS', 'MR. 40 SECONDS'];
+const rival = { active: false, name: '', t: 0, total: 0, won: 0, lost: 0 };
+function maybeStartRival() {
+  // from the third delivery on, he shows up for roughly one order in three
+  if (rival.active || game.deliveries < 2 || Math.random() > 0.34) return;
+  rival.active = true;
+  rival.name = RIVAL_NAMES[Math.floor(Math.random() * RIVAL_NAMES.length)];
+  // give him the same job, a little slower than a clean run so it is winnable
+  rival.total = Math.max(18, (order.timeLeft || 30) * 1.12);
+  rival.t = rival.total;
+  showBanner(`🏁 ${rival.name} IS RACING YOU`);
+  addFeed(`🏁 ${rival.name} took the same order — beat him to the customer!`);
+  say('A rival courier is going for your order.');
+}
+function updateRival(dt) {
+  const bar = document.getElementById('rivalbar');
+  if (!rival.active || !order.active || order.stage !== 'dropoff') {
+    if (bar.style.display !== 'none') bar.style.display = 'none';
+    return;
+  }
+  rival.t -= dt;
+  const k = Math.max(0, rival.t / rival.total);
+  bar.style.display = 'block';
+  bar.querySelector('.nm').textContent = `🏁 ${rival.name}`;
+  bar.querySelector('.fill').style.width = (k * 100) + '%';
+  bar.classList.toggle('close', k < 0.3);
+  if (rival.t <= 0) {   // he got there first
+    rival.active = false;
+    rival.lost++;
+    bar.style.display = 'none';
+    order.reward = Math.round(order.reward * 0.35);
+    showBanner(`🏁 ${rival.name} BEAT YOU TO IT`);
+    addFeed(`🏁 ${rival.name} delivered first — the customer only pays you scraps`);
+    playClick(280, 0.3);
+  }
+}
+function rivalDelivered() {
+  if (!rival.active) return 0;
+  rival.active = false;
+  rival.won++;
+  document.getElementById('rivalbar').style.display = 'none';
+  const bonus = 60 + rival.won * 15;
+  celebrate(`BEAT ${rival.name}`, '🏁');
+  addFeed(`🏁 You beat ${rival.name} by seconds — +$${bonus} bragging money`);
+  return bonus;
+}
 let earlyAmbush = false;
 function updateDelivery(dt) {
   // scripted first-minute action: robbers jump the new driver ~25s in
@@ -8258,6 +8373,7 @@ function updateDelivery(dt) {
       }
     }
   }
+  updateRival(dt);
   const condNow = order.condition === undefined ? 100 : order.condition;
   const gross = Math.round(order.reward * mult);
   orderPayEl.textContent = order.stage === 'dropoff' && condNow < 100
@@ -8289,6 +8405,7 @@ function updateDelivery(dt) {
         order.late = false;
         order.hurried = false;
       }
+      maybeStartRival();
       setBeacon(order.tx, order.tz, order.vip ? 0xffd23f : 0x7dff8a, '📦');
       say('Picked up. Deliver to the customer.');
       showBanner(order.vip ? `Picked up — ⏱ beat the clock!` : 'Picked up — go deliver!');
@@ -8371,7 +8488,9 @@ function updateDelivery(dt) {
       for (const w2 of WEAPONS) w2.reserve = Math.max(w2.reserve, w2.magSize * 4);
       player.health = Math.min(maxHealth(), player.health + 25);
       if (beacon) beacon.group.visible = false;
+      pay += rivalDelivered();
       customerReaction(cond, order.kind, order.late);
+      checkChallenge();
       if (!ruined) {
         showBanner(`Delivered! +$${pay}${game.streak > 1 ? ` · STREAK ×${mult2.toFixed(1)}` : ''}`);
         addFeed(`${playerName()} handed the order to the guest — +$${pay}`);
@@ -9380,6 +9499,12 @@ window.__so = {
     doRender();
   },
   fx() { return effects.length; },
+  rival() { return { ...rival }; },
+  rivalT(v) { rival.t = v; return rival.t; },
+  forceRival() { rival.active = false; game.deliveries = Math.max(game.deliveries, 2);
+    const r0 = Math.random; Math.random = () => 0; maybeStartRival(); Math.random = r0;
+    return { ...rival }; },
+  challenge() { return { link: challengeLink(), incoming: challenge, beaten: challengeBeaten }; },
   grid() {
     let buildings = 0;
     scene.traverse(o => { if (o.userData && o.userData.isBuilding) buildings++; });
