@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from './lib/jsm/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader } from './lib/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from './lib/jsm/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from './lib/jsm/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=73';
+import { CITIES } from './sponsors.js?v=74';
 
 // Clean-brand mode: the portal build (CrazyGames etc.) must carry no real
 // trademarks. window.CLEAN_BUILD is injected by the build script; ?clean=1
@@ -1884,16 +1884,6 @@ function loadRealAssets() {
     spawnPolice();
   }, undefined, () => {});
   loadHeroCars();
-  gltfLoader.load('models/dog_doberman.glb', g => {
-    dobermanTemplate = normalizeModel(g.scene, 'person', 0.85);
-    placeGuardDogs();
-  }, undefined, () => {});
-  // real textured skyline panoramas ring the modern cities
-  if (!THEME.camels)
-    if (!LOWMEM) gltfLoader.load('models/city_buildings.glb', g => {
-      skylineTemplate = normalizeModel(g.scene, 'car', 165);
-      placeSkyline();
-    }, undefined, () => {});
   // the real Burj Khalifa rises over Dubai (needle tower as fallback)
   if (THEME.landmark && THEME.landmark.kind === 'burj' && !LOWMEM)
     gltfLoader.load('models/burj_khalifa.glb', g => {
@@ -1907,6 +1897,22 @@ function loadRealAssets() {
         new THREE.Vector3(x - 9, 0, z - 9), new THREE.Vector3(x + 9, 135, z + 9)));
       addFeed('🏙 The tallest tower in the world pierces the sky');
     }, undefined, () => addNeedleTower(THEME.landmark.x, THEME.landmark.z));
+  cosmeticsPending = true;   // the crowd, wildlife and skyline come later
+}
+// Everything below is decoration: it makes the city feel alive but nothing
+// depends on it, so it must not compete with getting the player playing.
+let cosmeticsPending = false, cosmeticsDone = false;
+function loadCosmeticAssets() {
+  if (!cosmeticsPending || cosmeticsDone || SAFEMODE) return;
+  cosmeticsDone = true;
+  gltfLoader.load('models/dog_doberman.glb', g => {
+    dobermanTemplate = normalizeModel(g.scene, 'person', 0.85);
+    placeGuardDogs();
+  }, undefined, () => {});
+  if (!THEME.camels && !LOWMEM) gltfLoader.load('models/city_buildings.glb', g => {
+    skylineTemplate = normalizeModel(g.scene, 'car', 165);
+    placeSkyline();
+  }, undefined, () => {});
   for (const url of ['models/person_cool.glb', 'models/person_suit.glb'])
     gltfLoader.load(url, g => {
       stripBaseDiscs(g.scene);
@@ -4357,7 +4363,7 @@ menuEl.addEventListener('click', () => {
     locked = true;
     menuEl.style.display = 'none';
     pausedEl.style.display = 'none';
-    if (!started) { started = true; clearAdBanners(); cgGame('start'); startCinematic(); }
+    if (!started) { started = true; clearAdBanners(); cgGame('start'); loadCosmeticAssets(); startCinematic(); }
     else if (!cine.active) hudEl.style.display = 'block';
     if (AC && AC.state === 'suspended') AC.resume();
   } else {
@@ -4389,7 +4395,7 @@ document.addEventListener('pointerlockchange', () => {
   if (locked) {
     menuEl.style.display = 'none';
     pausedEl.style.display = 'none';
-    if (!started) { started = true; clearAdBanners(); cgGame('start'); startCinematic(); }
+    if (!started) { started = true; clearAdBanners(); cgGame('start'); loadCosmeticAssets(); startCinematic(); }
     else if (!cine.active) hudEl.style.display = 'block';
     if (AC && AC.state === 'suspended') AC.resume();
   } else if (started && !player.dead && !shopOpen && !cafeOpen
