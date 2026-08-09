@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from './lib/jsm/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader } from './lib/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from './lib/jsm/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from './lib/jsm/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=71';
+import { CITIES } from './sponsors.js?v=72';
 
 // Clean-brand mode: the portal build (CrazyGames etc.) must carry no real
 // trademarks. window.CLEAN_BUILD is injected by the build script; ?clean=1
@@ -480,7 +480,25 @@ const glowTexShared = (() => {
 // ---------------------------------------------------------------------------
 // City layout constants
 // ---------------------------------------------------------------------------
+// The road plan IS the city. Sharing one grid across all seven made them feel
+// identical no matter how the colours changed, so each has its own: how many
+// avenues, how far apart, and whether the spacing is even.
+// Blocks need > 2*(ROAD_HALF+3.5) = 21m between avenues to stay buildable.
 const STREETS = [-120, -60, 0, 60, 120];
+const CITY_GRID = {
+  neon:   [-120, -60, 0, 60, 120],                       // 5 wide avenues, megacity core
+  nyc:    [-120, -80, -40, 0, 40, 80, 120],              // tight Manhattan grid, 7 avenues
+  marina: [-120, -54, 12, 74, 128],                       // long boulevards toward the water
+  sahara: [-120, -76, -34, 16, 68, 120],                  // uneven medina lanes
+  dubai:  [-124, -38, 40, 124],                           // enormous blocks for hypercars
+  doha:   [-120, -66, -8, 52, 116],                       // corniche sweep
+  harbor: [-124, -86, -48, -10, 28, 66, 104],             // cramped old-town blocks
+};
+function applyCityGrid(id) {
+  const plan = CITY_GRID[id] || CITY_GRID.neon;
+  STREETS.length = 0;
+  for (const v of plan) STREETS.push(v);
+}
 const ROAD_HALF = 7;
 const CITY_HALF = 150;
 const BOUND = 132;
@@ -2380,8 +2398,20 @@ function placeRealPeople() {
 // AI traffic — cars cruising the lanes, braking for the player
 // ---------------------------------------------------------------------------
 const traffic = [];
+// how alive each city feels, on top of how it is shaped
+const CITY_LIFE = {
+  neon:   { traffic: 1.15, peds: 1.2 },   // packed megacity
+  nyc:    { traffic: 1.5,  peds: 1.45 },  // gridlock and crowds
+  marina: { traffic: 0.9,  peds: 1.0 },
+  sahara: { traffic: 0.7,  peds: 1.3 },   // few cars, busy on foot
+  dubai:  { traffic: 0.6,  peds: 0.55 },  // wide, fast, empty
+  doha:   { traffic: 0.85, peds: 0.95 },
+  harbor: { traffic: 1.25, peds: 1.1 },   // tight lanes, always something ahead
+};
+function cityLife() { return CITY_LIFE[CITY && CITY.id] || CITY_LIFE.neon; }
 function spawnTraffic() {
-  for (let i = 0; i < 20; i++) {
+  const n = Math.round(20 * cityLife().traffic);
+  for (let i = 0; i < n; i++) {
     const s = STREETS[Math.floor(Math.random() * STREETS.length)];
     const alongX = Math.random() < 0.5;
     const dir = Math.random() < 0.5 ? 1 : -1;
@@ -2832,7 +2862,7 @@ function placePed(p) {
   }
 }
 function spawnPeds() {
-  const n = Math.round(48 + 18 * (1 - NF)); // busier by day
+  const n = Math.round((48 + 18 * (1 - NF)) * cityLife().peds); // busier by day
   for (let i = 0; i < n; i++) spawnPed(false);
 }
 function updatePeds(dt) {
@@ -2881,6 +2911,7 @@ function updatePeds(dt) {
 function buildCity(city) {
   CITY = city;
   THEME = THEMES[city.id] || THEMES.neon;
+  applyCityGrid(city.id);   // must happen before roads, buildings or traffic
 
   // blend the theme's night palette against a daytime palette by real clock
   NF = nightFactorAt(localHour());
@@ -9279,6 +9310,20 @@ window.__so = {
   guns() { return WEAPONS.map((w, i) => ({ name: w.name, unlock: WEAPON_UNLOCK[i],
     damage: w.damage, magSize: w.magSize, pellets: w.pellets || 1 })); },
   gun(i) { switchWeapon(i); },
+  aerial() {   // top-down shot of the road plan for comparison screenshots
+    gun.visible = false;
+    camera.position.set(0, 235, 0.5);
+    camera.up.set(0, 0, -1);
+    camera.lookAt(0, 0, 0);
+    doRender();
+  },
+  grid() {
+    let buildings = 0;
+    scene.traverse(o => { if (o.userData && o.userData.isBuilding) buildings++; });
+    return { avenues: STREETS.length, blocks: (STREETS.length - 1) ** 2,
+      streets: STREETS.slice(), traffic: traffic.length, peds: peds.length,
+      buildings: buildings || colliders.length };
+  },
   get trig() { return { firing, pendingShot, cd: +weapon.cooldown.toFixed(3), mag: W().mag, name: W().name, auto: !!W().auto }; },
   rollKind() {   // exercise the flavour roll without waiting for real orders
     const o = { vip: false, fragile: false };
