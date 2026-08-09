@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from './lib/jsm/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader } from './lib/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from './lib/jsm/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from './lib/jsm/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=72';
+import { CITIES } from './sponsors.js?v=73';
 
 // Clean-brand mode: the portal build (CrazyGames etc.) must carry no real
 // trademarks. window.CLEAN_BUILD is injected by the build script; ?clean=1
@@ -971,6 +971,27 @@ function updateMusic() {
   musicNodes.city.g.gain.value = AF(musicOn ? 0.05 * (1 - prox * 0.85) : 0);
 }
 
+// the other driver leans on the horn — the cheapest way to make a collision
+// feel like it happened to somebody
+function honk() {
+  if (!AC) return;
+  const t = AC.currentTime;
+  const g = AC.createGain();
+  g.gain.value = 0;
+  g.connect(MASTER);
+  for (const f of [330, 415]) {
+    const o = AC.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.value = f;
+    o.connect(g);
+    o.start(t);
+    o.stop(t + 0.85);
+  }
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(AF(0.16), t + 0.04);
+  g.gain.setValueAtTime(AF(0.16), t + 0.5);
+  g.gain.linearRampToValueAtTime(AF(0.0001), t + 0.82);
+}
 function playCrash(k) {
   if (!AC) return;
   const t = AC.currentTime;
@@ -4577,6 +4598,48 @@ function spawnSmoke(at) {
   } });
 }
 const impactMat = new THREE.MeshBasicMaterial({ color: 0xffcf7e, transparent: true, opacity: 1, blending: THREE.AdditiveBlending, depthWrite: false });
+// A crash you can only hear is not a crash. This is the physical answer:
+// the car actually stops, the world lurches, and metal goes everywhere.
+const flashEl = document.createElement('div');
+flashEl.id = 'crashflash';
+flashEl.style.cssText = 'position:fixed;inset:0;z-index:12;pointer-events:none;opacity:0;'
+  + 'background:radial-gradient(ellipse at center,rgba(255,255,255,.5),rgba(255,120,60,.35) 60%,transparent 85%);'
+  + 'transition:opacity .28s ease-out';
+document.body.appendChild(flashEl);
+function crashFlash(k) {
+  flashEl.style.transition = 'none';
+  flashEl.style.opacity = String(Math.min(0.85, k));
+  requestAnimationFrame(() => {
+    flashEl.style.transition = 'opacity .3s ease-out';
+    flashEl.style.opacity = '0';
+  });
+}
+function spawnDebris(at, impact) {
+  const n = Math.min(14, 4 + Math.round(impact * 0.4));
+  for (let i = 0; i < n; i++) {
+    const p = at.clone();
+    p.x += (Math.random() - 0.5) * 2.4;
+    p.y += Math.random() * 1.6;
+    p.z += (Math.random() - 0.5) * 2.4;
+    spawnImpact(p);
+  }
+}
+// Everything a collision should do, in one place, so a wall and a car hurt
+// the same way. Returns the speed the vehicle keeps.
+function applyCrashFeel(v, impact, fwd, headOn) {
+  const nose = v.group.position.clone()
+    .addScaledVector(fwd, Math.sign(v.speed || 1) * (v.stats.size[1] / 2));
+  nose.y = 0.7;
+  spawnDebris(nose, impact);
+  spawnSmoke(nose);
+  shake = Math.min(shake + 0.2 + impact * 0.03, 1.1);
+  crashFlash(0.18 + impact * 0.022);
+  // a heavy hit punches the whole game into slow motion for a beat
+  if (impact > 13) slowmo = Math.max(slowmo, 0.35 + Math.min(impact, 40) * 0.012);
+  playCrash(Math.min(1, impact / 26));
+  // and above all: you lose your speed. Time is the real currency here.
+  return -Math.sign(v.speed || 1) * Math.min(impact * (headOn ? 0.14 : 0.09), 5.5);
+}
 function spawnImpact(at) {
   const s = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 6), impactMat.clone());
   s.position.copy(at);
@@ -4985,7 +5048,6 @@ function updateDriving(dt) {
     if (impact > 6) {
       // crash: damage, sparks, crunch, shake
       v.health = Math.max(0, v.health - (impact - 5) * 3.2);
-      playCrash(Math.min(1, impact / 30));
       if (impact > 11) addHeat(1, 'Reckless crash');
       noteReckless(impact);
       if (prog.quest === 8 && order.active && impact > 8 && prog.q8clean) {
@@ -4996,9 +5058,7 @@ function updateDriving(dt) {
       damageOrder((impact - 5) * 2.4, 'crash');
       const nose = v.group.position.clone().addScaledVector(fwd, Math.sign(preSpeed) * st.size[1] / 2);
       nose.y = 0.7;
-      spawnImpact(nose);
-      spawnSmoke(nose);
-      shake = Math.min(shake + 0.15 + impact * 0.015, 0.9);
+      v.speed = applyCrashFeel(v, impact, fwd, true);  // hitting a building stops you
       // crash damage transfers to whichever parked car you hit
       for (const v2 of vehicles) {
         if (v2 === v) continue;
@@ -5030,16 +5090,12 @@ function updateDriving(dt) {
       const impact = Math.abs(v.speed);
       if (impact > 3) {
         v.health = Math.max(0, v.health - (impact - 3) * 2.2);
-        playCrash(Math.min(1, impact / 28));
-        const mid = v.group.position.clone().lerp(c.group.position, 0.5);
-        mid.y = 0.8;
-        spawnImpact(mid);
-        spawnSmoke(mid);
-        shake = Math.min(shake + 0.12 + impact * 0.012, 0.9);
+        const fwd2 = new THREE.Vector3(Math.sin(v.yaw), 0, Math.cos(v.yaw));
         c.stunT = 3.5; // the other driver slams the brakes
-        c.v += Math.sign(c.alongX ? dx : dz) * 2.5;
+        c.v += Math.sign(c.alongX ? dx : dz) * (2.5 + impact * 0.35); // and gets shoved
         placeTrafficCar(c);
-        v.speed *= -0.25;
+        honk();
+        v.speed = applyCrashFeel(v, impact, fwd2, false);
         damageOrder((impact - 2) * 2.6, 'hit a car');
         if (impact > 8) addHeat(1, 'Crashed into traffic');
         noteReckless(impact);
@@ -9317,6 +9373,7 @@ window.__so = {
     camera.lookAt(0, 0, 0);
     doRender();
   },
+  fx() { return effects.length; },
   grid() {
     let buildings = 0;
     scene.traverse(o => { if (o.userData && o.userData.isBuilding) buildings++; });
@@ -9335,6 +9392,15 @@ window.__so = {
     return 'plain';
   },
   crash(impact = 12) { damageOrder((impact - 5) * 2.4, 'debug'); noteReckless(impact); },
+  smash(impact = 20) {   // run the real crash response on the driven vehicle
+    if (!driving) return null;
+    const before = driving.speed;
+    const fwd = new THREE.Vector3(Math.sin(driving.yaw), 0, Math.cos(driving.yaw));
+    driving.speed = applyCrashFeel(driving, impact, fwd, true);
+    return { before: +before.toFixed(2), after: +driving.speed.toFixed(2),
+      shake: +shake.toFixed(2), slowmo: +slowmo.toFixed(2),
+      flash: +(getComputedStyle(document.getElementById('crashflash')).opacity) };
+  },
   get cond() { return order.active ? order.condition : null; },
   get late() { return { late: !!order.late, left: +(order.timeLeft || 0).toFixed(1) }; },
   kill(cash) { if (cash) game.money = cash; reviveSafeT = 0; game.streak = 5; hurtPlayer(9999); },
@@ -9360,6 +9426,8 @@ window.__so = {
       cine: cine.active, driving: !!driving, firing, locked, started, mode,
       mag: W().mag, cooldown: weapon.cooldown, reloading: weapon.reloading,
       dead: player.dead, wave: game.wave, enemies: enemies.length, weapon: W().name,
+      speed: driving ? +driving.speed.toFixed(2) : null,
+      vhealth: driving ? Math.round(driving.health) : null, slowmo: +slowmo.toFixed(2),
       money: game.money, order: order.active ? order.stage : null,
       peds: peds.length, traffic: traffic.length, nf: NF,
       pos: [player.pos.x, player.pos.z],
