@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from './lib/jsm/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader } from './lib/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from './lib/jsm/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from './lib/jsm/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=75';
+import { CITIES } from './sponsors.js?v=76';
 
 // Clean-brand mode: the portal build (CrazyGames etc.) must carry no real
 // trademarks. window.CLEAN_BUILD is injected by the build script; ?clean=1
@@ -4612,6 +4612,29 @@ flashEl.style.cssText = 'position:fixed;inset:0;z-index:12;pointer-events:none;o
   + 'background:radial-gradient(ellipse at center,rgba(255,255,255,.5),rgba(255,120,60,.35) 60%,transparent 85%);'
   + 'transition:opacity .28s ease-out';
 document.body.appendChild(flashEl);
+// Cracks across the glass you are driving behind. Drawn once as an SVG data
+// URI and faded in by damage, so it costs nothing per frame.
+const CRACK_SVG = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 560">'
+  + '<g stroke="rgba(255,255,255,.85)" fill="none" stroke-linecap="round">'
+  + '<path stroke-width="2.4" d="M300 40 L340 150 L300 260 L360 350 L330 520"/>'
+  + '<path stroke-width="1.6" d="M340 150 L200 190 M340 150 L470 120 M300 260 L170 300"/>'
+  + '<path stroke-width="1.6" d="M360 350 L250 400 M360 350 L500 330 M300 260 L430 250"/>'
+  + '<path stroke-width="2.2" d="M760 60 L720 170 L790 250 L730 380"/>'
+  + '<path stroke-width="1.4" d="M720 170 L850 150 M790 250 L900 300 M730 380 L640 430"/>'
+  + '<path stroke-width="1.2" d="M470 120 L560 60 M430 250 L520 210 M500 330 L590 300"/>'
+  + '</g></svg>');
+const crackEl = document.createElement('div');
+crackEl.id = 'windscreen';
+crackEl.style.cssText = 'position:fixed;inset:0;z-index:11;pointer-events:none;opacity:0;'
+  + `background:url("${CRACK_SVG}") center/cover no-repeat;`
+  + 'transition:opacity .5s ease;mix-blend-mode:screen';
+document.body.appendChild(crackEl);
+function updateWindscreen() {
+  // only while behind the wheel, and only once the car is genuinely hurt
+  const hurt = driving && driving.health < 55 ? (55 - driving.health) / 55 : 0;
+  crackEl.style.opacity = String(Math.min(0.75, hurt * 0.9).toFixed(2));
+}
 function crashFlash(k) {
   flashEl.style.transition = 'none';
   flashEl.style.opacity = String(Math.min(0.85, k));
@@ -4982,7 +5005,16 @@ function updateDriving(dt) {
   v.speed -= v.speed * 0.55 * dt;
   // real brakes on Space
   if (keys['Space']) v.speed -= Math.sign(v.speed) * Math.min(Math.abs(v.speed), 26 * dt);
-  v.speed = Math.max(st.maxR, Math.min(st.maxF * boost * (1 + 0.05 * upgLvl('engine')), v.speed));
+  // a battered car is slower and pulls to one side: damage you can feel in
+  // your hands, which is what makes paying for a repair worth it
+  const hp = Math.max(0, Math.min(1, v.health / 100));
+  const wear = 0.62 + 0.38 * hp;
+  v.speed = Math.max(st.maxR,
+    Math.min(st.maxF * boost * wear * (1 + 0.05 * upgLvl('engine')), v.speed));
+  if (v.health < 55 && Math.abs(v.speed) > 3) {
+    if (v.pull === undefined) v.pull = (Math.random() < 0.5 ? -1 : 1) * 0.5;
+    v.yaw += v.pull * (1 - hp) * 0.45 * dt * Math.sign(v.speed);
+  }
   if (st.engine) {
     v.fuel = Math.max(0, v.fuel - (0.15 + Math.abs(v.speed) / st.maxF * 1.1) * dt * (accel ? 1 : 0.3));
     if (v.fuel < 20 && !v.fuelWarned) {
@@ -5116,6 +5148,31 @@ function updateDriving(dt) {
     }
   }
 
+  // scorch the bodywork as it takes hits — repainted on repair
+  if (v.paintHp === undefined) v.paintHp = 100;
+  if (Math.abs(v.paintHp - v.health) > 8) {
+    v.paintHp = v.health;
+    const k = 0.45 + 0.55 * Math.max(0, Math.min(1, v.health / 100));
+    v.group.traverse(o => {
+      if (!o.isMesh || !o.material || !o.material.color) return;
+      // Own the material before touching it. Meshes share materials, so
+      // darkening in place made later meshes capture an already-scorched
+      // "original" and compound it - and could bleed onto other vehicles.
+      if (!o.userData.baseCol) {
+        o.material = o.material.clone();
+        o.userData.baseCol = o.material.color.clone();
+      }
+      o.material.color.copy(o.userData.baseCol).multiplyScalar(k);
+    });
+  }
+  // metal dragging on tarmac
+  if (v.health < 20 && Math.abs(v.speed) > 6 && Math.random() < 0.25) {
+    const sp = v.group.position.clone();
+    sp.x += (Math.random() - 0.5) * 1.6;
+    sp.z += (Math.random() - 0.5) * 1.6;
+    sp.y = 0.12;
+    spawnImpact(sp);
+  }
   // damaged engine smokes
   if (v.health < 45) {
     v.smokeT -= dt;
@@ -9402,6 +9459,7 @@ function tick() {
   trackDistance();
   updateEffects(dt);
   updateTestDrive();
+  updateWindscreen();
 
   // ---- HUD ----
   waveEl.textContent = game.wave;
@@ -9501,6 +9559,17 @@ window.__so = {
   fx() { return effects.length; },
   rival() { return { ...rival }; },
   rivalT(v) { rival.t = v; return rival.t; },
+  hurtCar(hp) { if (driving) driving.health = hp; return driving ? driving.health : null; },
+  carState() {
+    if (!driving) return null;
+    const paint = [];
+    driving.group.traverse(o => { if (o.isMesh && o.userData.baseCol && paint.length < 1)
+      paint.push(+(o.material.color.r / (o.userData.baseCol.r || 1)).toFixed(2)); });
+    return { health: Math.round(driving.health), speed: +driving.speed.toFixed(2),
+      topSpeed: +(driving.stats.maxF * (0.62 + 0.38 * Math.max(0, driving.health / 100))).toFixed(1),
+      paintMul: paint[0] ?? null,
+      cracks: +getComputedStyle(document.getElementById('windscreen')).opacity };
+  },
   forceRival() { rival.active = false; game.deliveries = Math.max(game.deliveries, 2);
     const r0 = Math.random; Math.random = () => 0; maybeStartRival(); Math.random = r0;
     return { ...rival }; },
