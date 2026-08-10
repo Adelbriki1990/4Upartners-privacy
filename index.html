@@ -593,6 +593,45 @@
   #boostbar { width: 120px; height: 6px; margin-top: 5px; margin-left: auto; background: rgba(0,0,0,.5);
     border: 1px solid rgba(127,168,255,.4); border-radius: 3px; overflow: hidden; }
   #boostfill { height: 100%; width: 0%; background: linear-gradient(90deg,#1c4fd0,#7fa8ff); }
+
+  /* ---------- menu fit (must stay last: equal specificity, source order wins)
+     The base #cities/#modes rules appear ~150 lines below where these logically
+     belong, so placing them earlier silently lost the cascade. ---------- */
+  /* A reviewer opens the game at 1280x720. The menu must fit there with the
+     title visible and nothing under the fixed START button. */
+  #menu { padding-bottom: 96px; }
+  @media (max-height: 820px) {
+    #menu h1 { font-size: 40px; letter-spacing: 9px; }
+    #menu h2 { font-size: 13px; margin-top: 6px; }
+    #tagline { font-size: 11px; letter-spacing: 3px; margin-top: 4px; }
+    #profile { margin-top: 8px; padding: 7px 14px; transform: scale(.88); }
+    #charpreview { width: 96px; height: 122px; }
+    #cities { margin-top: 8px; gap: 8px; }
+    .citycard { padding: 7px 12px; width: 196px; }
+    .citycard h3 { font-size: 14px; }
+    .citycard p { font-size: 10.5px; }
+    .citycard .sp { font-size: 8.5px; }
+    #modes { margin-top: 8px; gap: 8px; }
+    .modebtn { font-size: 11px; padding: 7px 12px; }
+    #keyhelp { margin-top: 8px; }
+    #deployline { font-size: 13px; margin-top: 10px; }
+    #challengebar { margin-top: 8px; }
+    /* one scrollable row of cities instead of two wrapped rows: the single
+       biggest block of height on the menu (296px -> ~150px) */
+    #cities { flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start;
+      max-width: 94vw; padding: 2px 6px; -webkit-overflow-scrolling: touch; }
+    .citycard { flex: 0 0 auto; }
+    #deployline { display: none; }
+    #banner-menu { margin: 8px auto; min-height: 0; }
+    #menu { padding: 8px 0 78px; }
+  }
+  @media (max-height: 640px) {
+    #menu h1 { font-size: 30px; letter-spacing: 6px; }
+    #keyhelp, #deployline { display: none; }
+    .citycard { width: 168px; padding: 6px 10px; }
+    #charpreview { width: 78px; height: 100px; }
+  }
+  #modes { max-width: 96vw; flex-wrap: wrap; justify-content: center; }
 </style>
 </head>
 <body>
@@ -961,6 +1000,6 @@ setTimeout(function () {
   document.body.appendChild(d);
 }, 9000);
 </script>
-<script type="module" src="game.js?v=76"></script>
+<script type="module" src="game.js?v=77"></script>
 </body>
 </html>
