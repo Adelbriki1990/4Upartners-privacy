@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from './lib/jsm/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader } from './lib/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from './lib/jsm/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from './lib/jsm/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=79';
+import { CITIES } from './sponsors.js?v=80';
 
 // Clean-brand mode: the portal build (CrazyGames etc.) must carry no real
 // trademarks. window.CLEAN_BUILD is injected by the build script; ?clean=1
@@ -1895,7 +1895,7 @@ function loadRealAssets() {
       const { x, z } = THEME.landmark;
       addCollider(new THREE.Box3(
         new THREE.Vector3(x - 9, 0, z - 9), new THREE.Vector3(x + 9, 135, z + 9)));
-      addFeed('🏙 The tallest tower in the world pierces the sky');
+      // silent: the landmark speaks for itself once it is standing there
     }, undefined, () => addNeedleTower(THEME.landmark.x, THEME.landmark.z));
   cosmeticsPending = true;   // the crowd, wildlife and skyline come later
 }
@@ -2283,7 +2283,7 @@ function spawnMercFleet() {
       converted++;
     }
   }
-  addFeed(CLEAN ? '🏎 E50 EXECUTIVE fleet spotted around the city' : '🏎 E50 AMG fleet spotted around the city');
+  // no addFeed here: this is an asset finishing its download, not news
 }
 // Hero cars — every real car model uploaded to models/ becomes a drivable
 // showpiece parked around the city (plus feed announcements)
@@ -2321,7 +2321,7 @@ function loadHeroCars() {
         wrap.userData.wheelNodes = collectWheelNodes(m);
         registerVehicle(wrap, x, z, ry, hc.key);
       }
-      addFeed(`🚗 ${hc.label} spotted around the city`);
+      // silent: a car model arriving is not an event the player asked about
     }, undefined, () => {});
   }
 }
@@ -2349,7 +2349,7 @@ function spawnPolice() {
     policeLights.push({ red, blue, phase: Math.random() });
     registerVehicle(wrap, x, z, ry, 'police');
   }
-  addFeed('🚓 Police interceptors on patrol');
+  // silent: police spawning at load is not news either
 }
 // Distant downtown skylines built from the real building pack, one along
 // each open edge of the map — the city no longer ends at the perimeter
