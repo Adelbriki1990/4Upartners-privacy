@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from './lib/jsm/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader } from './lib/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from './lib/jsm/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from './lib/jsm/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=85';
+import { CITIES } from './sponsors.js?v=86';
 
 // Clean-brand mode: the portal build (CrazyGames etc.) must carry no real
 // trademarks. window.CLEAN_BUILD is injected by the build script; ?clean=1
@@ -2467,7 +2467,12 @@ function placeRealPeople() {
       modelMixers.push(mixer);
     } else {
       // no animation data at all: visible natural idle (sway, breathe, look around)
-      modelBobbers.push({ obj: p, phase: Math.random() * 6, baseY: 0, baseRot: ry });
+      // face each one a little differently and idle at its own tempo, so a
+      // group of standing models does not move as one block
+      p.rotation.y = ry + (Math.random() - 0.5) * 0.9;
+      modelBobbers.push({ obj: p, phase: Math.random() * 6, baseY: 0,
+        baseRot: p.rotation.y, amp: 0.16 + Math.random() * 0.2,
+        rate: 0.75 + Math.random() * 0.5 });
     }
   });
   }
@@ -7998,10 +8003,12 @@ function updateVenues(dt) {
     }
   }
   for (const b of modelBobbers) {
-    b.phase += dt;
-    // clearly visible: weight shifts, breathing bob, slow look-around
-    b.obj.rotation.y = b.baseRot + Math.sin(b.phase * 0.35) * (b.amp ?? 0.5);
-    b.obj.rotation.z = Math.sin(b.phase * 0.9) * 0.02;
+    b.phase += dt * (b.rate ?? 1);
+    // Weight shift, breathing bob, slow look-around. Every value is offset
+    // per instance: a row of identical models swaying on the same sine reads
+    // as a broken animation, which is worse than standing still.
+    b.obj.rotation.y = b.baseRot + Math.sin(b.phase * 0.35) * (b.amp ?? 0.28);
+    b.obj.rotation.z = Math.sin(b.phase * 0.9 + 1.7) * 0.022;
     b.obj.position.y = b.baseY + Math.abs(Math.sin(b.phase * 1.4)) * 0.025;
   }
 }
