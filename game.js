@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from './lib/jsm/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader } from './lib/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from './lib/jsm/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from './lib/jsm/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=78';
+import { CITIES } from './sponsors.js?v=79';
 
 // Clean-brand mode: the portal build (CrazyGames etc.) must carry no real
 // trademarks. window.CLEAN_BUILD is injected by the build script; ?clean=1
@@ -3061,9 +3061,14 @@ function buildCity(city) {
     const groundTex = new THREE.CanvasTexture(cv);
     groundTex.colorSpace = THREE.SRGBColorSpace;
     groundTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    // The painted ground map covers 264 world units, so up close it is
+    // magnified into flat grey. A tiny tiling normal map gives the asphalt
+    // grain that catches the sun and the street lamps.
+    if (!groundNormalTex) groundNormalTex = makeAsphaltNormal();
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(CITY_HALF * 2, CITY_HALF * 2),
       new THREE.MeshStandardMaterial({ map: groundTex,
+        normalMap: groundNormalTex, normalScale: new THREE.Vector2(0.55, 0.55),
         roughness: THEME.rain > 0 ? 0.35 : 0.75, metalness: THEME.rain > 0 ? 0.15 : 0.05 }));
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
@@ -4580,6 +4585,40 @@ function spawnTracer(from, to) {
   const line = new THREE.Line(geo, tracerMat.clone());
   scene.add(line);
   effects.push({ obj: line, life: 0.07, fade: m => m.obj.material.opacity = 0.9 * (m.life / 0.07) });
+}
+// Fine grain for road and pavement: a small tiling normal map, generated once.
+let groundNormalTex = null;
+function makeAsphaltNormal() {
+  const N = 256;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = N;
+  const g = cv.getContext('2d');
+  const img = g.createImageData(N, N);
+  // build a height field first, then convert its slope into a normal
+  const h = new Float32Array(N * N);
+  for (let i = 0; i < N * N; i++) h[i] = Math.random();
+  const at = (x, y) => h[((y + N) % N) * N + ((x + N) % N)];
+  for (let y = 0; y < N; y++) {
+    for (let x = 0; x < N; x++) {
+      // cheap 2-octave smoothing so the grain reads as chippings, not static
+      const s1 = (at(x, y) + at(x + 1, y) + at(x, y + 1) + at(x + 1, y + 1)) / 4;
+      const s2 = (at(x + 2, y) + at(x - 2, y) + at(x, y + 2) + at(x, y - 2)) / 4;
+      const c = s1 * 0.65 + s2 * 0.35;
+      const dx = c - (at(x + 1, y) * 0.65 + at(x + 3, y) * 0.35);
+      const dy = c - (at(x, y + 1) * 0.65 + at(x, y + 3) * 0.35);
+      const i4 = (y * N + x) * 4;
+      img.data[i4] = 128 + dx * 190;       // x slope
+      img.data[i4 + 1] = 128 + dy * 190;   // y slope
+      img.data[i4 + 2] = 255;              // pointing up
+      img.data[i4 + 3] = 255;
+    }
+  }
+  g.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(cv);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(140, 140);                  // ~2 world units per tile
+  t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  return t;
 }
 const smokeTex = (() => {
   const cv = document.createElement('canvas');
@@ -9566,6 +9605,19 @@ window.__so = {
     doRender();
   },
   fx() { return effects.length; },
+  ground() {
+    // the ground is simply the biggest plane in the scene
+    let m = null, best = 0;
+    scene.traverse(o => {
+      if (!o.isMesh || !o.geometry || o.geometry.type !== 'PlaneGeometry') return;
+      const p = o.geometry.parameters || {};
+      const area = (p.width || 0) * (p.height || 0);
+      if (area > best) { best = area; m = o.material; }
+    });
+    return m ? { hasNormal: !!m.normalMap,
+      repeat: m.normalMap ? [m.normalMap.repeat.x, m.normalMap.repeat.y] : null,
+      scale: m.normalScale ? [m.normalScale.x, m.normalScale.y] : null } : 'not found';
+  },
   rival() { return { ...rival }; },
   rivalT(v) { rival.t = v; return rival.t; },
   hurtCar(hp) { if (driving) driving.health = hp; return driving ? driving.health : null; },
