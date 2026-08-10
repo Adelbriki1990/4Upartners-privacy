@@ -9,11 +9,7 @@ import { RoundedBoxGeometry } from './lib/jsm/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader } from './lib/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from './lib/jsm/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from './lib/jsm/utils/SkeletonUtils.js';
-<<<<<<< HEAD
-import { CITIES } from './sponsors.js?v=86';
-=======
-import { CITIES } from './sponsors.js?v=85';
->>>>>>> origin/main
+import { CITIES } from './sponsors.js?v=87';
 
 // Clean-brand mode: the portal build (CrazyGames etc.) must carry no real
 // trademarks. window.CLEAN_BUILD is injected by the build script; ?clean=1
@@ -6568,15 +6564,20 @@ document.getElementById('achs').addEventListener('click', e => e.stopPropagation
 // ---------------------------------------------------------------------------
 const tut = { step: localStorage.getItem('streetops.tut') ? 4 : 0, t: 0 };
 const tutbarEl = document.getElementById('tutbar');
+// Onboarding leans on symbols rather than sentences — the storefront
+// guidelines ask for visuals over text, and a wall of prose in the first ten
+// seconds is the thing players skip anyway. Keys render as key caps so the
+// shape carries the meaning before the word does.
+const tutKey = s => `<kbd>${s}</kbd>`;
 const TUT_STEPS = [
-  () => `Welcome, <b>${playerName()}</b>! ${isTouch
-    ? 'Walk with the <b>left joystick</b>, drag the right side of the screen to look around'
-    : 'Move with <b>W A S D</b>, look around with the <b>mouse</b>'}`,
-  () => 'Follow the <b>yellow order marker</b> — pick up the order at the restaurant',
-  () => 'Got it! Now <b>deliver the order</b> to the waiting customer — follow the marker',
-  () => `🎉 <b>FIRST DELIVERY COMPLETE!</b> +$40 bonus · ${isTouch
-    ? 'Tap 🚗 near a vehicle to drive · ⚡ energy cans · 🛒 upgrades'
-    : '<b>E</b> drive · <b>Q</b> energy can · <b>F</b> eat · <b>B</b> shop'}`,
+  () => isTouch
+    ? '🕹️ move &nbsp;·&nbsp; 👆 drag to look'
+    : `${tutKey('W')}${tutKey('A')}${tutKey('S')}${tutKey('D')} move &nbsp;·&nbsp; 🖱️ look`,
+  () => '📍 Follow the marker',
+  () => '📦 Deliver it',
+  () => isTouch
+    ? '🎉 +$40 &nbsp;·&nbsp; 🚗 drive &nbsp;·&nbsp; 🛒 shop'
+    : `🎉 +$40 &nbsp;·&nbsp; ${tutKey('E')} drive &nbsp;·&nbsp; ${tutKey('B')} shop`,
 ];
 function updateTutorial(dt) {
   if (tut.step >= 4) return;
@@ -9045,14 +9046,18 @@ function drawMinimap() {
 // ---------------------------------------------------------------------------
 // Intro cinematic
 // ---------------------------------------------------------------------------
-const cine = { active: false, t: 0, dur: 8 };
+const cine = { active: false, t: 0, cardT: 0 };
 const cineEl = document.getElementById('cine');
 const grainEl = document.getElementById('grain');
+// The storefront guidelines ask a game to land directly in gameplay — no
+// intro to sit through before the first input does something. So the opening
+// is a title card that fades over a game already running, not a flyover the
+// player has to wait out. #cine is pointer-events:none, so it never eats a
+// click while it is up.
 function startCinematic() {
-  cine.active = true;
+  cine.active = false;
   cine.t = 0;
   cine.start = performance.now();
-  gun.visible = false;
   const hh = Math.floor(localHour()), mm = Math.floor((localHour() % 1) * 60);
   document.getElementById('cine-city').textContent =
     `${CITY.name} — ${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
@@ -9062,16 +9067,29 @@ function startCinematic() {
     : `${playerName()} — HOLD THE BLOCK UNTIL EXTRACTION`;
   cineEl.style.display = 'block';
   requestAnimationFrame(() => cineEl.classList.add('on'));
+  enterPlay();
+  // the card lifts on its own; finishCinematic() still runs on a click so an
+  // impatient player clears it immediately
+  clearTimeout(cine.cardT);
+  cine.cardT = setTimeout(finishCinematic, 2600);
 }
 function finishCinematic() {
   cine.active = false;
-  gun.visible = !(THEME && THEME.noGuns);
+  clearTimeout(cine.cardT);
   cineEl.classList.remove('on');
   cineEl.style.display = 'none';
+  enterPlay();
+}
+// Runs when the shift starts and again when the title card lifts, since a
+// click can clear the card early. Everything here is idempotent except the
+// camera reset, which would yank the view out from under a player who has
+// already started looking around.
+let playEntered = false;
+function enterPlay() {
+  gun.visible = !(THEME && THEME.noGuns);
   hudEl.style.display = 'block';
   grainEl.style.display = 'block';
-  player.yaw = 0;
-  player.pitch = 0;
+  if (!playEntered) { player.yaw = 0; player.pitch = 0; playEntered = true; }
   const del = mode === 'delivery';
   document.getElementById('tb-wave').style.display = del ? 'none' : 'block';
   for (const i of [4, 5]) {   // HOSTILES / ELIMINATIONS
@@ -9089,27 +9107,6 @@ function finishCinematic() {
   document.getElementById('location').style.display = 'none'; // the phone shows this
   renderMissions();
 }
-const _cineA = new THREE.Vector3(-44, 90, -100);
-const _cineB = new THREE.Vector3(30, 26, -32);
-const _cineC = new THREE.Vector3(4, EYE, 26);
-const _cinePos = new THREE.Vector3();
-const _cineLook = new THREE.Vector3();
-function updateCinematic() {
-  // absolute wall-clock so the flyover lasts ~8s on any frame rate
-  cine.t = (performance.now() - cine.start) / 1000;
-  const t = Math.min(cine.t / cine.dur, 1);
-  const s = t * t * (3 - 2 * t);
-  const u = 1 - s;
-  _cinePos.set(0, 0, 0)
-    .addScaledVector(_cineA, u * u)
-    .addScaledVector(_cineB, 2 * u * s)
-    .addScaledVector(_cineC, s * s);
-  camera.position.copy(_cinePos);
-  _cineLook.lerpVectors(new THREE.Vector3(4, 8, -70), new THREE.Vector3(4, EYE, 16), s);
-  camera.lookAt(_cineLook);
-  if (t >= 1) finishCinematic();
-}
-
 {
   const cv = document.createElement('canvas');
   cv.width = cv.height = 128;
@@ -9393,17 +9390,6 @@ function tick() {
   }
   if (adPaused) { doRender(); return; } // an ad is on screen — freeze the world
   if (!locked && !player.dead) { doRender(); return; }
-
-  if (cine.active) {
-    game.time += dtReal;
-    updateCinematic();
-    updateAtmosphere(dtReal);
-    updateClub(dtReal);
-    updateMusic();
-    updateEffects(dtReal);
-    doRender();
-    return;
-  }
 
   if (slowmo > 0) slowmo -= dtReal;
   const dt = dtReal * (slowmo > 0 ? 0.35 : 1);
