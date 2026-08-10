@@ -958,12 +958,14 @@ if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js').ca
 // Portal builds: load only the ad SDK this package was built for.
 // window.PORTAL_SDK is injected by build_portals.sh ('crazygames'|'poki'|'gd').
 (function () {
+  // Each package carries ONLY its own portal's SDK URL, injected at build
+  // time. Listing every portal's URL here meant the CrazyGames build shipped
+  // with competitor ad-SDK addresses inside it, which is exactly what a
+  // "no external ads" review looks for.
   var p = window.PORTAL_SDK || '';
-  if (!p) return;
-  var src = '';
-  if (p === 'crazygames') src = 'https://sdk.crazygames.com/crazygames-sdk-v3.js';
-  else if (p === 'poki') src = 'https://game-cdn.poki.com/scripts/v2/poki-sdk.js';
-  else if (p === 'gd') {
+  var src = window.PORTAL_SDK_SRC || '';
+  if (!p || !src) return;
+  if (p === 'gd') {
     // GameDistribution drives pause/resume from its own ad lifecycle events
     window.GD_OPTIONS = {
       gameId: window.GD_GAME_ID || '',
@@ -973,9 +975,7 @@ if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js').ca
         else if (e && e.name === 'SDK_GAME_START' && window.__adResume) window.__adResume();
       },
     };
-    src = 'https://html5.api.gamedistribution.com/main.min.js';
   }
-  if (!src) return;
   var s = document.createElement('script');
   s.src = src;
   document.head.appendChild(s);
@@ -1000,6 +1000,6 @@ setTimeout(function () {
   document.body.appendChild(d);
 }, 9000);
 </script>
-<script type="module" src="game.js?v=80"></script>
+<script type="module" src="game.js?v=81"></script>
 </body>
 </html>
