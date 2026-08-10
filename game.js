@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from './lib/jsm/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader } from './lib/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from './lib/jsm/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from './lib/jsm/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=76';
+import { CITIES } from './sponsors.js?v=77';
 
 // Clean-brand mode: the portal build (CrazyGames etc.) must carry no real
 // trademarks. window.CLEAN_BUILD is injected by the build script; ?clean=1
@@ -8949,7 +8949,8 @@ function finishCinematic() {
   document.getElementById('tb-wave').style.display = del ? 'none' : 'block';
   document.getElementById('tb-cash').style.display = del ? 'block' : 'none';
   document.getElementById('tb-del').style.display = del ? 'block' : 'none';
-  document.getElementById('orderpanel').style.display = del ? 'block' : 'none';
+  document.getElementById('orderpanel').style.display =
+    del && order.active ? 'block' : 'none';   // empty panel looked broken
   if (del) orderAppEl.textContent = CITY.sponsors[0].name + ' DRIVER';
   document.getElementById('missions').style.display = del ? 'block' : 'none';
   renderMissions();
