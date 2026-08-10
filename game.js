@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from './lib/jsm/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader } from './lib/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from './lib/jsm/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from './lib/jsm/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=84';
+import { CITIES } from './sponsors.js?v=85';
 
 // Clean-brand mode: the portal build (CrazyGames etc.) must carry no real
 // trademarks. window.CLEAN_BUILD is injected by the build script; ?clean=1
@@ -2419,17 +2419,30 @@ function placeGuardDogs() {
     modelBobbers.push({ obj: d, phase: Math.random() * 6, baseY: 0, baseRot: ry, amp: 0.22 });
   }
 }
-let realPeoplePlaced = false;
+let realPlaced = 0; // templates that have already claimed their pavement spots
 function placeRealPeople() {
-  if (realPeoplePlaced || personTemplates.length < 1 || !CITY) return;
-  realPeoplePlaced = true;
-  // doormen and regulars at the venues
-  // one post per template, so every uploaded person actually shows up
-  const posts = [[-10.2, -41, Math.PI / 2], [-9.8, 17.5, Math.PI / 2], [10.2, -13, -Math.PI / 2], [9.9, 47, -Math.PI / 2],
-    [-10.2, 68, Math.PI / 2], [10.2, -66, -Math.PI / 2], [-9.8, -14, Math.PI / 2], [9.9, 96, -Math.PI / 2],
-    [-10.2, 112, Math.PI / 2], [10.2, 30, -Math.PI / 2], [-9.8, -92, Math.PI / 2], [9.9, -108, -Math.PI / 2]];
-  posts.forEach(([x, z, ry], i) => {
-    const t = personTemplates[i % personTemplates.length];
+  if (!CITY) return;
+  // Pavement spots along whichever grid this city uses, junctions skipped —
+  // the same rule the street trees follow.
+  const posts = [];
+  for (const s of STREETS)
+    for (const v of [-104, -58, -12, 34, 78, 116]) {
+      if (STREETS.some(q => Math.abs(v - q) < ROAD_HALF + 4)) continue;
+      const side = posts.length % 2 ? 1 : -1;
+      posts.push([s + side * (ROAD_HALF + 2.4), v, side > 0 ? -Math.PI / 2 : Math.PI / 2]);
+    }
+  // Three spots per template, claimed as that model finishes downloading.
+  // Placing everything on the first arrival handed every slot to whichever
+  // model won the download race, so the rest never appeared at all.
+  while (realPlaced < personTemplates.length) {
+  const slots = [];
+  for (let k = 0; k < 3; k++) {
+    const i = realPlaced * 3 + k;
+    if (i < posts.length) slots.push(posts[i]);
+  }
+  const t = personTemplates[realPlaced];
+  realPlaced++;
+  slots.forEach(([x, z, ry], i) => {
     const p = SkeletonUtils.clone(t.root);
     p.position.set(x, 0, z);
     p.rotation.y = ry;
@@ -2457,6 +2470,7 @@ function placeRealPeople() {
       modelBobbers.push({ obj: p, phase: Math.random() * 6, baseY: 0, baseRot: ry });
     }
   });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -2550,6 +2564,7 @@ function makeCharacter(cfg, opts = {}) {
     color: new THREE.Color().setHSL(cfg.shirtHue, 0.5, 0.32 + (cfg.shirtHue % 0.3)), roughness: 0.85 });
   const pants = new THREE.MeshStandardMaterial({
     color: new THREE.Color().setHSL(cfg.pantsHue, 0.25, 0.16 + (cfg.pantsHue % 0.2)), roughness: 0.9 });
+  if (cfg.shirtColor !== undefined && cfg.shirtColor !== null) shirt.color.set(cfg.shirtColor);
   if (cfg.pantsColor !== undefined && cfg.pantsColor !== null) pants.color.set(cfg.pantsColor);
   const hairM = new THREE.MeshStandardMaterial({ color: cfg.hairColor, roughness: 0.95 });
   const mDarkC = new THREE.MeshStandardMaterial({ color: 0x181a1e, roughness: 0.8 });
@@ -2694,6 +2709,15 @@ function makeCharacter(cfg, opts = {}) {
   g.traverse(o => { if (o.isMesh) o.castShadow = true; });
   return { group: g, legs, arms };
 }
+// Clothes people actually wear. shirtHue/pantsHue used to be raw Math.random(),
+// which spread the crowd evenly around the colour wheel and produced a street
+// full of mint, hot pink and lemon — cartoon next to the photoreal models
+// standing beside them. These are the colours a real pavement is made of.
+const CLOTH_TOP = [0x2e3a4a, 0x3d4550, 0x6b6f76, 0x8a8378, 0xa8a49c, 0x4a5d4e,
+  0x7a3f3a, 0x554a66, 0x2a2a2e, 0xc4bdb0, 0x35566a, 0x8a6a3a, 0xd8d4cc, 0x5c6b53];
+const CLOTH_BOTTOM = [0x2a3040, 0x1e2228, 0x3a3d42, 0x4a4438, 0x5a5f66,
+  0x2e3a45, 0x35302c, 0x6a6459];
+const pick = a => a[Math.floor(Math.random() * a.length)];
 function randomLook() {
   const f = Math.random() < 0.45;
   if (THEME && THEME.dress === 'arabic' && Math.random() < 0.8) {
@@ -2716,6 +2740,8 @@ function randomLook() {
     skin: SKINS[Math.floor(Math.random() * SKINS.length)],
     shirtHue: Math.random(),
     pantsHue: Math.random(),
+    shirtColor: pick(CLOTH_TOP),
+    pantsColor: pick(CLOTH_BOTTOM),
     hairColor: HAIRS[Math.floor(Math.random() * HAIRS.length)],
     hairLong: f ? Math.random() < 0.75 : Math.random() < 0.1,
     skirt: f && Math.random() < 0.5,
