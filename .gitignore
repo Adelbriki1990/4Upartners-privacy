@@ -2,3 +2,6 @@ dist_crazygames/
 dist_poki/
 dist_gamedistribution/
 dist_itch/
+
+# raw model drops — huge, and superseded by the compressed copy in models/
+incoming/*.glb
