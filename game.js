@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from './lib/jsm/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader } from './lib/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from './lib/jsm/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from './lib/jsm/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=82';
+import { CITIES } from './sponsors.js?v=83';
 
 // Clean-brand mode: the portal build (CrazyGames etc.) must carry no real
 // trademarks. window.CLEAN_BUILD is injected by the build script; ?clean=1
@@ -1913,7 +1913,11 @@ function loadCosmeticAssets() {
     skylineTemplate = normalizeModel(g.scene, 'car', 165);
     placeSkyline();
   }, undefined, () => {});
-  for (const url of ['models/person_cool.glb', 'models/person_suit.glb'])
+  // person_courier / person_hoodie carry no animation data — placeRealPeople
+  // falls back to its idle sway for those, which reads fine for someone
+  // standing at a door
+  for (const url of ['models/person_cool.glb', 'models/person_suit.glb',
+                     'models/person_courier.glb', 'models/person_hoodie.glb'])
     gltfLoader.load(url, g => {
       stripBaseDiscs(g.scene);
       lockWalkRoot(g.animations || []);
@@ -2294,6 +2298,10 @@ const HERO_CARS = [
     spots: [[125.1, 40, 0], [5.1, 84, 0], [-65.1, -20, Math.PI]] },
   { file: 'models/car_lambo.glb', key: 'hero_lambo', base: 'hyper', len: 4.6, label: 'TORO SV',
     tint: 0xf07800, spots: [[-125.1, 62, 0], [65.1, 100, Math.PI], [65.1, 14, 0]] },
+  { file: 'models/car_hatch.glb', key: 'hero_hatch', base: 'car', len: 3.7, label: 'CITY DART',
+    spots: [[-54.9, 28, 0], [5.1, -70, 0], [125.1, 76, Math.PI]] },
+  { file: 'models/car_pickup.glb', key: 'hero_pickup', base: 'pickup', len: 5.2, label: 'TITAN PICKUP',
+    spots: [[-114.9, -46, 0], [65.1, -60, Math.PI], [-5.1, 100, Math.PI]] },
 ];
 function loadHeroCars() {
   for (const hc of HERO_CARS) {
@@ -2389,7 +2397,9 @@ function placeRealPeople() {
   if (realPeoplePlaced || personTemplates.length < 1 || !CITY) return;
   realPeoplePlaced = true;
   // doormen and regulars at the venues
-  const posts = [[-10.2, -41, Math.PI / 2], [-9.8, 17.5, Math.PI / 2], [10.2, -13, -Math.PI / 2], [9.9, 47, -Math.PI / 2]];
+  // one post per template, so every uploaded person actually shows up
+  const posts = [[-10.2, -41, Math.PI / 2], [-9.8, 17.5, Math.PI / 2], [10.2, -13, -Math.PI / 2], [9.9, 47, -Math.PI / 2],
+    [-10.2, 68, Math.PI / 2], [10.2, -66, -Math.PI / 2], [-9.8, -14, Math.PI / 2], [9.9, 96, -Math.PI / 2]];
   posts.forEach(([x, z, ry], i) => {
     const t = personTemplates[i % personTemplates.length];
     const p = SkeletonUtils.clone(t.root);
