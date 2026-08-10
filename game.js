@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from './lib/jsm/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader } from './lib/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from './lib/jsm/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from './lib/jsm/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=83';
+import { CITIES } from './sponsors.js?v=84';
 
 // Clean-brand mode: the portal build (CrazyGames etc.) must carry no real
 // trademarks. window.CLEAN_BUILD is injected by the build script; ?clean=1
@@ -1902,6 +1902,28 @@ function loadRealAssets() {
 // Everything below is decoration: it makes the city feel alive but nothing
 // depends on it, so it must not compete with getting the player playing.
 let cosmeticsPending = false, cosmeticsDone = false;
+// Street furniture from the uploaded prop models. These are plain static
+// meshes, so a straight clone is enough — no skeleton to rebind. Placement
+// mirrors the street-tree loop: pick a street, walk along it, skip anything
+// sitting in a junction.
+function scatterProp(url, { height, count, offset }) {
+  gltfLoader.load(url, g => {
+    const tpl = normalizeModel(g.scene, 'person', height);
+    let placed = 0, tries = 0;
+    while (placed < count && tries++ < count * 25) {
+      const s = STREETS[(Math.random() * STREETS.length) | 0];
+      const v = -120 + Math.random() * 240;
+      if (STREETS.some(q => Math.abs(v - q) < ROAD_HALF + 4)) continue;
+      const alongX = Math.random() < 0.5, side = Math.random() < 0.5 ? -1 : 1;
+      const o = tpl.clone();
+      o.position.set(alongX ? v : s + side * offset, 0, alongX ? s + side * offset : v);
+      // benches face the road they sit beside
+      o.rotation.y = (alongX ? 0 : Math.PI / 2) + (side < 0 ? Math.PI : 0);
+      scene.add(o);
+      placed++;
+    }
+  }, undefined, () => {});
+}
 function loadCosmeticAssets() {
   if (!cosmeticsPending || cosmeticsDone || SAFEMODE) return;
   cosmeticsDone = true;
@@ -1916,8 +1938,13 @@ function loadCosmeticAssets() {
   // person_courier / person_hoodie carry no animation data — placeRealPeople
   // falls back to its idle sway for those, which reads fine for someone
   // standing at a door
+  scatterProp('models/prop_bench.glb', { height: 0.95, count: 16, offset: ROAD_HALF + 2.2 });
+  scatterProp('models/prop_cone.glb', { height: 0.7, count: 20, offset: ROAD_HALF - 0.5 });
   for (const url of ['models/person_cool.glb', 'models/person_suit.glb',
-                     'models/person_courier.glb', 'models/person_hoodie.glb'])
+                     'models/person_courier.glb', 'models/person_hoodie.glb',
+                     'models/person_woman.glb', 'models/person_hijab.glb',
+                     'models/person_older.glb', 'models/person_worker.glb',
+                     'models/person_astro.glb'])
     gltfLoader.load(url, g => {
       stripBaseDiscs(g.scene);
       lockWalkRoot(g.animations || []);
@@ -2399,7 +2426,8 @@ function placeRealPeople() {
   // doormen and regulars at the venues
   // one post per template, so every uploaded person actually shows up
   const posts = [[-10.2, -41, Math.PI / 2], [-9.8, 17.5, Math.PI / 2], [10.2, -13, -Math.PI / 2], [9.9, 47, -Math.PI / 2],
-    [-10.2, 68, Math.PI / 2], [10.2, -66, -Math.PI / 2], [-9.8, -14, Math.PI / 2], [9.9, 96, -Math.PI / 2]];
+    [-10.2, 68, Math.PI / 2], [10.2, -66, -Math.PI / 2], [-9.8, -14, Math.PI / 2], [9.9, 96, -Math.PI / 2],
+    [-10.2, 112, Math.PI / 2], [10.2, 30, -Math.PI / 2], [-9.8, -92, Math.PI / 2], [9.9, -108, -Math.PI / 2]];
   posts.forEach(([x, z, ry], i) => {
     const t = personTemplates[i % personTemplates.length];
     const p = SkeletonUtils.clone(t.root);
