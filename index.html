@@ -261,27 +261,31 @@
     border-radius: 14px; background: rgba(8,14,24,.93); border: 1px solid #ffd479;
     box-shadow: 0 6px 30px rgba(0,0,0,.6); max-width: 90vw; }
   #timesave b { display: block; font-size: 15px; letter-spacing: 3px; color: #ffd479; }
-  #timesavebtn { display: inline-block; margin-top: 10px; padding: 10px 20px; border-radius: 24px;
+  #timesavebtn { display: inline-block; min-width: 210px; text-align: center; margin-top: 10px; padding: 10px 20px; border-radius: 24px;
     font-size: 14px; font-weight: 800; letter-spacing: 1px; color: #08131c; cursor: pointer;
     background: linear-gradient(180deg, #8fe0ff, #41c9ff); }
-  #timesaveno { display: block; margin-top: 9px; padding: 6px; font-size: 12.5px; font-style: normal;
-    letter-spacing: 1px; color: #9fb2c4; cursor: pointer; text-decoration: underline; }
+  #timesaveno { display: inline-block; min-width: 210px; text-align: center; margin-top: 10px; margin-left: 8px; padding: 10px 20px;
+    border-radius: 24px; font-size: 14px; font-weight: 800; letter-spacing: 1px; font-style: normal;
+    color: #cfe0ee; cursor: pointer; background: rgba(255,255,255,.1);
+    border: 1px solid rgba(255,255,255,.35); }
   #dblpay { position: absolute; left: 50%; top: 30%; transform: translateX(-50%);
     z-index: 20; pointer-events: auto; text-align: center; padding: 14px 20px;
     border-radius: 14px; background: rgba(8,14,24,.93); border: 1px solid #7dff8a;
     box-shadow: 0 6px 30px rgba(0,0,0,.6); max-width: 90vw; }
   #dblpay b { display: block; font-size: 15px; letter-spacing: 2px; color: #7dff8a; }
-  #dblpaybtn { display: inline-block; margin-top: 10px; padding: 10px 20px; border-radius: 24px;
+  #dblpaybtn { display: inline-block; min-width: 210px; text-align: center; margin-top: 10px; padding: 10px 20px; border-radius: 24px;
     font-size: 14px; font-weight: 800; letter-spacing: 1px; color: #08131c; cursor: pointer;
     background: linear-gradient(180deg, #a8ffbb, #3ddc84); }
-  #dblpayno { display: block; margin-top: 9px; padding: 6px; font-size: 12.5px; font-style: normal;
-    letter-spacing: 1px; color: #9fb2c4; cursor: pointer; text-decoration: underline; }
+  #dblpayno { display: inline-block; min-width: 210px; text-align: center; margin-top: 10px; margin-left: 8px; padding: 10px 20px;
+    border-radius: 24px; font-size: 14px; font-weight: 800; letter-spacing: 1px; font-style: normal;
+    color: #cfe0ee; cursor: pointer; background: rgba(255,255,255,.1);
+    border: 1px solid rgba(255,255,255,.35); }
   body.touch #dblpay { top: 22%; padding: 10px 14px; }
   body.touch #dblpay b { font-size: 12px; }
-  body.touch #dblpaybtn { font-size: 12px; padding: 9px 16px; }
+  body.touch #dblpaybtn, body.touch #dblpayno { font-size: 12px; padding: 9px 14px; min-width: 150px; }
   body.touch #timesave { top: 22%; padding: 10px 14px; }
   body.touch #timesave b { font-size: 12px; }
-  body.touch #timesavebtn { font-size: 12px; padding: 9px 16px; }
+  body.touch #timesavebtn, body.touch #timesaveno { font-size: 12px; padding: 9px 14px; min-width: 150px; }
 
   /* Banner slots live only on menu screens, never over the 3D view. The
      generous margin keeps a mis-tap from landing on the ad (portals ban
@@ -905,7 +909,7 @@
     <div class="modebtn sel" id="pauseresume">▶ RESUME</div>
     <div class="modebtn" id="pausehome">🏠 HOME</div>
   </div>
-  <div class="go">OR CLICK ANYWHERE TO RESUME</div>
+  <div class="go">PRESS <b style="color:#fff">P</b> OR CLICK ANYWHERE TO RESUME</div>
 </div>
 
 <div id="gameover" class="overlay">
@@ -1000,6 +1004,6 @@ setTimeout(function () {
   document.body.appendChild(d);
 }, 9000);
 </script>
-<script type="module" src="game.js?v=81"></script>
+<script type="module" src="game.js?v=82"></script>
 </body>
 </html>

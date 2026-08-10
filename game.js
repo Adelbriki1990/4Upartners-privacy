@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from './lib/jsm/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader } from './lib/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from './lib/jsm/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from './lib/jsm/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=81';
+import { CITIES } from './sponsors.js?v=82';
 
 // Clean-brand mode: the portal build (CrazyGames etc.) must carry no real
 // trademarks. window.CLEAN_BUILD is injected by the build script; ?clean=1
@@ -4173,6 +4173,20 @@ document.addEventListener('keydown', e => {
   keys[e.code] = true;
   if (e.code === 'KeyR' && !driving) startReload();
   if (e.code === 'KeyE') toggleDrive();
+  // P pauses without touching Escape, which the browser owns (it exits
+  // fullscreen). Escape still happens to work, but nothing depends on it.
+  if (e.code === 'KeyP' && started && !player.dead && !cine.active) {
+    if (pausedEl.style.display === 'flex') {
+      pausedEl.style.display = 'none';
+      hudEl.style.display = 'block';
+      if (isTouch) locked = true; else requestLock();
+    } else {
+      pausedEl.style.display = 'flex';
+      hudEl.style.display = 'none';
+      locked = false;
+      if (!isTouch) document.exitPointerLock();
+    }
+  }
   if (e.code === 'Digit1') switchWeapon(0);
   if (e.code === 'Digit2') switchWeapon(1);
   if (e.code === 'Digit3') switchWeapon(2);
