@@ -33,7 +33,16 @@ build_one() {
   # CLEAN_BUILD strips every real trademark; PORTAL_SDK picks the ad network
   # (empty on itch/Y8/own-site builds, where the ad buttons stay hidden)
   local flags="window.CLEAN_BUILD=true;"
-  if [ -n "$sdk" ]; then flags="${flags}window.PORTAL_SDK='${sdk}';"; fi
+  if [ -n "$sdk" ]; then
+    # only this portal's SDK address ends up in this package
+    local sdksrc=""
+    case "$sdk" in
+      crazygames) sdksrc="https://sdk.crazygames.com/crazygames-sdk-v3.js" ;;
+      poki)       sdksrc="https://game-cdn.poki.com/scripts/v2/poki-sdk.js" ;;
+      gd)         sdksrc="https://html5.api.gamedistribution.com/main.min.js" ;;
+    esac
+    flags="${flags}window.PORTAL_SDK='${sdk}';window.PORTAL_SDK_SRC='${sdksrc}';"
+  fi
   if [ "$sdk" = "gd" ] && [ -n "$GD_GAME_ID" ]; then
     flags="${flags}window.GD_GAME_ID='${GD_GAME_ID}';"
   fi
