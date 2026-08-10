@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from './lib/jsm/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader } from './lib/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from './lib/jsm/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from './lib/jsm/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=77';
+import { CITIES } from './sponsors.js?v=78';
 
 // Clean-brand mode: the portal build (CrazyGames etc.) must carry no real
 // trademarks. window.CLEAN_BUILD is injected by the build script; ?clean=1
@@ -6958,7 +6958,6 @@ function questAdvance(ch) {
 // moment their content changes.
 const fadeTimers = new WeakMap();
 function autoFade(el, ms = 7000) {
-  if (!isTouch) return;
   el.classList.add('autofade');
   el.classList.remove('gone');
   clearTimeout(fadeTimers.get(el));
@@ -8947,12 +8946,19 @@ function finishCinematic() {
   player.pitch = 0;
   const del = mode === 'delivery';
   document.getElementById('tb-wave').style.display = del ? 'none' : 'block';
+  for (const i of [4, 5]) {   // HOSTILES / ELIMINATIONS
+    const el = document.querySelector(`#topbar div:nth-child(${i})`);
+    if (el) el.style.display = del ? 'none' : 'block';
+  }
   document.getElementById('tb-cash').style.display = del ? 'block' : 'none';
   document.getElementById('tb-del').style.display = del ? 'block' : 'none';
   document.getElementById('orderpanel').style.display =
     del && order.active ? 'block' : 'none';   // empty panel looked broken
   if (del) orderAppEl.textContent = CITY.sponsors[0].name + ' DRIVER';
-  document.getElementById('missions').style.display = del ? 'block' : 'none';
+  // daily missions matter from the second shift on, not in the first minute
+  document.getElementById('missions').style.display =
+    del && (game.deliveries > 0 || (prog.stats && prog.stats.deliv > 0)) ? 'block' : 'none';
+  document.getElementById('location').style.display = 'none'; // the phone shows this
   renderMissions();
 }
 const _cineA = new THREE.Vector3(-44, 90, -100);
@@ -9354,7 +9360,9 @@ function tick() {
     }
     gun.visible = armed;
     document.getElementById('crosshair').style.display = armed ? 'block' : 'none';
-    document.getElementById('ammo').style.opacity = armed ? 1 : 0.25;
+    // A courier is not a soldier. Showing an assault-rifle ammo counter to
+    // someone who has not been attacked yet reads as the wrong game.
+    document.getElementById('ammo').style.display = armed ? 'block' : 'none';
     weapon.cooldown -= dt;
     weapon.recoil = Math.max(0, weapon.recoil - dt * 10);
     const w = W();
