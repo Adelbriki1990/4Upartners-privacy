@@ -568,6 +568,10 @@
     font-size: 15px; letter-spacing: 1px; line-height: 1.5; box-shadow: 0 0 24px rgba(255,212,121,.25); }
   #tutbar b { color: #fff; }
   #tutbar .step { display: block; font-size: 11px; letter-spacing: 3px; color: #ffd479; margin-bottom: 4px; }
+  /* onboarding shows the key itself rather than naming it in a sentence */
+  #tutbar kbd { display: inline-block; min-width: 21px; margin: 0 2px; padding: 3px 6px;
+    background: #ffe9b8; color: #14202e; border-radius: 5px; border-bottom: 2px solid #b89347;
+    font: 600 13px/1 ui-monospace, Menlo, Consolas, monospace; letter-spacing: 0; }
   #boarditems { margin-top: 16px; width: min(520px, 94vw); }
   .boardrow { display: flex; align-items: center; gap: 12px; text-align: left;
     background: rgba(14,22,32,.6); border: 1px solid rgba(120,150,190,.3); border-radius: 8px;
@@ -1004,10 +1008,6 @@ setTimeout(function () {
   document.body.appendChild(d);
 }, 9000);
 </script>
-<<<<<<< HEAD
-<script type="module" src="game.js?v=86"></script>
-=======
-<script type="module" src="game.js?v=85"></script>
->>>>>>> origin/main
+<script type="module" src="game.js?v=87"></script>
 </body>
 </html>
