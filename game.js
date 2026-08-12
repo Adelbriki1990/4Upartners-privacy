@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from './lib/jsm/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader } from './lib/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from './lib/jsm/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from './lib/jsm/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=87';
+import { CITIES } from './sponsors.js?v=88';
 
 // Clean-brand mode: the portal build (CrazyGames etc.) must carry no real
 // trademarks. window.CLEAN_BUILD is injected by the build script; ?clean=1
@@ -1601,10 +1601,10 @@ function buildCarMesh(bodyColor, style = 'car') {
     // spin group pivots at the axle so wheels can roll
     const spin = new THREE.Group();
     spin.position.set(wx, r, wz);
-    const tire = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 0.26, 16), mDark);
+    const tire = new THREE.Mesh(sharedGeo(THREE.CylinderGeometry, r, r, 0.26, 16), mDark);
     tire.rotation.z = Math.PI / 2;
     spin.add(tire);
-    const hub = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.55, r * 0.55, 0.27, 12), mHub);
+    const hub = new THREE.Mesh(sharedGeo(THREE.CylinderGeometry, r * 0.55, r * 0.55, 0.27, 12), mHub);
     hub.rotation.z = Math.PI / 2;
     spin.add(hub);
     g.add(spin);
@@ -1615,22 +1615,22 @@ function buildCarMesh(bodyColor, style = 'car') {
     const mGlow = new THREE.MeshBasicMaterial({ color: 0xfff2cc });
     const mTail = new THREE.MeshBasicMaterial({ color: 0xff3b30 });
     for (const hx of [-0.6, 0.6]) {
-      const hl = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.1, 0.06), mGlow);
+      const hl = new THREE.Mesh(sharedGeo(THREE.BoxGeometry, 0.32, 0.1, 0.06), mGlow);
       hl.position.set(hx, y, frontZ); g.add(hl);
-      const tl = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.09, 0.06), mTail);
+      const tl = new THREE.Mesh(sharedGeo(THREE.BoxGeometry, 0.3, 0.09, 0.06), mTail);
       tl.position.set(hx, y, rearZ); g.add(tl);
     }
   };
   const mGlass = new THREE.MeshStandardMaterial({ color: 0x10161f, roughness: 0.12, metalness: 0.6 });
   const glassPane = (w, h, y, z, tilt) => {
-    const p = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.04), mGlass);
+    const p = new THREE.Mesh(sharedGeo(THREE.BoxGeometry, w, h, 0.04), mGlass);
     p.position.set(0, y, z);
     p.rotation.x = tilt;
     g.add(p);
   };
   const mirrors = (wx, y, z) => {
     for (const sx of [-1, 1]) {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.08, 0.06), mDark);
+      const m = new THREE.Mesh(sharedGeo(THREE.BoxGeometry, 0.13, 0.08, 0.06), mDark);
       m.position.set(sx * wx, y, z); g.add(m);
     }
   };
@@ -1642,13 +1642,13 @@ function buildCarMesh(bodyColor, style = 'car') {
     const cab = new THREE.Mesh(RB(1.85, 0.62, 2.7, 0.12), mCab);
     cab.position.set(0, 1.6, -0.15); g.add(cab);
     for (const rx of [-0.7, 0.7]) {
-      const rail = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 2.6), mChrome);
+      const rail = new THREE.Mesh(sharedGeo(THREE.BoxGeometry, 0.07, 0.07, 2.6), mChrome);
       rail.position.set(rx, 1.96, -0.15); g.add(rail);
     }
-    const spare = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.24, 12), mDark);
+    const spare = new THREE.Mesh(sharedGeo(THREE.CylinderGeometry, 0.4, 0.4, 0.24, 12), mDark);
     spare.rotation.x = Math.PI / 2;
     spare.position.set(0.5, 1.0, -2.42); g.add(spare);
-    const bumper = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.24, 0.2), mChrome);
+    const bumper = new THREE.Mesh(sharedGeo(THREE.BoxGeometry, 2.0, 0.24, 0.2), mChrome);
     bumper.position.set(0, 0.5, 2.35); g.add(bumper);
     glassPane(1.72, 0.62, 1.5, 1.32, -0.35);
     glassPane(1.72, 0.55, 1.5, -1.62, 0.4);
@@ -1659,16 +1659,16 @@ function buildCarMesh(bodyColor, style = 'car') {
     // low wide GT: wedge nose, sleek cabin, rear wing
     const body = new THREE.Mesh(RB(1.95, 0.42, 4.2, 0.1), mBody);
     body.position.y = 0.42; g.add(body);
-    const nose = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.26, 1.1), mBody);
+    const nose = new THREE.Mesh(sharedGeo(THREE.BoxGeometry, 1.8, 0.26, 1.1), mBody);
     nose.position.set(0, 0.36, 2.05);
     nose.rotation.x = 0.1; g.add(nose);
     const cab = new THREE.Mesh(RB(1.5, 0.36, 1.7, 0.12), mCab);
     cab.position.set(0, 0.78, -0.35); g.add(cab);
-    const intake = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.1, 0.5), mDark);
+    const intake = new THREE.Mesh(sharedGeo(THREE.BoxGeometry, 1.2, 0.1, 0.5), mDark);
     intake.position.set(0, 0.25, 2.0); g.add(intake);
-    const wingPosts = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.16, 0.06), mDark);
+    const wingPosts = new THREE.Mesh(sharedGeo(THREE.BoxGeometry, 1.2, 0.16, 0.06), mDark);
     wingPosts.position.set(0, 0.7, -2.0); g.add(wingPosts);
-    const wing = new THREE.Mesh(new THREE.BoxGeometry(1.75, 0.06, 0.34), mBody);
+    const wing = new THREE.Mesh(sharedGeo(THREE.BoxGeometry, 1.75, 0.06, 0.34), mBody);
     wing.position.set(0, 0.82, -2.05); g.add(wing);
     glassPane(1.42, 0.42, 0.8, 0.6, -0.8);
     mirrors(0.88, 0.74, 0.5);
@@ -1678,22 +1678,22 @@ function buildCarMesh(bodyColor, style = 'car') {
     // ultra-low angular hypercar: sharp wedge, side intakes, big fixed wing
     const body = new THREE.Mesh(RB(2.0, 0.36, 4.35, 0.09), mBody);
     body.position.y = 0.38; g.add(body);
-    const nose = new THREE.Mesh(new THREE.BoxGeometry(1.85, 0.2, 1.3), mBody);
+    const nose = new THREE.Mesh(sharedGeo(THREE.BoxGeometry, 1.85, 0.2, 1.3), mBody);
     nose.position.set(0, 0.34, 2.05);
     nose.rotation.x = 0.14; g.add(nose);
     const cab = new THREE.Mesh(RB(1.35, 0.3, 1.55, 0.1), mCab);
     cab.position.set(0, 0.7, -0.25); g.add(cab);
     for (const sx of [-1.02, 1.02]) {
-      const intake = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.22, 0.9), mDark);
+      const intake = new THREE.Mesh(sharedGeo(THREE.BoxGeometry, 0.06, 0.22, 0.9), mDark);
       intake.position.set(sx, 0.45, -1.1); g.add(intake);
     }
-    const diffuser = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.14, 0.3), mDark);
+    const diffuser = new THREE.Mesh(sharedGeo(THREE.BoxGeometry, 1.8, 0.14, 0.3), mDark);
     diffuser.position.set(0, 0.28, -2.15); g.add(diffuser);
     for (const wx of [-0.7, 0.7]) {
-      const post = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.24, 0.07), mDark);
+      const post = new THREE.Mesh(sharedGeo(THREE.BoxGeometry, 0.07, 0.24, 0.07), mDark);
       post.position.set(wx, 0.72, -2.0); g.add(post);
     }
-    const wing = new THREE.Mesh(new THREE.BoxGeometry(1.95, 0.05, 0.42), mBody);
+    const wing = new THREE.Mesh(sharedGeo(THREE.BoxGeometry, 1.95, 0.05, 0.42), mBody);
     wing.position.set(0, 0.88, -2.05); g.add(wing);
     glassPane(1.32, 0.38, 0.72, 0.58, -0.92);
     mirrors(0.9, 0.68, 0.42);
@@ -1705,12 +1705,12 @@ function buildCarMesh(bodyColor, style = 'car') {
     body.position.y = 0.72; g.add(body);
     const cab = new THREE.Mesh(RB(1.8, 0.56, 2.6, 0.12), mCab);
     cab.position.set(0, 1.36, -0.5); g.add(cab);
-    const grille = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.5, 0.14), mChrome);
+    const grille = new THREE.Mesh(sharedGeo(THREE.BoxGeometry, 0.95, 0.5, 0.14), mChrome);
     grille.position.set(0, 0.8, 2.6); g.add(grille);
-    const hoodStrip = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.03, 1.6), mChrome);
+    const hoodStrip = new THREE.Mesh(sharedGeo(THREE.BoxGeometry, 0.05, 0.03, 1.6), mChrome);
     hoodStrip.position.set(0, 1.11, 1.7); g.add(hoodStrip);
     for (const sx of [-1.01, 1.01]) {
-      const trim = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.04, 4.8), mChrome);
+      const trim = new THREE.Mesh(sharedGeo(THREE.BoxGeometry, 0.03, 0.04, 4.8), mChrome);
       trim.position.set(sx, 0.95, -0.1); g.add(trim);
     }
     glassPane(1.72, 0.55, 1.5, 0.92, -0.42);
@@ -1725,15 +1725,15 @@ function buildCarMesh(bodyColor, style = 'car') {
     const cab = new THREE.Mesh(RB(1.72, 0.5, 2.5, 0.12), mCab);
     cab.position.set(0, 1.08, -0.3); g.add(cab);
     for (const sx of [-0.99, 0.99]) {
-      const trim = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.05, 4.4), mChrome);
+      const trim = new THREE.Mesh(sharedGeo(THREE.BoxGeometry, 0.03, 0.05, 4.4), mChrome);
       trim.position.set(sx, 0.62, 0); g.add(trim);
     }
-    const grille = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.3, 0.08), mChrome);
+    const grille = new THREE.Mesh(sharedGeo(THREE.BoxGeometry, 1.1, 0.3, 0.08), mChrome);
     grille.position.set(0, 0.55, 2.46); g.add(grille);
     glassPane(1.62, 0.52, 1.08, 0.98, -0.5);
     glassPane(1.62, 0.48, 1.08, -1.6, 0.55);
     mirrors(1.0, 0.98, 0.78);
-    const hood = new THREE.Mesh(new THREE.BoxGeometry(1.85, 0.1, 1.2), mBody);
+    const hood = new THREE.Mesh(sharedGeo(THREE.BoxGeometry, 1.85, 0.1, 1.2), mBody);
     hood.position.set(0, 0.9, 1.8); g.add(hood);
     wheel(-0.95, 1.6, 0.35); wheel(0.95, 1.6, 0.35); wheel(-0.95, -1.6, 0.35); wheel(0.95, -1.6, 0.35);
     lights(2.46, -2.46, 0.62);
@@ -2321,15 +2321,30 @@ function spawnMercFleet() {
 const HERO_CARS = [
   // BMW X7 removed: its export has a door welded open in every pose
   // Challenger removed too — the export sat tilted and read badly
-  { file: 'models/car_concept.glb', key: 'hero_concept', base: 'hyper', len: 4.7, label: 'CONCEPT X',
-    spots: [[125.1, 40, 0], [5.1, 84, 0], [-65.1, -20, Math.PI]] },
+  { file: 'models/car_concept.glb', key: 'hero_concept', base: 'hyper', len: 4.7, label: 'CONCEPT X' },
   { file: 'models/car_lambo.glb', key: 'hero_lambo', base: 'hyper', len: 4.6, label: 'TORO SV',
-    tint: 0xf07800, spots: [[-125.1, 62, 0], [65.1, 100, Math.PI], [65.1, 14, 0]] },
-  { file: 'models/car_hatch.glb', key: 'hero_hatch', base: 'car', len: 3.7, label: 'CITY DART',
-    spots: [[-54.9, 28, 0], [5.1, -70, 0], [125.1, 76, Math.PI]] },
-  { file: 'models/car_pickup.glb', key: 'hero_pickup', base: 'pickup', len: 5.2, label: 'TITAN PICKUP',
-    spots: [[-114.9, -46, 0], [65.1, -60, Math.PI], [-5.1, 100, Math.PI]] },
+    tint: 0xf07800 },
+  { file: 'models/car_hatch.glb', key: 'hero_hatch', base: 'car', len: 3.7, label: 'CITY DART' },
+  { file: 'models/car_pickup.glb', key: 'hero_pickup', base: 'pickup', len: 5.2, label: 'TITAN PICKUP' },
 ];
+// Park each hero car on the city's own avenues. The spots used to be fixed
+// coordinates taken from neon's grid; once every city got its own street plan
+// those coordinates stopped landing on roads, and seven showpiece cars ended
+// up embedded inside blocks across five of the seven cities.
+function heroSpots(i) {
+  const out = [];
+  for (let k = 0; k < 3; k++) {
+    const s = STREETS[(i * 2 + k * 3) % STREETS.length];
+    const side = ((i + k) % 2) ? 5.1 : -5.1;   // one lane either side of centre
+    let v = -78 + k * 74 + i * 13;
+    // slide out of any junction it would otherwise block
+    for (let guard = 0; guard < 14 &&
+      STREETS.some(q => Math.abs(v - q) < ROAD_HALF + 5); guard++) v += 9;
+    v = Math.max(-122, Math.min(122, v));
+    out.push([s + side, v, side > 0 ? 0 : Math.PI]);
+  }
+  return out;
+}
 function loadHeroCars() {
   for (const hc of HERO_CARS) {
     VEH_STATS[hc.key] = { ...VEH_STATS[hc.base], label: hc.label };
@@ -2349,7 +2364,7 @@ function loadHeroCars() {
       // authored rest pose has everything closed
       if (hc.rotY) root.rotation.y = hc.rotY;
       const tpl = normalizeModel(root, 'car', hc.len);
-      for (const [x, z, ry] of hc.spots) {
+      for (const [x, z, ry] of heroSpots(HERO_CARS.indexOf(hc))) {
         const wrap = new THREE.Group();
         const m = SkeletonUtils.clone(tpl);
         wrap.add(m);
@@ -2561,6 +2576,18 @@ const SKINS = [0xd9b08c, 0xc59a76, 0xb08a67, 0x8a6248, 0x6b4a35];
 const HAIRS = [0x1c1712, 0x3a2a18, 0x6b4a26, 0x9a7b46, 0x666666, 0x2a2a35];
 // Rounded low-poly humans: capsule bodies, real heads with faces and hair,
 // jointed limbs (shoulder/hip pivots) and per-person height variation.
+// One geometry per distinct shape, shared by every character that needs it.
+// Each civilian used to allocate its own 27 buffers; at 58 pedestrians that is
+// well over a thousand redundant GPU uploads, which is what pushed the scene
+// to 4,271 geometries and made the game stutter on modest hardware.
+const _geoCache = new Map();
+function sharedGeo(Ctor, ...args) {
+  const key = Ctor.name + ':' + args.join(',');
+  let g = _geoCache.get(key);
+  if (!g) { g = new Ctor(...args); _geoCache.set(key, g); }
+  return g;
+}
+
 function makeCharacter(cfg, opts = {}) {
   const g = new THREE.Group();
   const female = cfg.gender === 'f';
@@ -2580,10 +2607,10 @@ function makeCharacter(cfg, opts = {}) {
   if (cfg.robe !== undefined) shirt.color.set(cfg.robe); // traditional dress
 
   // torso + hips (capsules, squashed for shoulders)
-  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(female ? 0.14 : 0.16, 0.34, 4, 10), shirt);
+  const torso = new THREE.Mesh(sharedGeo(THREE.CapsuleGeometry, female ? 0.14 : 0.16, 0.34, 4, 10), shirt);
   torso.scale.set(1.14, 1, 0.72);
   torso.position.y = 1.16; g.add(torso);
-  const hips = new THREE.Mesh(new THREE.CapsuleGeometry(female ? 0.135 : 0.145, 0.08, 4, 10), pants);
+  const hips = new THREE.Mesh(sharedGeo(THREE.CapsuleGeometry, female ? 0.135 : 0.145, 0.08, 4, 10), pants);
   hips.scale.set(1.08, 1, 0.78);
   hips.position.y = 0.85; g.add(hips);
 
@@ -2591,73 +2618,73 @@ function makeCharacter(cfg, opts = {}) {
     const mStripe = new THREE.MeshStandardMaterial({
       color: 0xe8ecf0, roughness: 0.4, emissive: 0xaab4be, emissiveIntensity: 0.25 });
     for (const sy of [1.26, 1.06]) {
-      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.05, 0.3), mStripe);
+      const stripe = new THREE.Mesh(sharedGeo(THREE.BoxGeometry, 0.46, 0.05, 0.3), mStripe);
       stripe.position.y = sy; g.add(stripe);
     }
     const mPack = new THREE.MeshStandardMaterial({
       color: new THREE.Color(cfg.uniform).multiplyScalar(1.15), roughness: 0.55 });
-    const pack = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.42, 0.2), mPack);
+    const pack = new THREE.Mesh(sharedGeo(THREE.BoxGeometry, 0.36, 0.42, 0.2), mPack);
     pack.position.set(0, 1.18, -0.25); g.add(pack);
-    const packBand = new THREE.Mesh(new THREE.BoxGeometry(0.37, 0.09, 0.21),
+    const packBand = new THREE.Mesh(sharedGeo(THREE.BoxGeometry, 0.37, 0.09, 0.21),
       new THREE.MeshStandardMaterial({ color: 0xf0f2f4, roughness: 0.5 }));
     packBand.position.set(0, 1.35, -0.25); g.add(packBand);
   }
 
   if (opts.head !== false) {
-    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.055, 0.09, 8), mSkinC);
+    const neck = new THREE.Mesh(sharedGeo(THREE.CylinderGeometry, 0.05, 0.055, 0.09, 8), mSkinC);
     neck.position.y = 1.47; g.add(neck);
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.135, 12, 10), mSkinC);
+    const head = new THREE.Mesh(sharedGeo(THREE.SphereGeometry, 0.135, 12, 10), mSkinC);
     head.scale.set(0.95, 1.12, 0.98);
     head.position.y = 1.63; g.add(head);
     // face: eyes, brows, nose and mouth so people read as people up close
     for (const ex of [-0.05, 0.05]) {
-      const white = new THREE.Mesh(new THREE.SphereGeometry(0.02, 6, 6),
+      const white = new THREE.Mesh(sharedGeo(THREE.SphereGeometry, 0.02, 6, 6),
         new THREE.MeshStandardMaterial({ color: 0xf2f0ec, roughness: 0.35 }));
       white.position.set(ex, 1.65, 0.115); g.add(white);
-      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.011, 6, 6), mDarkC);
+      const eye = new THREE.Mesh(sharedGeo(THREE.SphereGeometry, 0.011, 6, 6), mDarkC);
       eye.position.set(ex, 1.65, 0.132); g.add(eye);
-      const brow = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.012, 0.02), hairM);
+      const brow = new THREE.Mesh(sharedGeo(THREE.BoxGeometry, 0.045, 0.012, 0.02), hairM);
       brow.position.set(ex, 1.695, 0.125); g.add(brow);
     }
-    const nose = new THREE.Mesh(new THREE.SphereGeometry(0.02, 6, 6), mSkinC);
+    const nose = new THREE.Mesh(sharedGeo(THREE.SphereGeometry, 0.02, 6, 6), mSkinC);
     nose.scale.set(0.8, 1, 1.1);
     nose.position.set(0, 1.625, 0.135); g.add(nose);
-    const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.011, 0.015),
+    const mouth = new THREE.Mesh(sharedGeo(THREE.BoxGeometry, 0.05, 0.011, 0.015),
       new THREE.MeshStandardMaterial({ color: 0x8a4a42, roughness: 0.7 }));
     mouth.position.set(0, 1.575, 0.126); g.add(mouth);
     // hair: rounded cap hugging the skull (+ long back for long hair)
-    const hair = new THREE.Mesh(new THREE.SphereGeometry(0.142, 12, 8), hairM);
+    const hair = new THREE.Mesh(sharedGeo(THREE.SphereGeometry, 0.142, 12, 8), hairM);
     hair.scale.set(0.97, 0.85, 1.0);
     hair.position.y = 1.68; g.add(hair);
     if (cfg.hairLong) {
-      const back = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.36, 0.08), hairM);
+      const back = new THREE.Mesh(sharedGeo(THREE.BoxGeometry, 0.2, 0.36, 0.08), hairM);
       back.position.set(0, 1.5, -0.14); g.add(back);
     }
     if (uniformed) {
       const mCap = new THREE.MeshStandardMaterial({ color: cfg.uniform, roughness: 0.7 });
-      const ucap = new THREE.Mesh(new THREE.SphereGeometry(0.148, 12, 8), mCap);
+      const ucap = new THREE.Mesh(sharedGeo(THREE.SphereGeometry, 0.148, 12, 8), mCap);
       ucap.scale.set(1, 0.68, 1);
       ucap.position.y = 1.7; g.add(ucap);
-      const brim = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.025, 0.13), mCap);
+      const brim = new THREE.Mesh(sharedGeo(THREE.BoxGeometry, 0.2, 0.025, 0.13), mCap);
       brim.position.set(0, 1.7, 0.19); g.add(brim);
     }
     if (cfg.headwrap !== undefined) {
       // ghutra (with black agal) for men, hijab for women
       const mWrap = new THREE.MeshStandardMaterial({ color: cfg.headwrap, roughness: 0.9 });
-      const wrapCap = new THREE.Mesh(new THREE.SphereGeometry(0.152, 12, 8), mWrap);
+      const wrapCap = new THREE.Mesh(sharedGeo(THREE.SphereGeometry, 0.152, 12, 8), mWrap);
       wrapCap.scale.set(1.02, female ? 1.0 : 0.8, 1.05);
       wrapCap.position.y = female ? 1.64 : 1.7;
       g.add(wrapCap);
       if (!female) {
-        const drape = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.4, 0.06), mWrap);
+        const drape = new THREE.Mesh(sharedGeo(THREE.BoxGeometry, 0.3, 0.4, 0.06), mWrap);
         drape.position.set(0, 1.5, -0.14); g.add(drape);
-        const agal = new THREE.Mesh(new THREE.TorusGeometry(0.14, 0.022, 8, 16),
+        const agal = new THREE.Mesh(sharedGeo(THREE.TorusGeometry, 0.14, 0.022, 8, 16),
           new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.8 }));
         agal.rotation.x = Math.PI / 2;
         agal.position.y = 1.73;
         g.add(agal);
       } else {
-        const drape = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.34, 0.07), mWrap);
+        const drape = new THREE.Mesh(sharedGeo(THREE.BoxGeometry, 0.28, 0.34, 0.07), mWrap);
         drape.position.set(0, 1.46, -0.13); g.add(drape);
       }
     }
@@ -2666,7 +2693,7 @@ function makeCharacter(cfg, opts = {}) {
   // legs: hip pivots so the walk cycle bends at the joint
   if (cfg.robe !== undefined) {
     // flowing thobe/abaya from the shoulders to the ground
-    const robe = new THREE.Mesh(new THREE.CylinderGeometry(female ? 0.17 : 0.19, 0.3, 1.2, 12),
+    const robe = new THREE.Mesh(sharedGeo(THREE.CylinderGeometry, female ? 0.17 : 0.19, 0.3, 1.2, 12),
       new THREE.MeshStandardMaterial({ color: cfg.robe, roughness: 0.92 }));
     robe.position.y = 0.62;
     g.add(robe);
@@ -2676,21 +2703,21 @@ function makeCharacter(cfg, opts = {}) {
   const legMat = (cfg.skirt || sporty) ? mSkinC : pants;
   const legLen = cfg.skirt ? 0.34 : sporty ? 0.4 : 0.42;
   if (cfg.skirt) {
-    const skirt = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.22, 0.3, 10), pants);
+    const skirt = new THREE.Mesh(sharedGeo(THREE.CylinderGeometry, 0.16, 0.22, 0.3, 10), pants);
     skirt.position.y = 0.68; g.add(skirt);
   }
   if (sporty) { // athletic shorts in kit color
-    const shorts = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.19, 0.24, 10),
+    const shorts = new THREE.Mesh(sharedGeo(THREE.CylinderGeometry, 0.17, 0.19, 0.24, 10),
       new THREE.MeshStandardMaterial({ color: cfg.shorts, roughness: 0.85 }));
     shorts.position.y = 0.72; g.add(shorts);
   }
   for (const sx of [-1, 1]) {
     const pivot = new THREE.Group();
     pivot.position.set(sx * 0.1, 0.82, 0);
-    const leg = new THREE.Mesh(new THREE.CapsuleGeometry(0.062, legLen, 4, 8), legMat);
+    const leg = new THREE.Mesh(sharedGeo(THREE.CapsuleGeometry, 0.062, legLen, 4, 8), legMat);
     leg.position.y = -(legLen / 2 + 0.12);
     pivot.add(leg);
-    const foot = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.06, 0.2), mDarkC);
+    const foot = new THREE.Mesh(sharedGeo(THREE.BoxGeometry, 0.1, 0.06, 0.2), mDarkC);
     foot.position.set(0, -(legLen + 0.22), 0.04);
     pivot.add(foot);
     g.add(pivot); legs.push(pivot);
@@ -2701,10 +2728,10 @@ function makeCharacter(cfg, opts = {}) {
   for (const sx of [-1, 1]) {
     const pivot = new THREE.Group();
     pivot.position.set(sx * (female ? 0.205 : 0.235), 1.36, 0);
-    const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.05, 0.3, 4, 8), shirt);
+    const arm = new THREE.Mesh(sharedGeo(THREE.CapsuleGeometry, 0.05, 0.3, 4, 8), shirt);
     arm.position.y = -0.2;
     pivot.add(arm);
-    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), mSkinC);
+    const hand = new THREE.Mesh(sharedGeo(THREE.SphereGeometry, 0.05, 8, 6), mSkinC);
     hand.position.y = -0.42;
     pivot.add(hand);
     g.add(pivot); arms.push(pivot);
@@ -9629,6 +9656,13 @@ tick();
 
 // debug/testing handle
 window.__so = {
+  // scene handle for perf probes: draw-call count is the number that decides
+  // whether this runs on a low-end laptop
+  get sceneRef() { return scene; },
+  // real draw calls for the last rendered frame
+  get drawInfo() { return { calls: renderer.info.render.calls,
+    tris: renderer.info.render.triangles, progs: renderer.info.programs.length,
+    geos: renderer.info.memory.geometries, texs: renderer.info.memory.textures }; },
   get cineT() { return cine.t; },
   tp(x, z, yaw = 0) {
     player.pos.set(x, 0, z); player.yaw = yaw; player.pitch = 0;
