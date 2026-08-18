@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from './lib/jsm/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader } from './lib/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from './lib/jsm/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from './lib/jsm/utils/SkeletonUtils.js';
-import { CITIES } from './sponsors.js?v=88';
+import { CITIES } from './sponsors.js?v=89';
 
 // Clean-brand mode: the portal build (CrazyGames etc.) must carry no real
 // trademarks. window.CLEAN_BUILD is injected by the build script; ?clean=1
@@ -3033,7 +3033,12 @@ function updatePeds(dt) {
 // ---------------------------------------------------------------------------
 function buildCity(city) {
   CITY = city;
-  THEME = THEMES[city.id] || THEMES.neon;
+  // Firearms belonged to the combat-waves mode, which is gone. Forcing the
+  // flag here rather than editing seven theme literals keeps it impossible for
+  // a new city to reintroduce weapons by omission. It switches off the gun
+  // mesh, crosshair, ammo counter, firing, street ambushes and the weapon shop
+  // through paths that already existed for the Arabic cities.
+  THEME = { ...(THEMES[city.id] || THEMES.neon), noGuns: true };
   applyCityGrid(city.id);   // must happen before roads, buildings or traffic
 
   // blend the theme's night palette against a daytime palette by real clock
@@ -8198,7 +8203,12 @@ const bottle = new THREE.Group();
 // ---------------------------------------------------------------------------
 // Delivery mode — take orders from place to place; robbers may try to hit you
 // ---------------------------------------------------------------------------
-let mode = localStorage.getItem('streetops.mode') || 'delivery';
+// Street Ops is a delivery-driving game. The combat-waves mode made it two
+// games sharing a menu, which is what made the concept unreadable — a player
+// (or a reviewer) could not tell what the game was about. Delivery is now the
+// only mode; saves that still say 'waves' are migrated.
+let mode = 'delivery';
+localStorage.setItem('streetops.mode', 'delivery');
 const order = { active: false, stage: 'pickup', fx: 0, fz: 0, tx: 0, tz: 0, name: '', reward: 0, cooldown: 1 };
 let beacon = null;
 const orderTaskEl = document.getElementById('order-task');
@@ -9294,7 +9304,7 @@ function selectedCity() { return CITIES.find(c => c.id === selectedId) || CITIES
       (prog.bank > 0 ? ` · LIFETIME EARNINGS $${prog.bank}` : '') +
       (nu ? ` · NEXT UNLOCK: ${nu.what} (LVL ${nu.level})` : '');
   }
-  // combat mode is not offered in the no-guns (Arabic) cities
+  // kept as a no-op: the waves button it used to hide no longer exists
   function refreshModeAvail() {
     const wavesBtn = document.querySelector('[data-mode="waves"]');
     const banned = THEMES[selectedId] && THEMES[selectedId].noGuns;
